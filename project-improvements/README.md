@@ -150,7 +150,7 @@ establish the required remediation scope before a broad engine rewrite.
       [`WonderOfTheWorldModel.php`](../main_script/include/Model/WonderOfTheWorldModel.php#L26).
 - [x] Replace hard-coded 2019 general statistics with live calculations.
 - [x] Restore or remove the missing Plus graph backend.
-- [ ] Finish hero horse selling.
+- [x] Finish first-horse exchange and normal hero horse selling.
 - [x] Correct Master Builder queued-level and projected-resource calculations.
 - [ ] Audit quest silver, punishment upkeep, public-peace notices, and vacation
       notifications.

@@ -37,10 +37,14 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   errors, then passed the full verifier and a disposable empty-volume install.
 - Extended public-history hygiene to remove consumer email addresses from
   legacy commits, vendored asset headers, and commit metadata.
+- Completed transactional first-horse exchange for 100 silver with a required
+  replacement horse, accounting records, replay rejection, and DB regressions.
+- Verified first-horse exchange and ordinary horse auction dialogs in a real
+  browser with correct inventory/silver changes and zero browser errors.
 
 ## Current work
 
-- Create responsibility-scoped commits and rebuild the sanitized publish history.
+- Publish the verified horse-selling commit on the sanitized feature branch.
 
 ## TODO
 

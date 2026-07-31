@@ -14,6 +14,9 @@ use function uniqid;
 
 class AuctionModel
 {
+    public const FIRST_HORSE_TYPE = 103;
+    public const FIRST_HORSE_SILVER = 100;
+
     private static $given_user_ids = [];
 
     public function getMyBookings($uid)
@@ -236,6 +239,105 @@ class AuctionModel
         $db = DB::getInstance();
 
         return $db->query("SELECT * FROM items WHERE uid=$uid AND proc=0");
+    }
+
+    public function canExchangeFirstHorseForSilver(int $uid, int $itemId): bool
+    {
+        if ($uid <= 0 || $itemId <= 0) {
+            return false;
+        }
+        $db = DB::getInstance();
+
+        return (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM items candidate
+             WHERE candidate.id=$itemId
+               AND candidate.uid=$uid
+               AND candidate.btype=6
+               AND candidate.type=" . self::FIRST_HORSE_TYPE . "
+               AND candidate.proc=0
+               AND candidate.num=1
+               AND EXISTS (
+                   SELECT 1 FROM items other
+                   WHERE other.uid=$uid
+                     AND other.btype=6
+                     AND other.type IN (103, 104, 105)
+                     AND other.id<>candidate.id
+               )"
+        ) === 1;
+    }
+
+    public function exchangeFirstHorseForSilver(int $uid, int $itemId): bool
+    {
+        if ($uid <= 0 || $itemId <= 0) {
+            return false;
+        }
+
+        $db = DB::getInstance();
+        $db->begin_transaction();
+        try {
+            $item = $db->query(
+                "SELECT id FROM items
+                 WHERE id=$itemId
+                   AND uid=$uid
+                   AND btype=6
+                   AND type=" . self::FIRST_HORSE_TYPE . "
+                   AND proc=0
+                   AND num=1
+                 FOR UPDATE"
+            );
+            if (!$item->num_rows) {
+                $db->rollback();
+                return false;
+            }
+
+            $otherHorse = $db->fetchScalar(
+                "SELECT id FROM items
+                 WHERE uid=$uid
+                   AND btype=6
+                   AND type IN (103, 104, 105)
+                   AND id<>$itemId
+                 LIMIT 1
+                 FOR UPDATE"
+            );
+            if (!$otherHorse) {
+                $db->rollback();
+                return false;
+            }
+
+            $currentSilver = $db->fetchScalar("SELECT silver FROM users WHERE id=$uid FOR UPDATE");
+            if ($currentSilver === false) {
+                $db->rollback();
+                return false;
+            }
+
+            $db->query("DELETE FROM items WHERE id=$itemId AND uid=$uid");
+            if ($db->affectedRows() !== 1) {
+                $db->rollback();
+                return false;
+            }
+
+            $reward = self::FIRST_HORSE_SILVER;
+            $db->query("UPDATE users SET silver=silver+$reward WHERE id=$uid");
+            if ($db->affectedRows() !== 1) {
+                $db->rollback();
+                return false;
+            }
+            $this->addBooking(
+                $uid,
+                [1, 6, self::FIRST_HORSE_TYPE, 1],
+                $reward,
+                (int)$currentSilver + $reward,
+                time()
+            );
+            $db->commit();
+
+            return true;
+        } catch (\Throwable $e) {
+            $db->rollback();
+            \logError('Unable to exchange first hero horse: ' . $e->getMessage());
+
+            return false;
+        }
     }
 
     public function getMyRunningAuctions($uid)

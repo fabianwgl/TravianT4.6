@@ -8,6 +8,7 @@ use Core\Security\Password;
 use Controller\RallyPoint\Simulator;
 use Game\Buildings\BuildingHelper;
 use Game\Formulas;
+use Model\AuctionModel;
 use Model\MasterBuilder;
 
 require '/app/main_script/copyable/include/env.php';
@@ -151,6 +152,12 @@ $artefactAutoIncrement = (int)$db->fetchScalar(
 $buildingUpgradeAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='building_upgrade'"
 );
+$itemAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='items'"
+);
+$accountingAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='accounting'"
+);
 $db->begin_transaction();
 try {
     $holder = 2000000001;
@@ -237,6 +244,94 @@ try {
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
     $db->query("ALTER TABLE artefacts AUTO_INCREMENT=$artefactAutoIncrement");
     $db->query("ALTER TABLE building_upgrade AUTO_INCREMENT=$buildingUpgradeAutoIncrement");
+}
+
+$horseOwner = 2000000004;
+$firstHorse = 2000000001;
+$otherHorse = 2000000002;
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id=$horseOwner"),
+        'horse exchange fixture user ID available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM items WHERE id IN ($firstHorse, $otherHorse)"),
+        'horse exchange fixture item IDs available'
+    );
+    $db->query("INSERT INTO users (id, uuid, name, password, email, race, kid, silver, desc1, desc2, note)
+        VALUES ($horseOwner, 'ov-regression-horse', 'OVTestHorse', 'x', '', 1, 1, 25, '', '', '')");
+    $db->query("INSERT INTO items (id, uid, btype, type, num, placeId, proc)
+        VALUES ($firstHorse, $horseOwner, 6, 103, 1, 1, 0)");
+
+    $auction = new AuctionModel();
+    expect_same(
+        false,
+        $auction->canExchangeFirstHorseForSilver($horseOwner, $firstHorse),
+        'first horse requires another owned horse'
+    );
+    expect_same(
+        false,
+        $auction->exchangeFirstHorseForSilver($horseOwner, $firstHorse),
+        'first horse exchange rejected without replacement horse'
+    );
+    expect_same(
+        25,
+        (int)$db->fetchScalar("SELECT silver FROM users WHERE id=$horseOwner"),
+        'rejected horse exchange preserves silver'
+    );
+
+    $db->query("INSERT INTO items (id, uid, btype, type, num, placeId, proc)
+        VALUES ($otherHorse, $horseOwner, 6, 104, 1, 2, 0)");
+    expect_true(
+        $auction->canExchangeFirstHorseForSilver($horseOwner, $firstHorse),
+        'first horse exchange becomes available with replacement horse'
+    );
+    expect_true(
+        $auction->exchangeFirstHorseForSilver($horseOwner, $firstHorse),
+        'first horse exchange succeeds'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM items WHERE id=$firstHorse"),
+        'exchanged first horse removed'
+    );
+    expect_same(
+        1,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM items WHERE id=$otherHorse"),
+        'replacement horse preserved'
+    );
+    expect_same(
+        125,
+        (int)$db->fetchScalar("SELECT silver FROM users WHERE id=$horseOwner"),
+        'first horse silver credited'
+    );
+    expect_same(
+        '1,6,103,1|100|125',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(cause, '|', reserve, '|', balance)
+             FROM accounting WHERE uid=$horseOwner ORDER BY id DESC LIMIT 1"
+        ),
+        'first horse exchange accounting entry'
+    );
+    expect_same(
+        false,
+        $auction->exchangeFirstHorseForSilver($horseOwner, $firstHorse),
+        'first horse exchange cannot be replayed'
+    );
+    expect_same(
+        125,
+        (int)$db->fetchScalar("SELECT silver FROM users WHERE id=$horseOwner"),
+        'replayed horse exchange cannot duplicate silver'
+    );
+} finally {
+    $db->query("DELETE FROM accounting WHERE uid=$horseOwner");
+    $db->query("DELETE FROM items WHERE uid=$horseOwner OR id IN ($firstHorse, $otherHorse)");
+    $db->query("DELETE FROM users WHERE id=$horseOwner");
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE items AUTO_INCREMENT=$itemAutoIncrement");
+    $db->query("ALTER TABLE accounting AUTO_INCREMENT=$accountingAutoIncrement");
 }
 
 echo "Runtime regression checks passed.\n";
