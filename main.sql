@@ -233,6 +233,7 @@ CREATE TABLE `mailServer` (
   `toEmail` varchar(255) NOT NULL,
   `subject` varchar(255) NOT NULL,
   `html` longtext NOT NULL,
+  `delivery_key` varchar(191) DEFAULT NULL,
   `priority` int(11) NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -552,6 +553,7 @@ ALTER TABLE `locations`
 --
 ALTER TABLE `mailServer`
   ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `delivery_key` (`delivery_key`),
   ADD KEY `priority` (`priority`);
 
 --

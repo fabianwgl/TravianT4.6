@@ -29,13 +29,22 @@ class Mailer
         return $db->affectedRows();
     }
 
-    public static function sendEmail($to, $subject, $html, $priority = 0)
+    public static function sendEmail($to, $subject, $html, $priority = 0, ?string $deliveryKey = null): bool
     {
         $db = GlobalDB::getInstance();
-        $db->query(sprintf("INSERT INTO mailServer (toEmail, subject, html, priority) VALUES ('%s', '%s', '%s', $priority)",
-            $to,
-            $db->real_escape_string($subject),
-            $db->real_escape_string($html)));
-        return $db->affectedRows();
+        $escapedTo = $db->real_escape_string($to);
+        $escapedSubject = $db->real_escape_string($subject);
+        $escapedHtml = $db->real_escape_string($html);
+        if ($deliveryKey === null) {
+            $query = "INSERT INTO mailServer (toEmail, subject, html, priority)
+                VALUES ('$escapedTo', '$escapedSubject', '$escapedHtml', $priority)";
+        } else {
+            $escapedKey = $db->real_escape_string($deliveryKey);
+            $query = "INSERT INTO mailServer (toEmail, subject, html, delivery_key, priority)
+                VALUES ('$escapedTo', '$escapedSubject', '$escapedHtml', '$escapedKey', $priority)
+                ON DUPLICATE KEY UPDATE id=id";
+        }
+
+        return $db->query($query) !== false;
     }
 }

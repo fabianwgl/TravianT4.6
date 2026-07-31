@@ -87,13 +87,13 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   movement cancellation, crash rollback, and duplicate-delivery coverage.
 - Made recurring trade routes lock their source village and advance only after
   dispatch/no-op completion, with crash and replay regressions.
-- Added global notification delivery keys and a transactional game queue
-  consumer, proving cross-database crash retry without duplicate notices.
+- Added global notification and mail delivery keys with transactional consumers,
+  proving cross-database crash retry without duplicate outbox rows.
 
 ## Current work
 
-- Review activation reminder delivery-key deduplication after the outbox-ordering
-  fix, then keep the full verifier and sanitized publication flow green.
+- Build the accelerated complete-round regression and keep the full verifier and
+  sanitized publication flow green.
 
 ## TODO
 

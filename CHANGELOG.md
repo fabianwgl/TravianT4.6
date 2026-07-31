@@ -32,6 +32,7 @@
 - Added transactional oasis deletion with recoverable failures and replay tests.
 - Added transactional recurring trade-route dispatch and retry coverage.
 - Added global notification delivery keys and migration tracking.
+- Added idempotent delivery keys for activation mail outboxes.
 
 ### Fixed
 
@@ -75,7 +76,7 @@
 - Notification queue rows now retry safely across the game/global databases;
   stable delivery keys suppress duplicate global notices.
 - Activation reminder jobs now queue mail before marking reminders delivered;
-  the cross-database progress reminder remains explicitly at-least-once.
+  replayed reminders reuse a stable outbox key instead of duplicating mail rows.
 - Login JavaScript failures and external tracking requests.
 
 ### Removed

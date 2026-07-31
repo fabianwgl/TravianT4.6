@@ -61,24 +61,23 @@ invariant is:
 
 `research`, normal `building_upgrade`, `demolition`, `movement`, `send`, `training`,
 `alliance_bonus_upgrade_queue`, referral rewards, oasis deletion, trade routes,
-and notification delivery satisfy this invariant:
+notification delivery, and activation mail outboxes satisfy this invariant:
 `TransactionalTask`
 locks the row and commits its game effect and queue mutation in one MariaDB
 transaction. Master Builder and partial training rows use the same lock and
 transaction, but may remain queued when more work is pending. Runtime
 regressions prove crash rollback, retry, and duplicate suppression.
 
-Notification delivery uses a stable world-and-queue delivery key in the global
-database. If a worker crashes after the global insert but before game-queue
-consumption commits, retrying the queue row is an idempotent no-op in the global
-database.
+Notification and activation mail delivery use stable world-and-event delivery
+keys in the global database. If a worker crashes after the global outbox insert
+but before game-state consumption commits, retrying is an idempotent no-op.
 
 The following paths still require evidence-backed conversion and therefore
 must not be described as crash-safe:
 
 | Queue or trigger | Clock | Current risk |
 | --- | --- | --- |
-| activation reminder mail | Unix seconds | The game-world marker and global mail outbox use separate databases; a crash after outbox insertion can duplicate a reminder. |
+| external mail transport | Unix seconds | Delivery beyond the durable global outbox is at-least-once and depends on the mail worker. |
 
 Database-only effects should use a row lock and one transaction. External mail
 or notification effects require an outbox with a stable delivery key; a

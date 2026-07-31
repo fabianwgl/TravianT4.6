@@ -6,6 +6,7 @@ use Core\Config;
 use Core\Automation;
 use Core\Database\DB;
 use Core\Database\GlobalDB;
+use Core\Helper\Mailer;
 use Core\Helper\Notification;
 use Core\Jobs\TransactionalTask;
 use Core\Jobs\WorkerRegistry;
@@ -240,6 +241,9 @@ $tradeRouteAutoIncrement = (int)$db->fetchScalar(
 );
 $notificationAutoIncrement = (int)GlobalDB::getInstance()->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='notifications'"
+);
+$mailAutoIncrement = (int)GlobalDB::getInstance()->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='mailServer'"
 );
 
 $nestedTransactionKid = 2000000019;
@@ -936,6 +940,29 @@ try {
         "DELETE FROM notifications WHERE delivery_key IN ('$escapedNotificationKey', '$escapedNotificationCrashKey')"
     );
     $notificationGlobal->query("ALTER TABLE notifications AUTO_INCREMENT=$notificationAutoIncrement");
+}
+
+$mailDeliveryKey = 'runtime-mail-delivery-key';
+$mailGlobal = GlobalDB::getInstance();
+$escapedMailDeliveryKey = $mailGlobal->real_escape_string($mailDeliveryKey);
+try {
+    $mailGlobal->query("DELETE FROM mailServer WHERE delivery_key='$escapedMailDeliveryKey'");
+    expect_true(
+        Mailer::sendEmail('runtime@example.invalid', 'Runtime mail', 'Runtime mail body', 0, $mailDeliveryKey),
+        'mail delivery key first enqueue'
+    );
+    expect_true(
+        Mailer::sendEmail('runtime@example.invalid', 'Runtime mail', 'Runtime mail body', 0, $mailDeliveryKey),
+        'mail delivery key replay enqueue'
+    );
+    expect_same(
+        1,
+        (int)$mailGlobal->fetchScalar("SELECT COUNT(*) FROM mailServer WHERE delivery_key='$escapedMailDeliveryKey'"),
+        'mail delivery key suppresses duplicate outbox rows'
+    );
+} finally {
+    $mailGlobal->query("DELETE FROM mailServer WHERE delivery_key='$escapedMailDeliveryKey'");
+    $mailGlobal->query("ALTER TABLE mailServer AUTO_INCREMENT=$mailAutoIncrement");
 }
 
 $db->begin_transaction();

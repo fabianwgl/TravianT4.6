@@ -1040,7 +1040,13 @@ class Automation
                     try {
                         $view->vars['name'] = $row['name'];
                         $view->vars['activationCode'] = $row['activationCode'];
-                        if (Mailer::sendEmail($row['email'], T("Mail", "Email verification reminder"), $view->output()) !== 1) {
+                        if (!Mailer::sendEmail(
+                            $row['email'],
+                            T("Mail", "Email verification reminder"),
+                            $view->output(),
+                            0,
+                            'activation-reminder:' . getWorldUniqueId() . ':' . $row['id']
+                        )) {
                             throw new \RuntimeException('Unable to queue activation reminder.');
                         }
                         $globalDB->query("UPDATE activation SET reminded=1 WHERE id={$row['id']}");
@@ -1060,7 +1066,13 @@ class Automation
                 while ($row = $result->fetch_assoc()) {
                     $view->vars['name'] = $row['name'];
                     $view->vars['token'] = $row['token'];
-                    if (Mailer::sendEmail($row['email'], T("Mail", "Activation progress reminder"), $view->output()) !== 1) {
+                    if (!Mailer::sendEmail(
+                        $row['email'],
+                        T("Mail", "Activation progress reminder"),
+                        $view->output(),
+                        0,
+                        'activation-progress-reminder:' . getWorldUniqueId() . ':' . $row['id']
+                    )) {
                         throw new \RuntimeException('Unable to queue activation progress reminder.');
                     }
                     if (!$db->query("UPDATE activation SET reminded=1 WHERE id={$row['id']}")) {
