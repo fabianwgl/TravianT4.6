@@ -439,67 +439,93 @@ class Automation
     {
         $usePeriodicTradeRoutes = getGame("usePeriodicTradeRoutes");
         $db = DB::getInstance();
-        $result = $db->query("SELECT * FROM traderoutes WHERE enabled=1 AND time <= " . (time()) . " LIMIT 100");
-        $marketModel = new MarketModel();
+        $result = $db->query("SELECT id FROM traderoutes WHERE enabled=1 AND time <= " . (time()) . " ORDER BY time ASC, id ASC LIMIT 100");
         while ($row = $result->fetch_assoc()) {
-            if ($usePeriodicTradeRoutes) {
-                $db->query("UPDATE traderoutes SET time=time+{$row['start_hour']} WHERE id={$row['id']}");
-            } else {
-                $db->query("UPDATE traderoutes SET time=time+86400 WHERE id={$row['id']}");
+            $this->processTradeRouteTask((int)$row['id'], (bool)$usePeriodicTradeRoutes);
+        }
+    }
+
+    public function processTradeRouteTask(int $taskId, bool $usePeriodicTradeRoutes = false): bool
+    {
+        return TransactionalTask::mutate('traderoutes', $taskId, function (array $row) use ($usePeriodicTradeRoutes): void {
+            if ((int)$row['enabled'] !== 1 || (int)$row['time'] > time()) {
+                return;
             }
-            $uid = $marketModel->getVillageOwner($row['kid']);
+            $db = DB::getInstance();
+            $nextTime = (int)$row['time'] + ($usePeriodicTradeRoutes ? (int)$row['start_hour'] : 86400);
+            $advance = static function () use ($db, $row, $nextTime): void {
+                $db->query("UPDATE traderoutes SET time=$nextTime WHERE id={$row['id']}");
+            };
+            $ownerResult = $db->query("SELECT owner FROM vdata WHERE kid={$row['kid']} FOR UPDATE");
+            $uid = $ownerResult && $ownerResult->num_rows ? (int)$ownerResult->fetch_assoc()['owner'] : 0;
             if ($uid === 0) {
                 $db->query("DELETE FROM traderoutes WHERE kid={$row['kid']} OR to_kid={$row['kid']}");
+                return;
             }
+            $marketModel = new MarketModel();
             $race = $marketModel->getPlayerRace($uid);
             $market = $marketModel->getMarketAndTradeOfficeLevel($row['kid']);
             if (!$market[17]) {
-                continue;
+                $advance();
+                return;
             }
-            $cur_resources = array_map("floor", $marketModel->getVillageResources($row['kid']));
-            $resources_to_send = [
+            $curResources = array_map("floor", $marketModel->getVillageResources($row['kid']));
+            $resourcesToSend = array_map("floor", [
                 1 => $row['r1'],
                 2 => $row['r2'],
                 3 => $row['r3'],
                 4 => $row['r4'],
-            ];
-            $zeroCount = 0;
-            $resources_to_send = array_map("floor", $resources_to_send);
-            foreach ($resources_to_send as $k => $v) {
-                if ($v > $cur_resources[$k]) {
-                    $resources_to_send[$k] = $cur_resources[$k];
-                }
-                if ($v <= 0) {
-                    $zeroCount++;
+            ]);
+            foreach ($resourcesToSend as $key => $value) {
+                if ($value > $curResources[$key]) {
+                    $resourcesToSend[$key] = $curResources[$key];
                 }
             }
-            if (!array_sum($resources_to_send)) {
-                continue;
+            if (!array_sum($resourcesToSend)) {
+                $advance();
+                return;
             }
-            $alliance_bonus = 1;
-            $alliance = $db->query("SELECT aid, alliance_join_time FROM users WHERE id=$uid")->fetch_assoc();
-            if ($alliance['aid'] > 0) {
-                $alliance_bonus = AllianceBonus::getTradersBonus($alliance['aid'], $alliance['alliance_join_time']);
+            $allianceBonus = 1;
+            $alliance = $db->query("SELECT aid, alliance_join_time FROM users WHERE id=$uid FOR UPDATE")->fetch_assoc();
+            if ($alliance && $alliance['aid'] > 0) {
+                $allianceBonus = AllianceBonus::getTradersBonus($alliance['aid'], $alliance['alliance_join_time']);
             }
-            $merchant_cap = Formulas::merchantCAP($race, $market[28], $alliance_bonus);
-            $total_resources = array_sum($resources_to_send);
-            $total_available_merchants = $market[17] - $marketModel->getOfferingMerchantsCount($row['kid'], $merchant_cap) - $marketModel->getOnTheWayMerchantsCount($row['kid'], $merchant_cap);
-            if (!$total_available_merchants) {
-                continue;
+            $merchantCap = Formulas::merchantCAP($race, $market[28], $allianceBonus);
+            $totalResources = array_sum($resourcesToSend);
+            $totalAvailableMerchants = $market[17]
+                - $marketModel->getOfferingMerchantsCount($row['kid'], $merchantCap)
+                - $marketModel->getOnTheWayMerchantsCount($row['kid'], $merchantCap);
+            if ($totalAvailableMerchants <= 0) {
+                $advance();
+                return;
             }
-            $total_need_merchants = ceil($total_resources / $merchant_cap);
-            if ($total_need_merchants > $total_available_merchants) {
-                $resourcesTogo = [1 => 0, 2 => 0, 3 => 0, 4 => 0];
-                $max = $total_available_merchants * $merchant_cap;
-                for ($i = 1; $i <= 4; $i++) {
-                    $resourcesTogo[$i] = max(min($max, $resources_to_send[$i]), 0);
-                    $max -= $resourcesTogo[$i];
+            $totalNeedMerchants = ceil($totalResources / $merchantCap);
+            if ($totalNeedMerchants > $totalAvailableMerchants) {
+                $resourcesToGo = [1 => 0, 2 => 0, 3 => 0, 4 => 0];
+                $remainingCapacity = $totalAvailableMerchants * $merchantCap;
+                for ($i = 1; $i <= 4; ++$i) {
+                    $resourcesToGo[$i] = max(min($remainingCapacity, $resourcesToSend[$i]), 0);
+                    $remainingCapacity -= $resourcesToGo[$i];
                 }
-                $resources_to_send = $resourcesTogo;
+                $resourcesToSend = $resourcesToGo;
             }
-            $marketModel->sendResources($row['kid'], $row['to_kid'], $race, $resources_to_send[1], $resources_to_send[2], $resources_to_send[3], $resources_to_send[4], $row['times'], $row['time']);
-            $db->query("UPDATE vdata SET wood=wood-{$resources_to_send[1]}, clay=clay-{$resources_to_send[2]}, iron=iron-{$resources_to_send[3]}, crop=crop-{$resources_to_send[4]} WHERE kid={$row['kid']}");
-        }
+            $marketModel->sendResources(
+                $row['kid'],
+                $row['to_kid'],
+                $race,
+                $resourcesToSend[1],
+                $resourcesToSend[2],
+                $resourcesToSend[3],
+                $resourcesToSend[4],
+                $row['times'],
+                $row['time']
+            );
+            $db->query(
+                "UPDATE vdata SET wood=wood-{$resourcesToSend[1]}, clay=clay-{$resourcesToSend[2]},
+                    iron=iron-{$resourcesToSend[3]}, crop=crop-{$resourcesToSend[4]} WHERE kid={$row['kid']}"
+            );
+            $advance();
+        });
     }
 
     public function cleanupServer()

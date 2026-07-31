@@ -60,7 +60,7 @@ invariant is:
 4. Retrying or redelivering the same event cannot duplicate its effect.
 
 `research`, normal `building_upgrade`, `demolition`, `movement`, `send`, `training`,
-`alliance_bonus_upgrade_queue`, referral rewards, and oasis deletion satisfy this invariant:
+`alliance_bonus_upgrade_queue`, referral rewards, oasis deletion, and trade routes satisfy this invariant:
 `TransactionalTask`
 locks the row and commits its game effect and queue mutation in one MariaDB
 transaction. Master Builder and partial training rows use the same lock and
@@ -73,7 +73,6 @@ must not be described as crash-safe:
 | Queue or trigger | Clock | Current risk |
 | --- | --- | --- |
 | `notificationQueue` | Immediate | The game-DB row is deleted before the separate global-DB notification insert. |
-| recurring config timestamps and trade routes | Unix seconds | Next-run time can advance before the complete effect. |
 
 Database-only effects should use a row lock and one transaction. External mail
 or notification effects require an outbox with a stable delivery key; a

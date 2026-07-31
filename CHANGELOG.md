@@ -30,6 +30,7 @@
   that invoke existing transactional services.
 - Added locked, idempotent referral reward processing with crash/retry coverage.
 - Added transactional oasis deletion with recoverable failures and replay tests.
+- Added transactional recurring trade-route dispatch and retry coverage.
 
 ### Fixed
 
@@ -68,6 +69,8 @@
   replay-safe processing and recoverable failures.
 - Oasis deletion now commits release, enforcement returns, and movement
   cancellation together with queue consumption.
+- Recurring trade routes now lock source resources and advance their schedule
+  only after a successful dispatch or deliberate no-op.
 - Login JavaScript failures and external tracking requests.
 
 ### Removed

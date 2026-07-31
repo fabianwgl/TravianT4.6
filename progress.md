@@ -85,6 +85,8 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   bounded retry, and duplicate-delivery regression coverage.
 - Made oasis deletion transactional with oasis release, enforcement returns,
   movement cancellation, crash rollback, and duplicate-delivery coverage.
+- Made recurring trade routes lock their source village and advance only after
+  dispatch/no-op completion, with crash and replay regressions.
 
 ## Current work
 

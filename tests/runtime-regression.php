@@ -233,6 +233,9 @@ $playerReferenceAutoIncrement = (int)$db->fetchScalar(
 $oasisDeletionAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='odelete'"
 );
+$tradeRouteAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='traderoutes'"
+);
 
 $nestedTransactionKid = 2000000019;
 $db->begin_transaction();
@@ -768,6 +771,100 @@ try {
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
     $db->query("ALTER TABLE movement AUTO_INCREMENT=$movementAutoIncrement");
     $db->query("ALTER TABLE odelete AUTO_INCREMENT=$oasisDeletionAutoIncrement");
+}
+
+$tradeOwner = 2000000015;
+$tradeOrigin = 2000000029;
+$tradeDestination = 2000000030;
+$tradeTask = 2000000001;
+$tradeCrashTask = 2000000002;
+$tradeInitialTime = time() - 10;
+$db->begin_transaction();
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id=$tradeOwner"),
+        'trade-route fixture user available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM traderoutes WHERE id IN ($tradeTask, $tradeCrashTask)"),
+        'trade-route fixture tasks available'
+    );
+    $db->query("INSERT INTO users (id, uuid, name, password, email, race, kid, total_villages, desc1, desc2, note)
+        VALUES ($tradeOwner, 'ov-regression-traderoute', 'OVTrade', 'x', '', 1, $tradeOrigin, 1, '', '', '')");
+    $lastUpdate = miliseconds();
+    $db->query("INSERT INTO vdata
+        (kid, owner, fieldtype, name, capital, pop, cp, wood, clay, iron, woodp, clayp, ironp, maxstore,
+         crop, cropp, maxcrop, upkeep, lastmupdate, created, expandedfrom)
+        VALUES
+        ($tradeOrigin, $tradeOwner, 3, 'OV Trade Origin', 1, 0, 0,
+         100, 100, 100, 0, 0, 0, 1000000, 100, 0, 1000000, 0, $lastUpdate, " . time() . ", 0)");
+    $db->query("INSERT INTO fdata (kid, f19, f19t) VALUES ($tradeOrigin, 2, 17)");
+    $db->query("INSERT INTO traderoutes
+        (id, kid, to_kid, r1, r2, r3, r4, enabled, start_hour, times, time)
+        VALUES
+        ($tradeTask, $tradeOrigin, $tradeDestination, 10, 20, 30, 40, 1, 3600, 1, $tradeInitialTime),
+        ($tradeCrashTask, $tradeOrigin, $tradeDestination, 10, 20, 30, 40, 1, 3600, 1, $tradeInitialTime)");
+
+    $automation = Automation::getInstance();
+    expect_true($automation->processTradeRouteTask($tradeTask), 'trade route processed');
+    expect_same(
+        '90.0000|80.0000|70.0000|60.0000|1',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(wood, '|', clay, '|', iron, '|', crop, '|',
+                (SELECT COUNT(*) FROM send WHERE kid=$tradeOrigin AND to_kid=$tradeDestination AND mode=0))
+             FROM vdata WHERE kid=$tradeOrigin"
+        ),
+        'trade route resources and merchant dispatch commit together'
+    );
+    expect_same(
+        $tradeInitialTime + 86400,
+        (int)$db->fetchScalar("SELECT time FROM traderoutes WHERE id=$tradeTask"),
+        'trade route next-run timestamp advances after dispatch'
+    );
+    expect_true($automation->processTradeRouteTask($tradeTask), 'replayed trade route delivery ignored safely');
+    expect_same(
+        '90.0000|1',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(wood, '|', (SELECT COUNT(*) FROM send WHERE kid=$tradeOrigin AND to_kid=$tradeDestination AND mode=0))
+             FROM vdata WHERE kid=$tradeOrigin"
+        ),
+        'replayed trade route cannot duplicate dispatch'
+    );
+
+    try {
+        TransactionalTask::mutate('traderoutes', $tradeCrashTask, function (array $row) use ($db, $tradeOrigin): void {
+            $db->query("UPDATE vdata SET wood=wood-1 WHERE kid=$tradeOrigin");
+            throw new RuntimeException('Simulated trade-route worker crash.');
+        });
+        throw new RuntimeException('Simulated trade-route worker crash was not propagated.');
+    } catch (RuntimeException $e) {
+        expect_same('Simulated trade-route worker crash.', $e->getMessage(), 'trade-route crash propagated');
+    }
+    expect_same(
+        "90.0000|$tradeInitialTime|1",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                wood, '|', time, '|', (SELECT attempts FROM scheduled_task_failures
+                    WHERE task_table='traderoutes' AND task_id=$tradeCrashTask)
+             ) FROM traderoutes JOIN vdata ON traderoutes.kid=vdata.kid
+             WHERE traderoutes.id=$tradeCrashTask"
+        ),
+        'trade-route crash rolls back resource and schedule effects'
+    );
+    expect_true($automation->processTradeRouteTask($tradeCrashTask), 'trade route retry processed');
+    expect_same(
+        2,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM send WHERE kid=$tradeOrigin AND to_kid=$tradeDestination AND mode=0"),
+        'trade route retry dispatches exactly once'
+    );
+} finally {
+    $db->query("DELETE FROM scheduled_task_failures WHERE task_table='traderoutes' AND task_id IN ($tradeTask, $tradeCrashTask)");
+    $db->rollback();
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE send AUTO_INCREMENT=$sendAutoIncrement");
+    $db->query("ALTER TABLE traderoutes AUTO_INCREMENT=$tradeRouteAutoIncrement");
 }
 
 $db->begin_transaction();
