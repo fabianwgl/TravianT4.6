@@ -33,11 +33,11 @@ With the stack running:
 ./scripts/verify.sh
 ```
 
-The verification suite checks configuration, migrations, PHP syntax,
-public-repository hygiene, service readiness, deterministic runtime behavior,
-and worker health without changing the current world. CI additionally parses
-every maintained JavaScript file and exercises an end-to-end player flow in a
-throwaway world.
+The verification suite checks configuration, migrations, PHP syntax, pinned
+PHP static analysis, public-repository hygiene, service readiness,
+deterministic runtime behavior, and worker health without changing the current
+world. CI additionally parses every maintained JavaScript file and exercises an
+end-to-end player flow in a throwaway world.
 
 Release verification from empty isolated volumes is available through:
 

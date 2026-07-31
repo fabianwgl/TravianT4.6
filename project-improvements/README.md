@@ -120,7 +120,7 @@ provisioning performs host-level changes in
       disposable fixtures.
 - [x] Add golden tests for resources, construction, training, combat, conquest,
       hero, artifact, and endgame formulas.
-- [ ] Run linting, static analysis, schema imports, and smoke tests in CI.
+- [x] Run linting, static analysis, schema imports, and smoke tests in CI.
 - [x] Test supported server speeds and map profiles.
 
 ### 6. Make data and workers recoverable

@@ -22,6 +22,7 @@ fi
 docker compose exec -T app sh -lc \
     "find /app/main_script /app/web /app/sections -type f -name '*.php' -exec sh -c 'for file do output=\$(php -l \"\$file\" 2>&1) || { echo \"\$output\"; exit 1; }; done' sh {} +"
 echo 'PHP syntax check passed.'
+./scripts/check-static.sh
 
 docker compose exec -T database mariadb -N \
     -u"${GAME_DB_USER:-openvillage}" \

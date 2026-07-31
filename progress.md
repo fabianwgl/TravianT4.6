@@ -101,11 +101,15 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   suite now runs in every verifier and CI clean install.
 - Added process-local deterministic clock and seed overrides for regression
   fixtures, with explicit ordered map coordinates and automatic cleanup.
+- Fixed nested Rally Point helper redeclarations, alliance loss-chart fallbacks,
+  installer return handling, and other PHPStan-discovered runtime defects.
+- Added a pinned PHPStan level-0 gate to local verification and CI; the full
+  maintained `main_script/include` tree now reports no static-analysis errors.
 
 ## Current work
 
-- Keep the complete-round regression and full verifier green while adding the
-  remaining static-analysis gates.
+- Keep the complete-round regression and full verifier green while closing the
+  remaining parity, dependency, and release-readiness gaps.
 
 ## TODO
 

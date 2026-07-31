@@ -17,6 +17,7 @@
   scheduled-event invariants.
 - An exact upstream baseline, read-only drift check, and guarded import guide
   for the sanitized modernization history.
+- A pinned PHPStan static-analysis gate covering the maintained PHP source tree.
 
 ### Changed
 
@@ -39,6 +40,9 @@
   training, villages, heroes, artifacts, combat, and World Wonder endgame.
 - Added process-local deterministic clock/seed controls and ordered disposable
   map fixtures for repeatable complete-round tests.
+- Added static analysis to local verification and GitHub Actions, with runtime
+  fixes for nested helper redeclarations, alliance loss charts, installer
+  returns, and legacy CAPTCHA properties.
 
 ### Fixed
 

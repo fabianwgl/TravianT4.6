@@ -19,6 +19,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends ripgrep
       - name: Check JavaScript syntax
         run: ./scripts/check-javascript.sh
+      - name: Check PHP static analysis
+        run: ./scripts/check-static.sh
       - name: Validate Compose configuration
         run: docker compose config --quiet
       - name: Build and start a clean world
