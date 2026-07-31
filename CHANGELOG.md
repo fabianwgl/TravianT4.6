@@ -29,6 +29,8 @@
 - World Wonder Natar attack-level scheduling, two-wave timing, and deterministic
   army fixtures.
 - Grey-area settlements now receive all 14 intended Natar waves.
+- GitHub Actions now installs its verification tools, and repository hygiene
+  fails closed when ripgrep is unavailable.
 - Login JavaScript failures and external tracking requests.
 
 ### Removed

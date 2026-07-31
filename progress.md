@@ -47,6 +47,8 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   then removed the disposable movement fixture and restored its counter.
 - Passed the full verifier and a disposable empty-volume installation with the
   atomic Natar movement batches and complete attack-profile fixture.
+- Diagnosed the public CI failure as a missing `rg`, added the runner dependency
+  and a fail-closed hygiene prerequisite, then passed the local verifier.
 
 ## Current work
 

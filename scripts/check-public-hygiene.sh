@@ -3,6 +3,11 @@ set -eu
 
 cd "$(dirname "$0")/.."
 
+if ! command -v rg >/dev/null 2>&1; then
+    echo 'Required verification tool not found: rg (ripgrep).' >&2
+    exit 1
+fi
+
 if rg -n --hidden \
     --glob '!.git/**' \
     --glob '!scripts/check-public-hygiene.sh' \
