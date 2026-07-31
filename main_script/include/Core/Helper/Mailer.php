@@ -8,7 +8,12 @@ class Mailer
 {
     public static function sendAdminReport($subject, $html)
     {
-        return self::sendEmail('redacted@example.invalid', $subject, $html);
+        global $globalConfig;
+        $address = $globalConfig['staticParameters']['adminEmail'] ?? '';
+        if (!filter_var($address, FILTER_VALIDATE_EMAIL)) {
+            return false;
+        }
+        return self::sendEmail($address, $subject, $html);
     }
 
     public static function sendBatch($to, $subject, $html)
