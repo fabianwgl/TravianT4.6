@@ -6,6 +6,7 @@ use Core\Config;
 use Core\Database\DB;
 use Core\Database\GlobalDB;
 use function getWorldId;
+use function getWorldUniqueId;
 
 class Notification
 {
@@ -36,11 +37,27 @@ class Notification
         self::notifyReal($text);
     }
 
-    public static function notifyReal($text)
+    public static function deliveryKey(int $queueId): string
+    {
+        return 'notificationQueue:' . getWorldUniqueId() . ':' . $queueId;
+    }
+
+    public static function notifyReal($text, ?string $deliveryKey = null)
     {
         $db = GlobalDB::getInstance();
         $text = self::bbCode($text);
-        $db->query("INSERT INTO `notifications`(`message`, `time`) VALUES ('" . $db->real_escape_string($text) . "', '" . time() . "')");
+        $message = $db->real_escape_string($text);
+        $time = time();
+        if ($deliveryKey === null) {
+            $query = "INSERT INTO `notifications`(`message`, `time`) VALUES ('$message', '$time')";
+        } else {
+            $key = $db->real_escape_string($deliveryKey);
+            $query = "INSERT INTO `notifications`(`message`, `delivery_key`, `time`) VALUES ('$message', '$key', '$time')
+                ON DUPLICATE KEY UPDATE id=id";
+        }
+        if (!$db->query($query)) {
+            throw new \RuntimeException('Unable to persist global notification.');
+        }
     }
 
     private static function bbCode($input)

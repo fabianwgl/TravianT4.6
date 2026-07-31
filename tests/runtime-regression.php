@@ -5,6 +5,8 @@ declare(strict_types=1);
 use Core\Config;
 use Core\Automation;
 use Core\Database\DB;
+use Core\Database\GlobalDB;
+use Core\Helper\Notification;
 use Core\Jobs\TransactionalTask;
 use Core\Jobs\WorkerRegistry;
 use Core\Security\Password;
@@ -235,6 +237,9 @@ $oasisDeletionAutoIncrement = (int)$db->fetchScalar(
 );
 $tradeRouteAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='traderoutes'"
+);
+$notificationAutoIncrement = (int)GlobalDB::getInstance()->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='notifications'"
 );
 
 $nestedTransactionKid = 2000000019;
@@ -865,6 +870,72 @@ try {
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
     $db->query("ALTER TABLE send AUTO_INCREMENT=$sendAutoIncrement");
     $db->query("ALTER TABLE traderoutes AUTO_INCREMENT=$tradeRouteAutoIncrement");
+}
+
+$notificationTask = 2000000001;
+$notificationCrashTask = 2000000002;
+$notificationGlobal = GlobalDB::getInstance();
+$notificationKey = Notification::deliveryKey($notificationTask);
+$notificationCrashKey = Notification::deliveryKey($notificationCrashTask);
+$db->begin_transaction();
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM notificationQueue WHERE id IN ($notificationTask, $notificationCrashTask)"),
+        'notification fixture tasks available'
+    );
+    $escapedNotificationKey = $notificationGlobal->real_escape_string($notificationKey);
+    $escapedNotificationCrashKey = $notificationGlobal->real_escape_string($notificationCrashKey);
+    $notificationGlobal->query(
+        "DELETE FROM notifications WHERE delivery_key IN ('$escapedNotificationKey', '$escapedNotificationCrashKey')"
+    );
+    $db->query("INSERT INTO notificationQueue (id, message, time) VALUES
+        ($notificationTask, 'Runtime notification', " . time() . "),
+        ($notificationCrashTask, 'Runtime crash notification', " . time() . ")");
+
+    $automation = Automation::getInstance();
+    expect_true($automation->processNotificationTask($notificationTask), 'notification task processed');
+    expect_same(
+        '0|1',
+        (string)$db->fetchScalar("SELECT COUNT(*) FROM notificationQueue WHERE id=$notificationTask") . '|' .
+            (string)$notificationGlobal->fetchScalar("SELECT COUNT(*) FROM notifications WHERE delivery_key='$escapedNotificationKey'"),
+        'notification queue consumption and global delivery commit together'
+    );
+    expect_same(false, $automation->processNotificationTask($notificationTask), 'duplicate notification delivery ignored');
+
+    try {
+        TransactionalTask::consume('notificationQueue', $notificationCrashTask, function (array $row) use ($notificationCrashKey): void {
+            Notification::notifyReal($row['message'], $notificationCrashKey);
+            throw new RuntimeException('Simulated notification worker crash.');
+        });
+        throw new RuntimeException('Simulated notification worker crash was not propagated.');
+    } catch (RuntimeException $e) {
+        expect_same('Simulated notification worker crash.', $e->getMessage(), 'notification crash propagated');
+    }
+    expect_same(
+        '1|1|1',
+        (string)$db->fetchScalar("SELECT COUNT(*) FROM notificationQueue WHERE id=$notificationCrashTask") . '|' .
+            (string)$notificationGlobal->fetchScalar("SELECT COUNT(*) FROM notifications WHERE delivery_key='$escapedNotificationCrashKey'") . '|' .
+            (string)$db->fetchScalar(
+                "SELECT attempts FROM scheduled_task_failures
+                    WHERE task_table='notificationQueue' AND task_id=$notificationCrashTask"
+            ),
+        'notification crash preserves queue while global idempotent delivery remains'
+    );
+    expect_true($automation->processNotificationTask($notificationCrashTask), 'notification retry processed');
+    expect_same(
+        '0|1',
+        (string)$db->fetchScalar("SELECT COUNT(*) FROM notificationQueue WHERE id=$notificationCrashTask") . '|' .
+            (string)$notificationGlobal->fetchScalar("SELECT COUNT(*) FROM notifications WHERE delivery_key='$escapedNotificationCrashKey'"),
+        'notification retry consumes queue without duplicate global delivery'
+    );
+} finally {
+    $db->query("DELETE FROM scheduled_task_failures WHERE task_table='notificationQueue' AND task_id IN ($notificationTask, $notificationCrashTask)");
+    $db->rollback();
+    $notificationGlobal->query(
+        "DELETE FROM notifications WHERE delivery_key IN ('$escapedNotificationKey', '$escapedNotificationCrashKey')"
+    );
+    $notificationGlobal->query("ALTER TABLE notifications AUTO_INCREMENT=$notificationAutoIncrement");
 }
 
 $db->begin_transaction();

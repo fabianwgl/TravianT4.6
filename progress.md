@@ -87,11 +87,13 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   movement cancellation, crash rollback, and duplicate-delivery coverage.
 - Made recurring trade routes lock their source village and advance only after
   dispatch/no-op completion, with crash and replay regressions.
+- Added global notification delivery keys and a transactional game queue
+  consumer, proving cross-database crash retry without duplicate notices.
 
 ## Current work
 
-- Convert the remaining destructive scheduled-task paths with crash and replay
-  regressions.
+- Review activation reminder delivery semantics and then run the full verifier
+  and sanitized publication flow.
 
 ## TODO
 

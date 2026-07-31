@@ -21,6 +21,7 @@ final class TransactionalTask
         'player_references',
         'odelete',
         'traderoutes',
+        'notificationQueue',
     ];
 
     public static function consume(string $table, int $id, callable $effect): bool

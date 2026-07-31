@@ -10,6 +10,7 @@ use Core\Config;
 use Core\Database\DB;
 use Model\InstallerModel;
 run_schema_migrations();
+run_global_schema_migrations();
 mt_srand(make_seed());
 class shell_installer
 {

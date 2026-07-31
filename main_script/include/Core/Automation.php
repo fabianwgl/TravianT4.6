@@ -1022,10 +1022,9 @@ class Automation
             $globalDB->query("UPDATE gameServers SET registerClosed=1 WHERE id=" . getWorldUniqueId());
         }
         $db = DB::getInstance();
-        $result = $db->query("SELECT * FROM notificationQueue LIMIT 100");
+        $result = $db->query("SELECT id FROM notificationQueue ORDER BY id ASC LIMIT 100");
         while ($row = $result->fetch_assoc()) {
-            $db->query("DELETE FROM notificationQueue WHERE id={$row['id']}");
-            Notification::notifyReal($row['message']);
+            $this->processNotificationTask((int)$row['id']);
         }
         if (time() > $config->game->start_time) {
             $interval = getCustom("activationReminderInterval");
@@ -1053,6 +1052,13 @@ class Automation
                 }
             }
         }
+    }
+
+    public function processNotificationTask(int $taskId): bool
+    {
+        return TransactionalTask::consume('notificationQueue', $taskId, function (array $row): void {
+            Notification::notifyReal($row['message'], Notification::deliveryKey((int)$row['id']));
+        });
     }
 
     public function postService()

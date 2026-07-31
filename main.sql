@@ -273,6 +273,7 @@ CREATE TABLE `newsletter` (
 CREATE TABLE `notifications` (
   `id` int(11) UNSIGNED NOT NULL,
   `message` text NOT NULL,
+  `delivery_key` varchar(191) DEFAULT NULL,
   `pin` tinyint(1) UNSIGNED NOT NULL DEFAULT 0,
   `time` int(10) UNSIGNED NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -573,6 +574,7 @@ ALTER TABLE `newsletter`
 --
 ALTER TABLE `notifications`
   ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `delivery_key` (`delivery_key`),
   ADD KEY `search` (`time`);
 
 --

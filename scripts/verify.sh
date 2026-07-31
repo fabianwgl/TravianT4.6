@@ -30,6 +30,13 @@ docker compose exec -T database mariadb -N \
     -e "SELECT COUNT(*) FROM openvillage_schema_migrations WHERE version IN ('001_ajax_token_length.sql', '002_adventure_uid_unsigned.sql', '003_scheduled_task_failures.sql');" \
     | rg -q '^3$'
 
+docker compose exec -T database mariadb -N \
+    -u"${GAME_DB_USER:-openvillage}" \
+    -p"${GAME_DB_PASSWORD:-local-game-password}" \
+    "${GLOBAL_DB_NAME:-openvillage_global}" \
+    -e "SELECT COUNT(*) FROM openvillage_global_schema_migrations WHERE version = '001_notification_delivery_key.sql';" \
+    | rg -q '^1$'
+
 base_url=${APP_URL:-http://127.0.0.1:8080}
 curl -fsS "$base_url/health.php" | rg -q '"status":"ready"'
 ./scripts/test-runtime.sh

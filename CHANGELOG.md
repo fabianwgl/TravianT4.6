@@ -31,6 +31,7 @@
 - Added locked, idempotent referral reward processing with crash/retry coverage.
 - Added transactional oasis deletion with recoverable failures and replay tests.
 - Added transactional recurring trade-route dispatch and retry coverage.
+- Added global notification delivery keys and migration tracking.
 
 ### Fixed
 
@@ -71,6 +72,8 @@
   cancellation together with queue consumption.
 - Recurring trade routes now lock source resources and advance their schedule
   only after a successful dispatch or deliberate no-op.
+- Notification queue rows now retry safely across the game/global databases;
+  stable delivery keys suppress duplicate global notices.
 - Login JavaScript failures and external tracking requests.
 
 ### Removed
