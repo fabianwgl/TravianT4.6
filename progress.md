@@ -89,11 +89,18 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   dispatch/no-op completion, with crash and replay regressions.
 - Added global notification and mail delivery keys with transactional consumers,
   proving cross-database crash retry without duplicate outbox rows.
+- Added a disposable accelerated complete-round regression covering registration,
+  building, training, trade, combat, settlement, conquest, artifacts, plans,
+  World Wonder level 100, and both winner surfaces.
+- Fixed winner-page formatting so literal CSS percentages in translations no
+  longer crash `vsprintf` rendering.
+- Normalized nullable database/resource values for PHP 8.3 and corrected the
+  activation smoke request to match the confirmation form.
 
 ## Current work
 
-- Build the accelerated complete-round regression and keep the full verifier and
-  sanitized publication flow green.
+- Keep the complete-round regression and full verifier green while adding the
+  remaining deterministic clocks, golden formulas, and static-analysis gates.
 
 ## TODO
 

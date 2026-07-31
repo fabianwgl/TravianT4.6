@@ -69,7 +69,7 @@ request_status 200 -b "$game_cookies" -c "$game_cookies" --data 'sector=sw' \
     "$base_url/game/activate.php?page=confirmation"
 expect_body 'PLAY NOW'
 
-request_status 302 -b "$game_cookies" -c "$game_cookies" --data 'vid=1' \
+request_status 302 -b "$game_cookies" -c "$game_cookies" --data 'sector=sw' \
     "$base_url/game/activate.php?page=dorf"
 request_status 200 -b "$game_cookies" -c "$game_cookies" \
     "$base_url/game/dorf1.php?finished=1"

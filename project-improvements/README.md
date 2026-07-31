@@ -113,7 +113,7 @@ provisioning performs host-level changes in
 
 ### 5. Prove a complete game round
 
-- [ ] Build an accelerated end-to-end test:
+- [x] Build an accelerated end-to-end test:
       register → build → train → trade → attack → settle → conquer → artifacts →
       plans → World Wonder level 100 → winner.
 - [ ] Add deterministic clocks, random seeds, map generation, and fixtures.

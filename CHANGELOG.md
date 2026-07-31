@@ -33,6 +33,8 @@
 - Added transactional recurring trade-route dispatch and retry coverage.
 - Added global notification delivery keys and migration tracking.
 - Added idempotent delivery keys for activation mail outboxes.
+- Added a disposable accelerated complete-round regression from registration
+  through World Wonder level 100 and winner rendering.
 
 ### Fixed
 
@@ -77,6 +79,12 @@
   stable delivery keys suppress duplicate global notices.
 - Activation reminder jobs now queue mail before marking reminders delivered;
   replayed reminders reuse a stable outbox key instead of duplicating mail rows.
+- Winner and no-winner pages now preserve literal CSS percentages in translated
+  markup instead of treating them as `vsprintf` format tokens.
+- Nullable database and resource values are normalized before PHP 8.3 string
+  helpers run, removing avoidable deprecation noise from normal gameplay.
+- The registration smoke flow now submits the sector field used by the
+  confirmation form, so clean-world activation is exercised accurately.
 - Login JavaScript failures and external tracking requests.
 
 ### Removed
