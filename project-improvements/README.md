@@ -136,9 +136,10 @@ provisioning performs host-level changes in
 - [x] Fix the reversed database connection-age check in
       [`DB.php`](../main_script/include/Core/Database/DB.php#L146).
 
-Some scheduled paths delete an event before completing its effect, such as
-[`Automation.php`](../main_script/include/Core/Automation.php#L100). Tests should
-establish the required remediation scope before a broad engine rewrite.
+Game scheduled queues now use locked, replay-tested transactions, including the
+cross-database notification outbox. Activation reminder mail still marks the
+global reminder before the external send, so its at-least-once delivery policy
+is the next reliability follow-up.
 
 ### 7. Close confirmed gameplay gaps
 
