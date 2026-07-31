@@ -243,6 +243,7 @@ expect_same(
 
 $researchKid = 2000000020;
 $researchTask = 2000000001;
+$poisonResearchTask = 2000000002;
 try {
     expect_same(
         0,
@@ -273,6 +274,14 @@ try {
         ),
         'research crash rolls back effect and preserves task'
     );
+    expect_same(
+        '1|Simulated worker crash.',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(attempts, '|', last_error) FROM scheduled_task_failures
+             WHERE task_table='research' AND task_id=$researchTask"
+        ),
+        'research crash recorded for bounded retry'
+    );
 
     $automation = Automation::getInstance();
     expect_true($automation->processResearchTask($researchTask), 'research task consumed after retry');
@@ -285,8 +294,35 @@ try {
     );
     expect_same(false, $automation->processResearchTask($researchTask), 'duplicate research delivery ignored');
     expect_same(1, (int)$db->fetchScalar("SELECT u1 FROM smithy WHERE kid=$researchKid"), 'research effect not duplicated');
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM scheduled_task_failures WHERE task_table='research' AND task_id=$researchTask"),
+        'successful research retry clears failure ledger'
+    );
+
+    $db->query("INSERT INTO research (id, kid, nr, mode, end_time) VALUES ($poisonResearchTask, $researchKid, 2, 0, 0)");
+    for ($attempt = 1; $attempt <= 5; ++$attempt) {
+        try {
+            TransactionalTask::consume('research', $poisonResearchTask, function (): void {
+                throw new RuntimeException('Poison research task.');
+            });
+            throw new RuntimeException('Poison research task was not rejected.');
+        } catch (RuntimeException $e) {
+            expect_same('Poison research task.', $e->getMessage(), "poison research attempt $attempt");
+        }
+    }
+    expect_same(
+        '0|5|Poison research task.',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM research WHERE id=$poisonResearchTask), '|', attempts, '|', last_error
+            ) FROM scheduled_task_failures WHERE task_table='research' AND task_id=$poisonResearchTask"
+        ),
+        'poison research task quarantined with recoverable payload after retry limit'
+    );
 } finally {
-    $db->query("DELETE FROM research WHERE id=$researchTask OR kid=$researchKid");
+    $db->query("DELETE FROM scheduled_task_failures WHERE task_table='research' AND task_id IN ($researchTask, $poisonResearchTask)");
+    $db->query("DELETE FROM research WHERE id IN ($researchTask, $poisonResearchTask) OR kid=$researchKid");
     $db->query("DELETE FROM smithy WHERE kid=$researchKid");
     $db->query("ALTER TABLE research AUTO_INCREMENT=$researchAutoIncrement");
 }

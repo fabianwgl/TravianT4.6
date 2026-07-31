@@ -127,7 +127,7 @@ provisioning performs host-level changes in
 - [x] Introduce versioned forward migrations and documented rollback policy.
 - [x] Document database invariants before adding constraints.
 - [x] Add backup, restore, and upgrade rehearsals.
-- [ ] Test task and event behavior across crashes and duplicate delivery.
+- [x] Test task and event behavior across crashes and duplicate delivery.
 - [ ] Add atomic task claims, leases, retry limits, and idempotency where tests
       demonstrate gaps.
 - [x] Give every worker a unique identity and reliable shutdown tracking.

@@ -43,6 +43,18 @@ unexpectedly, the parent terminates the remaining children and exits so the
 container restart policy can restore the complete worker set. Normal shutdown
 signals every tracked child, waits up to 15 seconds, and then reaps it.
 
+Inspect quarantined scheduled events before and after upgrades:
+
+```sql
+SELECT task_table, task_id, attempts, last_error, last_failed_at
+FROM scheduled_task_failures
+ORDER BY last_failed_at DESC;
+```
+
+The retained JSON payload is recovery data. Repair the underlying cause and
+recreate the event deliberately; do not blindly copy unknown payloads into a
+live queue.
+
 The verifier rejects a running application image whose maintained source does
 not match the checkout. Rebuild with `docker compose up -d --build --wait`
 after changing application or regression-test files.

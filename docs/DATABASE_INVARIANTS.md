@@ -81,6 +81,14 @@ retry limits are required only for work that cannot remain inside a short
 database transaction. Poison events must be retained with an error reason, not
 silently deleted.
 
+Transactional tasks record failures outside the rolled-back effect transaction.
+A successful retry clears that ledger row. After five failed attempts the
+original event is removed from the live queue but its complete payload, attempt
+count, last error, and timestamps remain in `scheduled_task_failures` for
+operator repair and deliberate replay. These short transactions use row locks,
+so a persistent lease would add stale-claim failure modes without improving
+exclusivity.
+
 ## Clock units
 
 - Configuration, buildings, research, market sends, and most recurring jobs use

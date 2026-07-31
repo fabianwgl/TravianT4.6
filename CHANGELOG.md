@@ -9,6 +9,8 @@
 - Local launcher, registration, privacy/terms pages, and readiness endpoint.
 - Versioned database migrations, gameplay smoke checks, repository-hygiene
   checks, a combined verifier, and CI.
+- A recoverable scheduled-task failure ledger with five-attempt quarantine for
+  poison events.
 - OpenVillage identity, ruleset, operations, privacy, provenance, and release
   documentation.
 - Database ownership, aggregate, economy, army, clock, migration, and

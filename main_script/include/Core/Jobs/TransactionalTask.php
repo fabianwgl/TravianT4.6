@@ -6,6 +6,7 @@ use Core\Database\DB;
 
 final class TransactionalTask
 {
+    private const MAX_ATTEMPTS = 5;
     private const TABLES = [
         'building_upgrade',
         'demolition',
@@ -53,6 +54,8 @@ final class TransactionalTask
                     throw new \RuntimeException('Task disappeared before it could be consumed.');
                 }
             }
+            $escapedTable = $db->real_escape_string($table);
+            $db->query("DELETE FROM scheduled_task_failures WHERE task_table='$escapedTable' AND task_id=$id");
             if (!$db->commit()) {
                 throw new \RuntimeException('Unable to commit task transaction.');
             }
@@ -60,8 +63,52 @@ final class TransactionalTask
             return true;
         } catch (\Throwable $e) {
             $db->rollback();
+            self::recordFailure($table, $id, $e);
 
             throw $e;
+        }
+    }
+
+    private static function recordFailure(string $table, int $id, \Throwable $error): void
+    {
+        $db = DB::getInstance();
+        if (!$db->begin_transaction()) {
+            return;
+        }
+
+        try {
+            $result = $db->query("SELECT * FROM `$table` WHERE id=$id FOR UPDATE");
+            if (!$result || !$result->num_rows) {
+                $db->rollback();
+
+                return;
+            }
+            $row = $result->fetch_assoc();
+            $payload = json_encode($row, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            if ($payload === false) {
+                $payload = '{}';
+            }
+            $escapedTable = $db->real_escape_string($table);
+            $escapedPayload = $db->real_escape_string($payload);
+            $escapedError = $db->real_escape_string(substr($error->getMessage(), 0, 1000));
+            $now = time();
+            $db->query(
+                "INSERT INTO scheduled_task_failures
+                    (task_table, task_id, attempts, payload, last_error, first_failed_at, last_failed_at)
+                 VALUES ('$escapedTable', $id, 1, '$escapedPayload', '$escapedError', $now, $now)
+                 ON DUPLICATE KEY UPDATE
+                    attempts=attempts+1, payload=VALUES(payload), last_error=VALUES(last_error), last_failed_at=VALUES(last_failed_at)"
+            );
+            $attempts = (int)$db->fetchScalar(
+                "SELECT attempts FROM scheduled_task_failures WHERE task_table='$escapedTable' AND task_id=$id"
+            );
+            if ($attempts >= self::MAX_ATTEMPTS) {
+                $db->query("DELETE FROM `$table` WHERE id=$id");
+            }
+            $db->commit();
+        } catch (\Throwable $ledgerError) {
+            $db->rollback();
+            \logError('Unable to record scheduled task failure: ' . $ledgerError->getMessage());
         }
     }
 }

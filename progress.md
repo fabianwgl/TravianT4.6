@@ -75,6 +75,10 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   against duplicate delivery.
 - Added unique automation-worker identities, unexpected-exit detection, and
   graceful signal/reap shutdown tracking for every forked child.
+- Added bounded task retries and recoverable poison-event quarantine, including
+  failure-ledger cleanup after a successful retry.
+- Passed both upgraded-world verification and a disposable empty-volume install
+  with the new failure-ledger migration and crash/replay regressions.
 
 ## Current work
 
