@@ -205,7 +205,7 @@ class Automation
     {
         $db = DB::getInstance();
         $time = (time());
-        $result = $db->query("SELECT * FROM send WHERE end_time < $time ORDER BY end_time ASC, id ASC");
+        $result = $db->query("SELECT id FROM send WHERE end_time < $time ORDER BY end_time ASC, id ASC");
         $processor = new MarketPlaceProcessor();
         while ($row = $result->fetch_assoc()) {
             $processor->processRow($row);

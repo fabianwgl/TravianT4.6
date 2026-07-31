@@ -69,6 +69,8 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   their game effects against duplicate delivery.
 - Made training and alliance-bonus completion transactional and covered troop,
   upkeep, bonus, retry, and duplicate-delivery state with database regressions.
+- Made merchant-send processing transactional and verified resource and route
+  state against duplicate delivery.
 
 ## Current work
 

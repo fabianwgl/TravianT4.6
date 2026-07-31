@@ -13,6 +13,7 @@ use Game\Formulas;
 use Game\TruceDay;
 use Model\AuctionModel;
 use Model\MasterBuilder;
+use Model\MarketPlaceProcessor;
 use Model\NatarsModel;
 use Model\OptionModel;
 use Model\VillageModel;
@@ -208,6 +209,9 @@ $allianceAutoIncrement = (int)$db->fetchScalar(
 $allianceBonusQueueAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='alliance_bonus_upgrade_queue'"
 );
+$sendAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='send'"
+);
 
 $nestedTransactionKid = 2000000019;
 $db->begin_transaction();
@@ -369,6 +373,68 @@ try {
     $db->query("ALTER TABLE training AUTO_INCREMENT=$trainingAutoIncrement");
     $db->query("ALTER TABLE alidata AUTO_INCREMENT=$allianceAutoIncrement");
     $db->query("ALTER TABLE alliance_bonus_upgrade_queue AUTO_INCREMENT=$allianceBonusQueueAutoIncrement");
+}
+
+$merchantOwner = 2000000009;
+$merchantOrigin = 2000000023;
+$merchantVillage = 2000000024;
+$merchantTask = 2000000001;
+$db->begin_transaction();
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id=$merchantOwner"),
+        'merchant fixture user ID available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM vdata WHERE kid=$merchantVillage"),
+        'merchant fixture village ID available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM send WHERE id=$merchantTask"),
+        'merchant fixture task ID available'
+    );
+    $db->query("INSERT INTO users (id, uuid, name, password, email, race, kid, desc1, desc2, note)
+        VALUES ($merchantOwner, 'ov-regression-merchant', 'OVMerchant', 'x', '', 1, $merchantVillage, '', '', '')");
+    $lastUpdate = miliseconds();
+    $db->query("INSERT INTO vdata
+        (kid, owner, fieldtype, name, capital, pop, cp, wood, clay, iron, woodp, clayp, ironp, maxstore,
+         crop, cropp, maxcrop, upkeep, lastmupdate, created, expandedfrom)
+        VALUES
+        ($merchantVillage, $merchantOwner, 3, 'OV Merchant Village', 1, 0, 0,
+         100, 100, 100, 0, 0, 0, 1000000, 100, 0, 1000000, 0, $lastUpdate, " . time() . ", 0)");
+    $db->query("INSERT INTO fdata (kid) VALUES ($merchantVillage)");
+    $db->query("INSERT INTO send (id, kid, to_kid, wood, clay, iron, crop, x, mode, end_time)
+        VALUES ($merchantTask, $merchantOrigin, $merchantVillage, 10, 20, 30, 40, 1, 1, 0)");
+
+    $market = new MarketPlaceProcessor();
+    expect_true($market->processRow(['id' => $merchantTask]), 'merchant task processed');
+    expect_same(
+        '0|90.0000|80.0000|70.0000|60.0000|1',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM send WHERE id=$merchantTask), '|', wood, '|', clay, '|', iron, '|', crop, '|',
+                (SELECT COUNT(*) FROM send WHERE kid=$merchantVillage AND to_kid=$merchantOrigin AND mode=0)
+            ) FROM vdata WHERE kid=$merchantVillage"
+        ),
+        'merchant queue, resources, and outbound route commit together'
+    );
+    expect_same(false, $market->processRow(['id' => $merchantTask]), 'duplicate merchant delivery ignored');
+    expect_same(
+        '90.0000|80.0000|70.0000|60.0000|1',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(wood, '|', clay, '|', iron, '|', crop, '|',
+                (SELECT COUNT(*) FROM send WHERE kid=$merchantVillage AND to_kid=$merchantOrigin AND mode=0))
+             FROM vdata WHERE kid=$merchantVillage"
+        ),
+        'merchant effect not duplicated'
+    );
+} finally {
+    $db->rollback();
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE send AUTO_INCREMENT=$sendAutoIncrement");
 }
 
 $db->begin_transaction();

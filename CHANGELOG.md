@@ -51,6 +51,8 @@
   game-state effects together, with duplicate delivery suppressed by row locks.
 - Training and alliance-bonus completion now atomically persist queue state,
   troops/upkeep or bonus effects, and duplicate-delivery suppression.
+- Merchant sends now commit queue consumption, resource movement, and the next
+  route in one transaction and ignore duplicate delivery.
 - Login JavaScript failures and external tracking requests.
 
 ### Removed

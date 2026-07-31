@@ -10,6 +10,7 @@ final class TransactionalTask
         'building_upgrade',
         'demolition',
         'research',
+        'send',
         'training',
         'alliance_bonus_upgrade_queue',
     ];
