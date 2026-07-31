@@ -59,8 +59,10 @@ invariant is:
 3. A crash rolls back both the effect and event consumption.
 4. Retrying or redelivering the same event cannot duplicate its effect.
 
-`research` satisfies this invariant: `TransactionalTask` locks the row and
-commits the technology effect and deletion in one MariaDB transaction. Runtime
+`research`, normal `building_upgrade`, and `demolition` satisfy this invariant:
+`TransactionalTask` locks the row and commits its game effect and deletion in
+one MariaDB transaction. Master Builder rows use the same lock and transaction,
+but may remain queued when workers or resources are unavailable. Runtime
 regressions prove crash rollback, retry, and duplicate suppression.
 
 The following paths still require evidence-backed conversion and therefore
@@ -68,7 +70,6 @@ must not be described as crash-safe:
 
 | Queue or trigger | Clock | Current risk |
 | --- | --- | --- |
-| `building_upgrade`, `demolition` | Unix seconds | Row is deleted before the building effect. |
 | `movement` | Unix milliseconds | Row is deleted before battle, arrival, or return effects. |
 | `send` | Unix seconds | Row is deleted before resources or merchants are applied. |
 | `training` | Seconds, milliseconds, or nanoseconds by speed | Queue state changes before troops and upkeep. |

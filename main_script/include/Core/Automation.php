@@ -79,22 +79,45 @@ class Automation
         $result = $db->query("SELECT * FROM building_upgrade WHERE commence<=" . (time()) . " ORDER BY commence ASC, id ASC LIMIT 100");
         while ($row = $result->fetch_assoc()) {
             if ($row['isMaster']) {
-                $m->process($row);
+                $this->processMasterBuilderTask((int)$row['id'], $m);
             } else {
-                $db->query("DELETE FROM building_upgrade WHERE id={$row['id']}");
-                if ($db->affectedRows()) {
-                    BuildingAction::upgrade($row['kid'], $row['building_field']);
-                }
+                $this->processBuildingTask((int)$row['id']);
             }
         }
         $db = DB::getInstance();
         $result = $db->query("SELECT * FROM demolition WHERE end_time <= " . (time()) . " ORDER BY end_time ASC, id ASC LIMIT 50");
         while ($row = $result->fetch_assoc()) {
-            $db->query("DELETE FROM demolition WHERE id={$row['id']}");
-            if ($db->affectedRows()) {
-                BuildingAction::downgrade($row['kid'], $row['building_field'], 1, $row['complete']);
-            }
+            $this->processDemolitionTask((int)$row['id']);
         }
+    }
+
+    public function processBuildingTask(int $taskId): bool
+    {
+        return TransactionalTask::consume('building_upgrade', $taskId, function (array $row): void {
+            BuildingAction::upgrade((int)$row['kid'], (int)$row['building_field']);
+        });
+    }
+
+    public function processMasterBuilderTask(int $taskId, ?MasterBuilder $masterBuilder = null): bool
+    {
+        $masterBuilder = $masterBuilder ?? new MasterBuilder();
+
+        return TransactionalTask::mutate('building_upgrade', $taskId, function (array $row) use ($masterBuilder): void {
+            $masterBuilder->process($row);
+        });
+    }
+
+    public function processDemolitionTask(int $taskId): bool
+    {
+        return TransactionalTask::consume('demolition', $taskId, function (array $row): void {
+            BuildingAction::downgrade(
+                (int)$row['kid'],
+                (int)$row['building_field'],
+                1,
+                (bool)$row['complete'],
+                false
+            );
+        });
     }
 
 

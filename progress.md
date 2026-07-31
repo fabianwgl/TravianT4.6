@@ -65,6 +65,8 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   scheduled-event family before adding constraints.
 - Added and regression-tested nested database transaction savepoints so queued
   effects can safely call existing transactional game services.
+- Made building completion and demolition transactional and regression-tested
+  their game effects against duplicate delivery.
 
 ## Current work
 

@@ -7,10 +7,22 @@ use Core\Database\DB;
 final class TransactionalTask
 {
     private const TABLES = [
+        'building_upgrade',
+        'demolition',
         'research',
     ];
 
     public static function consume(string $table, int $id, callable $effect): bool
+    {
+        return self::execute($table, $id, $effect, true);
+    }
+
+    public static function mutate(string $table, int $id, callable $effect): bool
+    {
+        return self::execute($table, $id, $effect, false);
+    }
+
+    private static function execute(string $table, int $id, callable $effect, bool $consume): bool
     {
         if (!in_array($table, self::TABLES, true)) {
             throw new \InvalidArgumentException('Unsupported transactional task table.');
@@ -31,9 +43,11 @@ final class TransactionalTask
 
             $row = $result->fetch_assoc();
             $effect($row);
-            $db->query("DELETE FROM `$table` WHERE id=$id");
-            if ($db->affectedRows() !== 1) {
-                throw new \RuntimeException('Task disappeared before it could be consumed.');
+            if ($consume) {
+                $db->query("DELETE FROM `$table` WHERE id=$id");
+                if ($db->affectedRows() !== 1) {
+                    throw new \RuntimeException('Task disappeared before it could be consumed.');
+                }
             }
             if (!$db->commit()) {
                 throw new \RuntimeException('Unable to commit task transaction.');

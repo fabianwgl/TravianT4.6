@@ -175,6 +175,9 @@ $artefactAutoIncrement = (int)$db->fetchScalar(
 $buildingUpgradeAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='building_upgrade'"
 );
+$demolitionAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='demolition'"
+);
 $itemAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='items'"
 );
@@ -312,6 +315,8 @@ try {
     $normalTask = 2000000001;
     $firstMasterTask = 2000000002;
     $secondMasterTask = 2000000003;
+    $completionTask = 2000000004;
+    $demolitionTask = 2000000001;
     $firstCost = Formulas::buildingUpgradeCosts(1, 4);
     $secondCost = Formulas::buildingUpgradeCosts(1, 5);
     $fixtureResources = [];
@@ -350,11 +355,39 @@ try {
         (int)$db->fetchScalar("SELECT COUNT(*) FROM building_upgrade WHERE kid=$builderVillage"),
         'valid Master Builder tasks remain queued'
     );
+
+    $db->query("INSERT INTO building_upgrade (id, kid, building_field, isMaster, start_time, commence) VALUES
+        ($completionTask, $builderVillage, 1, 0, " . time() . ", " . time() . ")");
+    $automation = Automation::getInstance();
+    expect_true($automation->processBuildingTask($completionTask), 'building task consumed');
+    expect_same(
+        '0|3',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT((SELECT COUNT(*) FROM building_upgrade WHERE id=$completionTask), '|', f1) FROM fdata WHERE kid=$builderVillage"
+        ),
+        'building effect and task consumption commit together'
+    );
+    expect_same(false, $automation->processBuildingTask($completionTask), 'duplicate building delivery ignored');
+    expect_same(3, (int)$db->fetchScalar("SELECT f1 FROM fdata WHERE kid=$builderVillage"), 'building effect not duplicated');
+
+    $db->query("INSERT INTO demolition (id, kid, building_field, end_time, complete) VALUES
+        ($demolitionTask, $builderVillage, 1, " . time() . ", 0)");
+    expect_true($automation->processDemolitionTask($demolitionTask), 'demolition task consumed');
+    expect_same(
+        '0|2',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT((SELECT COUNT(*) FROM demolition WHERE id=$demolitionTask), '|', f1) FROM fdata WHERE kid=$builderVillage"
+        ),
+        'demolition effect and task consumption commit together'
+    );
+    expect_same(false, $automation->processDemolitionTask($demolitionTask), 'duplicate demolition delivery ignored');
+    expect_same(2, (int)$db->fetchScalar("SELECT f1 FROM fdata WHERE kid=$builderVillage"), 'demolition effect not duplicated');
 } finally {
     $db->rollback();
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
     $db->query("ALTER TABLE artefacts AUTO_INCREMENT=$artefactAutoIncrement");
     $db->query("ALTER TABLE building_upgrade AUTO_INCREMENT=$buildingUpgradeAutoIncrement");
+    $db->query("ALTER TABLE demolition AUTO_INCREMENT=$demolitionAutoIncrement");
 }
 
 $natarTarget = 2000000003;

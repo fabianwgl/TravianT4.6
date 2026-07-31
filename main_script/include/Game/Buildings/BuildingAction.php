@@ -143,7 +143,7 @@ class BuildingAction
         $db->query("UPDATE fdata SET embassy=$embassy WHERE kid=$kid");
     }
 
-    public static function downgrade($kid, $building_field, $levels, $complete = false)
+    public static function downgrade($kid, $building_field, $levels, $complete = false, $removeDemolition = true)
     {
         $m = new AutomationModel();
         $master = new MasterBuilder();
@@ -174,7 +174,9 @@ class BuildingAction
                 $db->query("UPDATE fdata SET f{$building_field}=0 WHERE kid = " . $kid);
             }
         }
-        $db->query("DELETE FROM demolition WHERE kid=$kid AND building_field=$building_field");
+        if ($removeDemolition) {
+            $db->query("DELETE FROM demolition WHERE kid=$kid AND building_field=$building_field");
+        }
         if($item_id == 37){
             $newLevel = $complete ? 0 : ($level - $levels);
             $db->query("UPDATE fdata SET heroMansion=$newLevel WHERE kid=$kid");

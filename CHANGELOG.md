@@ -47,6 +47,8 @@
 - Research completion now locks and consumes its queue row in the same
   transaction as the technology effect, so crashes retry safely and duplicate
   delivery cannot apply the effect twice.
+- Building completion and demolition now commit their queue consumption and
+  game-state effects together, with duplicate delivery suppressed by row locks.
 - Login JavaScript failures and external tracking requests.
 
 ### Removed
