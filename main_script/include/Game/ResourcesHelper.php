@@ -59,7 +59,7 @@ class ResourcesHelper
                 }
                 $upkeep += Formulas::uUpkeep(nrToUnitId($i, $units['race']), $hdp) * $units['u' . $i];
             }
-            $oasesString = trim($db->fetchScalar("SELECT GROUP_CONCAT(kid) FROM odata WHERE did=$kid"));
+            $oasesString = trim((string)$db->fetchScalar("SELECT GROUP_CONCAT(kid) FROM odata WHERE did=$kid"));
             $oasesArray = [];
             if (!empty($oasesString)) {
                 $oasesArray = explode(",", $oasesString);

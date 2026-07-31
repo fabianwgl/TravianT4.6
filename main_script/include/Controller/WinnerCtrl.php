@@ -7,6 +7,26 @@ use Core\Database\DB;
 
 class WinnerCtrl
 {
+    /**
+     * Winner translations contain literal percentages in inline styles (for
+     * example, `font-size:60%`). `vsprintf()` treats those as format strings
+     * and can abort the winner page. Replace only supported `%s` tokens so
+     * translated markup and literal percentages remain intact.
+     */
+    private function formatWinnerText(string $template, array $values): string
+    {
+        $index = 0;
+        $formatted = preg_replace_callback('/%s/', static function () use (&$index, $values): string {
+            if (!array_key_exists($index, $values)) {
+                return '%s';
+            }
+
+            return (string)$values[$index++];
+        }, $template);
+
+        return $formatted ?? $template;
+    }
+
     public function __construct(&$contentCssClass, &$content, $sysMsg = FALSE)
     {
         $content = '';
@@ -53,7 +73,7 @@ class WinnerCtrl
                 $order[] = '-';
             }
             $replace = str_replace("[DEFENDER]", $order[sizeof($order) - 1], $replace);
-            $content .= vsprintf($replace, $order);
+            $content .= $this->formatWinnerText($replace, $order);
         } else {
             $replace = T("Global", "ServerFinishNoWinner");
             $db = DB::getInstance();
@@ -81,7 +101,7 @@ class WinnerCtrl
             }
             $replace = str_replace("[DEFENDER]", $order[sizeof($order) - 1], $replace);
             $order = array_map("trim", $order);
-            $content .= vsprintf($replace, $order);
+            $content .= $this->formatWinnerText($replace, $order);
         }
         if (!$sysMsg) {
             $content .= '<p class="f16" align="center"><a href="dorf1.php?ok=1">» ' . T("inGame", "continue") . '</a></p>';
@@ -104,4 +124,4 @@ class WinnerCtrl
         if ($aid == 0) return '-';
         return '<a href="allianz.php?aid=' . $aid . '">' . $name . '</a>';
     }
-} 
+}

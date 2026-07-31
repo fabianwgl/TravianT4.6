@@ -294,7 +294,7 @@ class DB
 
     public function real_escape_string($escapestr)
     {
-        return $this->mysqli->real_escape_string($escapestr);
+        return $this->mysqli->real_escape_string((string)$escapestr);
     }
 
     public function close()
