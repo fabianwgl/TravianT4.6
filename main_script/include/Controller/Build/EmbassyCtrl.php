@@ -115,7 +115,7 @@ class EmbassyCtrl extends AnyCtrl
                     'villages' => $total_villages_within_50_fields,
                 ];
             }
-            usort($alliances, function($a, $b){return ($a['villages'] == $b['villages']) ? 0 : $a['villages'] > $b['villages'] ? -1 : 1;});
+            usort($alliances, function($a, $b){return ($a['villages'] == $b['villages']) ? 0 : ($a['villages'] > $b['villages'] ? -1 : 1);});
             $cache->set($cacheKey, $alliances, $cacheInterval);
         }
         $view->vars['content'] = null;
@@ -264,4 +264,4 @@ class EmbassyCtrl extends AnyCtrl
     {
         return '<tr><td><a href="allianz.php?aid=' . $aid . '" title="">' . $name . '</a></td><td>' . $pop . '</td><td>' . $villages_within_50_fields . '</td></tr>';
     }
-} 
+}

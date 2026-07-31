@@ -400,7 +400,7 @@ class BuildCtrl extends GameCtrl
             $result['master'] = $goldHelper->getMasterBuilderButton($fieldId, $item_id, $village->getField($fieldId)['level'] + $village->getField($fieldId)['upgrade_state'], $link);
         }
         if (!$session->hasPlus() && $workerResult['isBusy']) {
-            $result['plus'] = getButton(["type" => "button", "class" => "gold builder", "value" => T("Buildings", "buildingQueue.name"),], ["data" => ['type' => 'button', "plusDialog" => ["featureKey" => 'buildingQueue', 'infoIcon' => 'http:\/\/t4.answers.travian.com\/index.php?aid=Travian Answers#go2answer',],],], T("Buildings", "buildingQueue.name"));
+            $result['plus'] = getButton(["type" => "button", "class" => "gold builder", "value" => T("Buildings", "buildingQueue.name"),], ["data" => ['type' => 'button', "plusDialog" => ["featureKey" => 'buildingQueue', 'infoIcon' => '/docs/index.php?aid=Travian Answers#go2answer',],],], T("Buildings", "buildingQueue.name"));
             $result['plus'] .= '<br>';
             $result['plus'] .= T("Buildings", "buildingQueue.desc");
         }
@@ -503,7 +503,7 @@ class BuildCtrl extends GameCtrl
                 $dispatcher = new AcademyCtrl($this->selectedBuildingIndex);
                 $this->buildView->vars['content'] .= $dispatcher->render();
                 break;
-            case 19;
+            case 19:
             case 20:
             case 21:
             case 29:
@@ -698,7 +698,7 @@ class BuildCtrl extends GameCtrl
         return PHPBatchView::render("build/buildingReadyWrapper", $contract);
     }
 
-    private function getValuesTable(&$contract, $params = [], callable $callback)
+    private function getValuesTable(&$contract, $params, callable $callback)
     {
         $contract['showValuesTable'] = TRUE;
         $contract['valueTable'] = '';
@@ -749,4 +749,4 @@ class BuildCtrl extends GameCtrl
             $contract['valueTable'] .= '<tr class="nextPossible"><th>' . T("Buildings", $item_id . ".next_prod") . ' ' . $nextLevel . ':</th><td><span class="number">' . number_format_x($value) . '</span> ' . T("Buildings", $item_id . ".unit") . '</td></tr>';
         }
     }
-} 
+}

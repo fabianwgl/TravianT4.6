@@ -6,7 +6,7 @@ class AnyCtrl extends AbstractCtrl
     {
         $output = '';
         $this->beforeRender();
-        if(method_exists($this->view, 'output')) {
+        if ($this->view !== null && method_exists($this->view, 'output')) {
             $output = $this->view->output();
         }
         $this->afterRender();

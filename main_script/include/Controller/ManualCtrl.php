@@ -59,13 +59,13 @@ if($settings['type'] == 1) {
 		case 2:
 			$answerId = 162 + unitIdToNr($u) - 1;
 			break;
-		case 3;
+			case 3:
 			$answerId = 139 + unitIdToNr($u) - 1;
 			break;
-        case 6; //TODO: need update
+        case 6: //TODO: need update
             $answerId = 139 + unitIdToNr($u) - 1;
             break;
-        case 7; //TODO: need update
+        case 7: //TODO: need update
             $answerId = 139 + unitIdToNr($u) - 1;
             break;
 	}

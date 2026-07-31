@@ -186,23 +186,14 @@ class BuildingHelper
         return 0 < $db->fetchScalar("SELECT COUNT(id) FROM artefacts WHERE uid=$uid AND active=1 AND type=12 LIMIT 1");
     }
 
-    //or maybe conf alliances :|
     public function checkIfPlayerAllianceHasWWBuildingPlan($aid, $uid)
     {
         if (!$aid) {
             return FALSE;
         }
         $db = DB::getInstance();
-        $diplos = $db->query("SELECT aid1, aid2 FROM diplomacy WHERE (aid1=$aid OR aid2=$aid) AND accepted<>0");
-        $al = [];
-        $al[] = $aid;
-        while ($row = $diplos->fetch_assoc()) {
-            $al[] = $row['aid1'];
-            $al[] = $row['aid2'];
-        }
         $members = [];
-        $aidArray = implode(",", array_unique($al));
-        $find = $db->query("SELECT id FROM users WHERE aid IN ($aidArray) AND id <> $uid");
+        $find = $db->query("SELECT id FROM users WHERE aid=" . (int)$aid . " AND id <> " . (int)$uid);
         while ($row = $find->fetch_assoc()) {
             $members[] = $row['id'];
         }
