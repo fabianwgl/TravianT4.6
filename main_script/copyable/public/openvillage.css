@@ -21,3 +21,17 @@ div#header #logo::before {
     line-height: 60px;
     text-align: left;
 }
+
+.inlineForm {
+    display: inline;
+    margin: 0;
+    padding: 0;
+}
+
+.inlineForm button.a.arrow {
+    border: 0;
+    background-color: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+}

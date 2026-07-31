@@ -20,6 +20,8 @@
 - A pinned PHPStan static-analysis gate covering the maintained PHP source tree.
 - A ruleset parity matrix linking supported behavior to canonical code and
   executable regression evidence.
+- POST-only Rally Point troop and movement mutations with per-village checker
+  validation and generated forms.
 
 ### Changed
 

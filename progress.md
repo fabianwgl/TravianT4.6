@@ -108,6 +108,9 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
 - Added a release-boundary parity matrix linking the frozen profile to canonical
   code, fixtures, and executable checks; updated the ruleset and release gates
   to reflect verified complete-round coverage.
+- Converted Rally Point trapped-unit kill/free and outgoing movement cancellation
+  from GET links into checker-protected POST forms, preserving confirmation and
+  adding a focused game-mutation contract check to the verifier.
 
 ## Current work
 

@@ -265,29 +265,34 @@ class RallyPointHTML
                         $HTML .= '<div class="sback">';
                         $desc = T("RallyPoint", "TroopKillDesc");
                         $kill = T("RallyPoint", "kill");
-                        $query = "build.php?" . http_build_query([
-                                'tt' => 1,
-                                "gid" => 16,
-                                "kill" => $info['taskId'],
-                                Session::getCheckerName() => Session::getInstance()->getChecker(),
-                                "page" => isset($_REQUEST['page']) ? $_REQUEST['page'] : 1,
-                                "filter" => $info['filter'],
-                            ]);
+                        $taskId = (int)$info['taskId'];
+                        $formId = 'kill-trapped-' . $taskId;
+                        $checkerInput = Session::getCheckerInput();
+                        $page = (int)(isset($_REQUEST['page']) ? $_REQUEST['page'] : 1);
+                        $filter = (int)$info['filter'];
+                        $killAttribute = htmlspecialchars($kill, ENT_QUOTES, 'UTF-8');
+                        $confirmText = htmlspecialchars(
+                            json_encode($desc, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT),
+                            ENT_QUOTES,
+                            'UTF-8'
+                        );
                         $HTML .= <<<HTML
-                        <a class="arrow" onclick="return (function() {
-				(new Travian.Dialog.Dialog({
-				    preventFormSubmit: true,
-					onOkay: function(dialog, contentElement) {window.location.href = '{$query}'}}))
-                .setContent('{$desc}')
-                .show();
-				return false;
-			})()" title="$kill">$kill</a>
+                        <form id="$formId" method="post" action="build.php?gid=16&amp;tt=1" class="inlineForm">
+                            $checkerInput
+                            <input type="hidden" name="kill" value="$taskId" />
+                            <input type="hidden" name="page" value="$page" />
+                            <input type="hidden" name="filter" value="$filter" />
+                            <button class="a arrow" type="submit" onclick="return window.confirm($confirmText);" title="$killAttribute">$killAttribute</button>
+                        </form>
 HTML;
                         $HTML .= '</div>';
                     } else if (isset($info['free']) && $info['free']) {
                         $HTML .= '<div class="sback">';
-                        $HTML .= '<a class="arrow" href="build.php?id=39&amp;tt=2&amp;free=' . $info['taskId'] . '&' . (Session::getCheckerForUrl()) . '" title="' . T("RallyPoint",
-                                "free") . '">' . T("RallyPoint", "free") . '</a>';
+                        $HTML .= '<form method="post" action="build.php?id=39&amp;tt=2" class="inlineForm">';
+                        $HTML .= Session::getCheckerInput();
+                        $HTML .= '<input type="hidden" name="free" value="' . (int)$info['taskId'] . '" />';
+                        $HTML .= '<button class="a arrow" type="submit" title="' . T("RallyPoint", "free") . '">' . T("RallyPoint", "free") . '</button>';
+                        $HTML .= '</form>';
                         $HTML .= '</div>';
                     } else if (isset($info['back']) && $info['back']) {
                         $HTML .= '<div class="sback">';
@@ -341,9 +346,13 @@ HTML;
                     }
                     $HTML .= ' ' . T("Global", "General.hour") . '.</div>';
                     if (isset($info['abort']) && $info['abort']) {//need fix later!
-                        $HTML .= '<div class="abort"><button type="button" class="icon " title="' . T("Global",
-                                "General.cancel") . '" onclick="window.location.href = \'build.php?gid=16&amp;tt=1&amp;a=4&amp;t=' . $info['taskId'] . '&amp;tt=1&amp;' . Session::getCheckerForUrl() . '\'; return false;"><img src="img/x.gif" class="del" alt="' . T("Global",
-                                "General.cancel") . '" /></button></div>';
+                        $cancel = T("Global", "General.cancel");
+                        $HTML .= '<div class="abort"><form method="post" action="build.php?gid=16&amp;tt=1" class="inlineForm">';
+                        $HTML .= Session::getCheckerInput();
+                        $HTML .= '<input type="hidden" name="a" value="4" />';
+                        $HTML .= '<input type="hidden" name="t" value="' . (int)$info['taskId'] . '" />';
+                        $HTML .= '<button type="submit" class="icon" title="' . $cancel . '"><img src="img/x.gif" class="del" alt="' . $cancel . '" /></button>';
+                        $HTML .= '</form></div>';
                     }
                     $HTML .= '<div class="at">' . T("Global", "General.at") . ' ';
                     if (isset($info['countUp']) && $info['countUp']) {
@@ -370,4 +379,4 @@ HTML;
         if (!is_numeric($x)) return $x;
         return number_format_x($x, $dec);
     }
-} 
+}

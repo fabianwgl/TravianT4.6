@@ -5,6 +5,7 @@ namespace Controller\RallyPoint;
 use Controller\AnyCtrl;
 use Controller\BuildCtrl;
 use Core\Database\DB;
+use Core\Helper\WebService;
 use Core\Session;
 use Core\Village;
 use Game\Formulas;
@@ -35,10 +36,10 @@ class RallyPointCntrl extends AnyCtrl
         if (!$session->hasGoldClub() && $tt == 99) {
             $tt = 0;
         }
-        if (isset($_GET['kill'])/* && Session::validateChecker()*/) {
+        if (WebService::isPost() && isset($_POST['kill']) && Session::validateChecker()) {
             //delete trapped
             $db = DB::getInstance();
-            $id = (int)$_GET['kill'];
+            $id = (int)$_POST['kill'];
             $kid = Session::getInstance()->getKid();
             $result = $db->query("SELECT * FROM trapped WHERE kid={$kid} AND id={$id}");
             if ($result->num_rows) {
@@ -57,10 +58,10 @@ class RallyPointCntrl extends AnyCtrl
                 }
             }
         }
-        if (isset($_GET['free'])/* && Session::validateChecker()*/) {
+        if (WebService::isPost() && isset($_POST['free']) && Session::validateChecker()) {
             //delete trapped
             $db = DB::getInstance();
-            $id = (int)$_GET['free'];
+            $id = (int)$_POST['free'];
             $kid = Session::getInstance()->getKid();
             $find = $db->query("SELECT * FROM trapped WHERE to_kid=$kid AND id=$id");
             if ($find->num_rows) {
@@ -77,9 +78,9 @@ class RallyPointCntrl extends AnyCtrl
             }
         }
         $rallyPoint = new RallyPoint();
-        if (isset($_REQUEST['a']) && $_REQUEST['a'] == 4 && isset($_REQUEST['t']) && Session::validateChecker()) {
+        if (WebService::isPost() && isset($_POST['a']) && (int)$_POST['a'] === 4 && isset($_POST['t']) && Session::validateChecker()) {
             $m = new RallyPointModel();
-            $m->cancelTask((int)$_REQUEST['t']);
+            $m->cancelTask((int)$_POST['t']);
         }
         $x['tt'] = $tt;
         $x['content'] = '';
