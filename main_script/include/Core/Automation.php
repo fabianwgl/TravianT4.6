@@ -302,19 +302,36 @@ class Automation
     {
         $db = DB::getInstance();
         $message = new MessageModel();
-        $result = $db->query("SELECT * FROM voting_reward_queue LIMIT 50");
+        $result = $db->query("SELECT id FROM voting_reward_queue LIMIT 50");
         while ($row = $result->fetch_assoc()) {
-            $db->query("DELETE FROM voting_reward_queue WHERE id={$row['id']}");
+            $this->processVotingRewardTask((int)$row['id'], $message);
+        }
+        $result = $db->query("SELECT id FROM buyGoldMessages LIMIT 50");
+        while ($row = $result->fetch_assoc()) {
+            $this->processBuyGoldMessageTask((int)$row['id'], $message);
+        }
+    }
+
+    public function processVotingRewardTask(int $taskId, ?MessageModel $message = null): bool
+    {
+        $message = $message ?? new MessageModel();
+
+        return TransactionalTask::consume('voting_reward_queue', $taskId, function (array $row) use ($message): void {
             $arr = ['TopG', 'ArenaTop100', 'GTop100'];
-            if (in_array($row['votingName'], $arr) && !empty(Config::getProperty("Voting", $row['votingName'], "link"))) {
+            if (in_array($row['votingName'], $arr, true) && !empty(Config::getProperty("Voting", $row['votingName'], "link"))) {
                 $gift_gold = Config::getProperty("Voting", $row['votingName'], "gold");
+                $db = DB::getInstance();
                 $db->query("UPDATE users SET gift_gold=gift_gold+$gift_gold WHERE id={$row['uid']}");
                 $message->sendMessage(0, $row['uid'], null, $gift_gold, 4);
             }
-        }
-        $result = $db->query("SELECT * FROM buyGoldMessages LIMIT 50");
-        while ($row = $result->fetch_assoc()) {
-            $db->query("DELETE FROM buyGoldMessages WHERE id={$row['id']}");
+        });
+    }
+
+    public function processBuyGoldMessageTask(int $taskId, ?MessageModel $message = null): bool
+    {
+        $message = $message ?? new MessageModel();
+
+        return TransactionalTask::consume('buyGoldMessages', $taskId, function (array $row) use ($message): void {
             if ($row['type'] == 1) {
                 $title = T("Global", "BuyGoldSubject");
                 $msg = sprintf(T("Global", "BuyGoldText"), $row['gold'], $row['trackingCode']);
@@ -323,20 +340,29 @@ class Automation
                 $msg = sprintf(T("Global", "voucherText"), $row['gold'], $row['trackingCode']);
             }
             $message->sendMessage(0, $row['uid'], $title, $msg);
-        }
+        });
     }
 
     public function banProgress()
     {
         (new MultiAccount())->runProgress();
         $db = DB::getInstance();
-        $result = $db->query("SELECT * FROM banQueue WHERE end>0 AND end < " . time() . " LIMIT 10");
+        $result = $db->query("SELECT id FROM banQueue WHERE end>0 AND end < " . time() . " LIMIT 10");
         $infoBox = new InfoBoxModel();
         while ($row = $result->fetch_assoc()) {
-            $db->query("DELETE FROM banQueue WHERE id={$row['id']}");
+            $this->processBanTask((int)$row['id'], $infoBox);
+        }
+    }
+
+    public function processBanTask(int $taskId, ?InfoBoxModel $infoBox = null): bool
+    {
+        $infoBox = $infoBox ?? new InfoBoxModel();
+
+        return TransactionalTask::consume('banQueue', $taskId, function (array $row) use ($infoBox): void {
+            $db = DB::getInstance();
             $db->query("UPDATE users SET access=1 WHERE id={$row['uid']}");
             $infoBox->deleteInfoByType($row['uid'], 14);
-        }
+        });
     }
 
     public function referenceCheck()

@@ -71,7 +71,7 @@ must not be described as crash-safe:
 
 | Queue or trigger | Clock | Current risk |
 | --- | --- | --- |
-| voting, purchase-message, ban, and notification queues | Unix seconds or immediate | Row is deleted before its reward, message, state change, or external notification. |
+| `notificationQueue` | Immediate | The game-DB row is deleted before the separate global-DB notification insert. |
 | recurring config timestamps and trade routes | Unix seconds | Next-run time can advance before the complete effect. |
 
 Database-only effects should use a row lock and one transaction. External mail

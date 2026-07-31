@@ -9,12 +9,15 @@ final class TransactionalTask
     private const MAX_ATTEMPTS = 5;
     private const TABLES = [
         'building_upgrade',
+        'buyGoldMessages',
+        'banQueue',
         'demolition',
         'movement',
         'research',
         'send',
         'training',
         'alliance_bonus_upgrade_queue',
+        'voting_reward_queue',
     ];
 
     public static function consume(string $table, int $id, callable $effect): bool

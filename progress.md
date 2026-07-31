@@ -79,6 +79,8 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   failure-ledger cleanup after a successful retry.
 - Passed both upgraded-world verification and a disposable empty-volume install
   with the new failure-ledger migration and crash/replay regressions.
+- Made voting rewards, purchase messages, and expired-ban processing
+  transactional; covered messages, access, infoboxes, and replay in MariaDB.
 
 ## Current work
 

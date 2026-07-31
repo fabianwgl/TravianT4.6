@@ -60,6 +60,8 @@
 - Forked automation workers now have unique identities, unexpected child exits
   fail the parent for container recovery, and shutdown signals and reaps every
   tracked child.
+- Voting rewards, purchase messages, and expired bans now commit queue and
+  player-facing state atomically and suppress duplicate delivery.
 - Login JavaScript failures and external tracking requests.
 
 ### Removed

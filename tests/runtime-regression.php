@@ -218,6 +218,15 @@ $allianceBonusQueueAutoIncrement = (int)$db->fetchScalar(
 $sendAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='send'"
 );
+$buyGoldMessageAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='buyGoldMessages'"
+);
+$banQueueAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='banQueue'"
+);
+$messageAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='mdata'"
+);
 
 $nestedTransactionKid = 2000000019;
 $db->begin_transaction();
@@ -531,6 +540,70 @@ try {
     $db->rollback();
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
     $db->query("ALTER TABLE movement AUTO_INCREMENT=$movementAutoIncrement");
+}
+
+$queuedMessageOwner = 2000000011;
+$buyGoldMessageTask = 2000000001;
+$banTask = 2000000001;
+$db->begin_transaction();
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id=$queuedMessageOwner"),
+        'queued-message fixture user ID available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM buyGoldMessages WHERE id=$buyGoldMessageTask"),
+        'purchase-message fixture task ID available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM banQueue WHERE id=$banTask"),
+        'ban fixture task ID available'
+    );
+    $db->query("INSERT INTO users (id, uuid, name, password, email, race, access, kid, desc1, desc2, note)
+        VALUES ($queuedMessageOwner, 'ov-regression-queued-message', 'OVQueue', 'x', '', 1, 2, 1, '', '', '')");
+    $db->query("INSERT INTO infobox (forAll, uid, type, params, showFrom, showTo)
+        VALUES (0, $queuedMessageOwner, 14, '', 0, 0)");
+    $db->query("INSERT INTO buyGoldMessages (id, uid, gold, type, trackingCode)
+        VALUES ($buyGoldMessageTask, $queuedMessageOwner, 50, 1, 'OV-REGRESSION')");
+    $db->query("INSERT INTO banQueue (id, uid, reason, time, end)
+        VALUES ($banTask, $queuedMessageOwner, 'OV regression', 0, 1)");
+
+    $automation = Automation::getInstance();
+    expect_true($automation->processBuyGoldMessageTask($buyGoldMessageTask), 'purchase message task processed');
+    expect_same(
+        '0|1',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM buyGoldMessages WHERE id=$buyGoldMessageTask), '|', COUNT(*)
+            ) FROM mdata WHERE to_uid=$queuedMessageOwner"
+        ),
+        'purchase queue and player message commit together'
+    );
+    expect_same(false, $automation->processBuyGoldMessageTask($buyGoldMessageTask), 'duplicate purchase message ignored');
+    expect_same(1, (int)$db->fetchScalar("SELECT COUNT(*) FROM mdata WHERE to_uid=$queuedMessageOwner"), 'purchase message not duplicated');
+
+    expect_true($automation->processBanTask($banTask), 'expired ban task processed');
+    expect_same(
+        '0|1|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM banQueue WHERE id=$banTask), '|', access, '|',
+                (SELECT COUNT(*) FROM infobox WHERE uid=$queuedMessageOwner AND type=14)
+            ) FROM users WHERE id=$queuedMessageOwner"
+        ),
+        'ban queue, access, and infobox state commit together'
+    );
+    expect_same(false, $automation->processBanTask($banTask), 'duplicate expired ban ignored');
+} finally {
+    $db->rollback();
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE infobox AUTO_INCREMENT=$infoBoxAutoIncrement");
+    $db->query("ALTER TABLE buyGoldMessages AUTO_INCREMENT=$buyGoldMessageAutoIncrement");
+    $db->query("ALTER TABLE banQueue AUTO_INCREMENT=$banQueueAutoIncrement");
+    $db->query("ALTER TABLE mdata AUTO_INCREMENT=$messageAutoIncrement");
 }
 
 $db->begin_transaction();
