@@ -61,6 +61,11 @@ Persistent data lives in the Compose volumes `database-data`, `redis-data`, and
 volume. Backups contain player and operator data and must be protected like the
 live database.
 
+Database ownership, aggregate, economy, army, clock, and scheduled-event rules
+are defined in [Database invariants](DATABASE_INVARIANTS.md). Treat those rules
+as migration prerequisites even where the legacy schema does not yet enforce
+them.
+
 Before an upgrade, create and verify an explicit backup:
 
 ```sh

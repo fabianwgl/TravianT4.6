@@ -125,7 +125,7 @@ provisioning performs host-level changes in
 ### 6. Make data and workers recoverable
 
 - [x] Introduce versioned forward migrations and documented rollback policy.
-- [ ] Document database invariants before adding constraints.
+- [x] Document database invariants before adding constraints.
 - [x] Add backup, restore, and upgrade rehearsals.
 - [ ] Test task and event behavior across crashes and duplicate delivery.
 - [ ] Add atomic task claims, leases, retry limits, and idempotency where tests

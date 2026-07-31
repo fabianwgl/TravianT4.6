@@ -61,10 +61,13 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   rebuild command when the running application image is stale.
 - Made research completion transactional and verified crash rollback, safe
   retry, and duplicate-delivery suppression against MariaDB.
+- Documented database invariants and the recovery status of every major
+  scheduled-event family before adding constraints.
 
 ## Current work
 
-- Document database invariants and test scheduled task behavior across retries.
+- Convert the remaining destructive scheduled-task paths with crash and replay
+  regressions.
 
 ## TODO
 

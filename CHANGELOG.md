@@ -11,6 +11,8 @@
   checks, a combined verifier, and CI.
 - OpenVillage identity, ruleset, operations, privacy, provenance, and release
   documentation.
+- Database ownership, aggregate, economy, army, clock, migration, and
+  scheduled-event invariants.
 - An exact upstream baseline, read-only drift check, and guarded import guide
   for the sanitized modernization history.
 
