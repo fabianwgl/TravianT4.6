@@ -38,6 +38,10 @@ The worker should remain running and recent logs must not contain PHP fatal
 errors. The health endpoint reports readiness only after MariaDB, Redis, and the
 installed game configuration are available.
 
+The verifier rejects a running application image whose maintained source does
+not match the checkout. Rebuild with `docker compose up -d --build --wait`
+after changing application or regression-test files.
+
 Before a release, also prove installation against empty disposable volumes:
 
 ```sh

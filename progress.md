@@ -57,6 +57,8 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   vacation infobox state, and covered all four audit areas with regressions.
 - Rebuilt the stack, verified quest accounting and vacation/truce infoboxes in
   a real browser with zero console errors, and removed every temporary fixture.
+- Made the local verifier compare maintained-source checksums and fail with a
+  rebuild command when the running application image is stale.
 
 ## Current work
 

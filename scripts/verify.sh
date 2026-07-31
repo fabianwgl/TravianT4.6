@@ -7,6 +7,18 @@ verify_started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 docker compose config --quiet
 ./scripts/check-public-hygiene.sh
 
+checkout_checksum=$(./scripts/source-checksum.sh)
+if ! container_checksum=$(docker compose exec -T app /app/scripts/source-checksum.sh); then
+    echo 'The running application image does not contain the current verification tooling.' >&2
+    echo 'Rebuild it with: docker compose up -d --build --wait' >&2
+    exit 1
+fi
+if [ "$checkout_checksum" != "$container_checksum" ]; then
+    echo 'The running application image does not match this checkout.' >&2
+    echo 'Rebuild it with: docker compose up -d --build --wait' >&2
+    exit 1
+fi
+
 docker compose exec -T app sh -lc \
     "find /app/main_script /app/web /app/sections -type f -name '*.php' -exec sh -c 'for file do output=\$(php -l \"\$file\" 2>&1) || { echo \"\$output\"; exit 1; }; done' sh {} +"
 echo 'PHP syntax check passed.'

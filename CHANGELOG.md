@@ -38,6 +38,8 @@
   remain synchronized on entry and abort.
 - GitHub Actions now installs its verification tools, and repository hygiene
   fails closed when ripgrep is unavailable.
+- Local verification now rejects stale application images instead of silently
+  testing code from an earlier build.
 - Login JavaScript failures and external tracking requests.
 
 ### Removed
