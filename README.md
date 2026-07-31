@@ -54,6 +54,7 @@ login, and authenticated gameplay routes.
 - [Operations](docs/OPERATIONS.md)
 - [Privacy](docs/PRIVACY.md)
 - [Release readiness](docs/RELEASE.md)
+- [Upstream synchronization](docs/UPSTREAM.md)
 - [Provenance and redistribution](NOTICE.md)
 - [Third-party inventory](THIRD_PARTY.md)
 - [Changelog](CHANGELOG.md)

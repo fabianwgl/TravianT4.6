@@ -49,6 +49,8 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   atomic Natar movement batches and complete attack-profile fixture.
 - Diagnosed the public CI failure as a missing `rg`, added the runner dependency
   and a fail-closed hygiene prerequisite, then passed the local verifier.
+- Updated the checkout action to its Node 24 runtime and recorded the exact
+  upstream baseline with a read-only drift check and safe import procedure.
 
 ## Current work
 
@@ -56,5 +58,5 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
 
 ## TODO
 
-- Publish the sanitized history after explicit approval of the required public
-  `main` history rewrite.
+- Promote the finished sanitized release branch to public `main` only after
+  explicit approval of the guarded history replacement.
