@@ -41,10 +41,16 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   replacement horse, accounting records, replay rejection, and DB regressions.
 - Verified first-horse exchange and ordinary horse auction dialogs in a real
   browser with correct inventory/silver changes and zero browser errors.
+- Made Natar World Wonder attacks deterministic across crossed levels, restored
+  all 14 grey-area waves, and added exact army/timing database regressions.
+- Verified the two-wave incoming-attack UI in a real browser with zero errors,
+  then removed the disposable movement fixture and restored its counter.
+- Passed the full verifier and a disposable empty-volume installation with the
+  atomic Natar movement batches and complete attack-profile fixture.
 
 ## Current work
 
-- Publish the verified horse-selling commit on the sanitized feature branch.
+- Audit quest silver, punishment upkeep, public-peace, and vacation notifications.
 
 ## TODO
 

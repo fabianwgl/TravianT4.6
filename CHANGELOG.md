@@ -26,6 +26,9 @@
 - Database connection-age handling and worker polling/shutdown behavior.
 - Regression-test auto-increment isolation and unsigned adventure ownership.
 - World Wonder second-plan alliance semantics and fabricated online statistics.
+- World Wonder Natar attack-level scheduling, two-wave timing, and deterministic
+  army fixtures.
+- Grey-area settlements now receive all 14 intended Natar waves.
 - Login JavaScript failures and external tracking requests.
 
 ### Removed

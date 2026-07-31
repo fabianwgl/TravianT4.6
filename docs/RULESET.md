@@ -41,15 +41,28 @@ The first-plan holder is intentionally excluded from the alliance-plan check.
 The first World Wonder to reach level 100 wins; otherwise the Natar World Wonder
 finishes on the automatic timeline.
 
+## Natar attack profile
+
+Player World Wonders receive two Natar waves at levels 5, 10, and every fifth
+level through 95, then at every level from 96 through 99. On the supported 10×
+world, both waves use the preserved T4-era baseline army table and travel for
+2 hours 24 minutes; the demolition wave lands one second after the clearing
+wave. A multi-level upgrade schedules every crossed attack level exactly once.
+
+Settling in the grey area schedules all 14 Natar demolition waves. They also
+arrive after 2 hours 24 minutes on the supported profile, in deterministic
+wave order.
+
 ## Compatibility status
 
 Registration, activation, village creation, login, village fields, village
 center, map, building, profile, sessions, map-coordinate boundaries, core
 ruleset timers, supported-tribe costs, production/storage formulas, a golden
 combat fixture, password migration, and the level-50 endgame plan gate are
-exercised by maintained checks. Conquest, artifact capture, Natar attack
-composition, and a complete player-built level-100 World Wonder still need
-deterministic full-round coverage before a 1.0 compatibility claim.
+exercised by maintained checks. Natar attack levels, armies, travel time, wave
+ordering, and grey-area wave count have deterministic database fixtures.
+Conquest, artifact capture, and a complete player-built level-100 World Wonder
+still need deterministic full-round coverage before a 1.0 compatibility claim.
 
 The old schema filename `T4.4.sql` is retained as a historical filename only.
 Compatibility is determined by migrations and runtime verification, not by that

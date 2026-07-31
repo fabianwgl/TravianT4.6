@@ -145,9 +145,8 @@ establish the required remediation scope before a broad engine rewrite.
 - [x] Correct World Wonder second-plan diplomacy in
       [`BuildingHelper.php`](../main_script/include/Game/Buildings/BuildingHelper.php#L166).
 - [x] Define and test building-plan capture and activation semantics.
-- [ ] Validate Natar attack armies and timing; the current implementation is
-      explicitly approximate in
-      [`WonderOfTheWorldModel.php`](../main_script/include/Model/WonderOfTheWorldModel.php#L26).
+- [x] Validate and test the preserved Natar World Wonder army profile, crossed
+      attack levels, two-wave timing, and all 14 grey-area settlement waves.
 - [x] Replace hard-coded 2019 general statistics with live calculations.
 - [x] Restore or remove the missing Plus graph backend.
 - [x] Finish first-horse exchange and normal hero horse selling.

@@ -10,6 +10,8 @@ use Game\Buildings\BuildingHelper;
 use Game\Formulas;
 use Model\AuctionModel;
 use Model\MasterBuilder;
+use Model\NatarsModel;
+use Model\WonderOfTheWorldModel;
 
 require '/app/main_script/copyable/include/env.php';
 require '/app/main_script/include/bootstrap.php';
@@ -158,6 +160,9 @@ $itemAutoIncrement = (int)$db->fetchScalar(
 $accountingAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='accounting'"
 );
+$movementAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='movement'"
+);
 $db->begin_transaction();
 try {
     $holder = 2000000001;
@@ -244,6 +249,93 @@ try {
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
     $db->query("ALTER TABLE artefacts AUTO_INCREMENT=$artefactAutoIncrement");
     $db->query("ALTER TABLE building_upgrade AUTO_INCREMENT=$buildingUpgradeAutoIncrement");
+}
+
+$natarTarget = 2000000003;
+$greyAreaTarget = 2000000004;
+try {
+    expect_same([5, 10], WonderOfTheWorldModel::attackLevelsBetween(0, 10), 'crossed WW attack levels');
+    expect_same(
+        [95, 96, 97, 98, 99],
+        WonderOfTheWorldModel::attackLevelsBetween(94, 100),
+        'late WW attack levels'
+    );
+    expect_same([], WonderOfTheWorldModel::attackLevelsBetween(99, 100), 'no level-100 Natar attack');
+    expect_same(8640, WonderOfTheWorldModel::attackTravelSeconds(10), 'WW attack travel time');
+    expect_same(1, WonderOfTheWorldModel::attackMultiplierForSpeed(10, false), 'WW baseline army multiplier');
+
+    $attackProfile = [];
+    foreach (WonderOfTheWorldModel::attackLevelsBetween(0, 99) as $attackLevel) {
+        $attackProfile[$attackLevel] = WonderOfTheWorldModel::attackWavesForLevel($attackLevel);
+    }
+    expect_same(
+        'ba70e4e45ca6da8c3527fa9c746d710c4fca238217c6732253b98869dac1db9a',
+        hash('sha256', json_encode($attackProfile)),
+        'complete WW Natar army profile'
+    );
+
+    $levelFiveWaves = WonderOfTheWorldModel::attackWavesForLevel(5);
+    expect_same(2, count($levelFiveWaves), 'WW Natar two-wave profile');
+    expect_same(3412, $levelFiveWaves[0][2], 'WW clearing-wave army');
+    expect_same(10, $levelFiveWaves[1][8], 'WW demolition-wave ballistae');
+    expect_same([], WonderOfTheWorldModel::attackWavesForLevel(6), 'non-attack WW level has no army');
+
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM movement WHERE to_kid IN ($natarTarget, $greyAreaTarget)"),
+        'Natar movement fixture targets available'
+    );
+    $wonder = new WonderOfTheWorldModel();
+    expect_same(2, $wonder->attackWWVillage($natarTarget, 5), 'WW Natar waves scheduled');
+    expect_same(0, $wonder->attackWWVillage($natarTarget, 6), 'invalid WW attack level rejected');
+
+    $wwMovements = $db->query(
+        "SELECT race, u2, u8, ctar1, ctar2, attack_type, end_time-start_time AS travel
+         FROM movement WHERE to_kid=$natarTarget ORDER BY id"
+    );
+    expect_same(2, $wwMovements->num_rows, 'two WW Natar movements persisted');
+    $clearingWave = $wwMovements->fetch_assoc();
+    $demolitionWave = $wwMovements->fetch_assoc();
+    expect_same('5|3412|0|40|40|3|8640000', implode('|', $clearingWave), 'WW clearing movement');
+    expect_same('5|35|10|40|40|3|8641000', implode('|', $demolitionWave), 'WW demolition movement');
+
+    expect_same(8640, NatarsModel::greyAreaAttackTravelSeconds(10), 'grey-area attack travel time');
+    expect_same(4, NatarsModel::greyAreaWaveDelayMilliseconds(14), 'last grey-area wave offset');
+    expect_same(
+        NatarsModel::GREY_AREA_ATTACK_WAVE_COUNT,
+        (new NatarsModel())->attackNewVillage($greyAreaTarget),
+        'grey-area Natar batch persisted atomically'
+    );
+    expect_same(
+        NatarsModel::GREY_AREA_ATTACK_WAVE_COUNT,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM movement WHERE to_kid=$greyAreaTarget"),
+        'all grey-area Natar waves scheduled'
+    );
+    expect_same(
+        '8640000|8640004',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(MIN(end_time-start_time), '|', MAX(end_time-start_time))
+             FROM movement WHERE to_kid=$greyAreaTarget"
+        ),
+        'grey-area Natar wave timing'
+    );
+    expect_same(
+        '1000|100',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(u1, '|', u8) FROM movement WHERE to_kid=$greyAreaTarget ORDER BY id LIMIT 1"
+        ),
+        'first grey-area Natar wave army'
+    );
+    expect_same(
+        '25|18',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(u1, '|', u8) FROM movement WHERE to_kid=$greyAreaTarget ORDER BY id DESC LIMIT 1"
+        ),
+        'fourteenth grey-area Natar wave army'
+    );
+} finally {
+    $db->query("DELETE FROM movement WHERE to_kid IN ($natarTarget, $greyAreaTarget)");
+    $db->query("ALTER TABLE movement AUTO_INCREMENT=$movementAutoIncrement");
 }
 
 $horseOwner = 2000000004;
