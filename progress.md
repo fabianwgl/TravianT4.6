@@ -59,6 +59,8 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   a real browser with zero console errors, and removed every temporary fixture.
 - Made the local verifier compare maintained-source checksums and fail with a
   rebuild command when the running application image is stale.
+- Made research completion transactional and verified crash rollback, safe
+  retry, and duplicate-delivery suppression against MariaDB.
 
 ## Current work
 

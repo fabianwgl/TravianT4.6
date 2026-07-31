@@ -6,6 +6,7 @@ use Core\Database\DB;
 use Core\Database\GlobalDB;
 use Core\Helper\Mailer;
 use Core\Helper\Notification;
+use Core\Jobs\TransactionalTask;
 use Exception;
 use Game\AllianceBonus\AllianceBonus;
 use Game\Buildings\BuildingAction;
@@ -183,15 +184,24 @@ class Automation
     public function researchComplete()
     {
         $db = DB::getInstance();
-        $result = $db->query("SELECT id, kid, nr, mode FROM research WHERE end_time <= " . (time()) . " ORDER BY end_time ASC, id ASC LIMIT 100");
+        $result = $db->query("SELECT id FROM research WHERE end_time <= " . (time()) . " ORDER BY end_time ASC, id ASC LIMIT 100");
         while ($row = $result->fetch_assoc()) {
-            $db->query("DELETE FROM research WHERE id={$row['id']}");
-            if ($row['mode'] == 1) {
-                $db->query("UPDATE tdata SET u{$row['nr']}=1 WHERE kid={$row['kid']}");
-            } else {
-                $db->query("UPDATE smithy SET u{$row['nr']}=IF(u{$row['nr']}+1>20, 20, u{$row['nr']}+1) WHERE kid={$row['kid']}");
-            }
+            $this->processResearchTask((int)$row['id']);
         }
+    }
+
+    public function processResearchTask(int $taskId): bool
+    {
+        return TransactionalTask::consume('research', $taskId, function (array $row): void {
+            $db = DB::getInstance();
+            $kid = (int)$row['kid'];
+            $nr = (int)$row['nr'];
+            if ((int)$row['mode'] === 1) {
+                $db->query("UPDATE tdata SET u$nr=1 WHERE kid=$kid");
+            } else {
+                $db->query("UPDATE smithy SET u$nr=IF(u$nr+1>20, 20, u$nr+1) WHERE kid=$kid");
+            }
+        });
     }
 
     public function trainingComplete()

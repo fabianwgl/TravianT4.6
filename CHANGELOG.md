@@ -40,6 +40,9 @@
   fails closed when ripgrep is unavailable.
 - Local verification now rejects stale application images instead of silently
   testing code from an earlier build.
+- Research completion now locks and consumes its queue row in the same
+  transaction as the technology effect, so crashes retry safely and duplicate
+  delivery cannot apply the effect twice.
 - Login JavaScript failures and external tracking requests.
 
 ### Removed

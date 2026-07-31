@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use Core\Config;
+use Core\Automation;
 use Core\Database\DB;
+use Core\Jobs\TransactionalTask;
 use Core\Security\Password;
 use Controller\RallyPoint\Simulator;
 use Game\Buildings\BuildingHelper;
@@ -191,6 +193,60 @@ $trappedAutoIncrement = (int)$db->fetchScalar(
 $infoBoxAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='infobox'"
 );
+$researchAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='research'"
+);
+
+$researchKid = 2000000020;
+$researchTask = 2000000001;
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM smithy WHERE kid=$researchKid"),
+        'research fixture village ID available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM research WHERE id=$researchTask"),
+        'research fixture task ID available'
+    );
+    $db->query("INSERT INTO smithy (kid) VALUES ($researchKid)");
+    $db->query("INSERT INTO research (id, kid, nr, mode, end_time) VALUES ($researchTask, $researchKid, 1, 0, 0)");
+
+    try {
+        TransactionalTask::consume('research', $researchTask, function () use ($db, $researchKid): void {
+            $db->query("UPDATE smithy SET u1=u1+1 WHERE kid=$researchKid");
+            throw new RuntimeException('Simulated worker crash.');
+        });
+        throw new RuntimeException('Simulated worker crash was not propagated.');
+    } catch (RuntimeException $e) {
+        expect_same('Simulated worker crash.', $e->getMessage(), 'research crash propagated');
+    }
+    expect_same(
+        '1|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT((SELECT COUNT(*) FROM research WHERE id=$researchTask), '|', u1) FROM smithy WHERE kid=$researchKid"
+        ),
+        'research crash rolls back effect and preserves task'
+    );
+
+    $automation = Automation::getInstance();
+    expect_true($automation->processResearchTask($researchTask), 'research task consumed after retry');
+    expect_same(
+        '0|1',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT((SELECT COUNT(*) FROM research WHERE id=$researchTask), '|', u1) FROM smithy WHERE kid=$researchKid"
+        ),
+        'research retry commits effect and consumes task'
+    );
+    expect_same(false, $automation->processResearchTask($researchTask), 'duplicate research delivery ignored');
+    expect_same(1, (int)$db->fetchScalar("SELECT u1 FROM smithy WHERE kid=$researchKid"), 'research effect not duplicated');
+} finally {
+    $db->query("DELETE FROM research WHERE id=$researchTask OR kid=$researchKid");
+    $db->query("DELETE FROM smithy WHERE kid=$researchKid");
+    $db->query("ALTER TABLE research AUTO_INCREMENT=$researchAutoIncrement");
+}
+
 $db->begin_transaction();
 try {
     $holder = 2000000001;
