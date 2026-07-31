@@ -151,7 +151,7 @@ establish the required remediation scope before a broad engine rewrite.
 - [x] Replace hard-coded 2019 general statistics with live calculations.
 - [x] Restore or remove the missing Plus graph backend.
 - [ ] Finish hero horse selling.
-- [ ] Correct Master Builder level and resource calculations.
+- [x] Correct Master Builder queued-level and projected-resource calculations.
 - [ ] Audit quest silver, punishment upkeep, public-peace notices, and vacation
       notifications.
 - [x] Complete Egyptian and Hun wall, simulator, hero-speed, and manual behavior

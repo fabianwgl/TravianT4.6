@@ -8,6 +8,7 @@ use Core\Security\Password;
 use Controller\RallyPoint\Simulator;
 use Game\Buildings\BuildingHelper;
 use Game\Formulas;
+use Model\MasterBuilder;
 
 require '/app/main_script/copyable/include/env.php';
 require '/app/main_script/include/bootstrap.php';
@@ -84,6 +85,19 @@ expect_same(false, Password::verify($password . '-wrong', $hash), 'wrong passwor
 expect_true(Password::verify($password, sha1($password)), 'legacy SHA-1 verification');
 expect_true(Password::needsRehash(sha1($password)), 'legacy SHA-1 migration signal');
 
+expect_same(4, MasterBuilder::queuedTargetLevel(2, 1, 0), 'first queued Master Builder target level');
+expect_same(5, MasterBuilder::queuedTargetLevel(2, 1, 1), 'second queued Master Builder target level');
+expect_same(
+    1800,
+    MasterBuilder::calculateResourceWait([0, 100, 100, 100], [200, 200, 200, 200], [100, 100, 100, 100]),
+    'Master Builder resource wait'
+);
+expect_same(
+    null,
+    MasterBuilder::calculateResourceWait([100, 100, 100, 0], [100, 100, 100, -10], [100, 100, 100, 1]),
+    'Master Builder never-ready crop state'
+);
+
 $zeros = array_fill(0, 10, 0);
 $defenders = $zeros;
 $defenders[0] = 100;
@@ -134,6 +148,9 @@ $userAutoIncrement = (int)$db->fetchScalar(
 $artefactAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='artefacts'"
 );
+$buildingUpgradeAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='building_upgrade'"
+);
 $db->begin_transaction();
 try {
     $holder = 2000000001;
@@ -171,10 +188,55 @@ try {
 
     $db->query("UPDATE users SET aid=0 WHERE id=$ally");
     expect_same(3, $helper->checkArtifactDependencies($alliance, $holder, 1, 40, true, 50), 'non-allied plan rejected');
+
+    $builderOwner = 2000000003;
+    $builderVillage = 2000000001;
+    $normalTask = 2000000001;
+    $firstMasterTask = 2000000002;
+    $secondMasterTask = 2000000003;
+    $firstCost = Formulas::buildingUpgradeCosts(1, 4);
+    $secondCost = Formulas::buildingUpgradeCosts(1, 5);
+    $fixtureResources = [];
+    for ($i = 0; $i < 4; ++$i) {
+        $fixtureResources[$i] = max($firstCost[$i], $secondCost[$i]);
+    }
+    $normalCommence = time() + 60;
+
+    $db->query("INSERT INTO users (id, uuid, name, password, email, race, kid, desc1, desc2, note)
+        VALUES ($builderOwner, 'ov-regression-builder', 'OVTestBuilder', 'x', '', 2, $builderVillage, '', '', '')");
+    $db->query("INSERT INTO vdata
+        (kid, owner, fieldtype, name, capital, pop, cp, wood, clay, iron, woodp, clayp, ironp, maxstore,
+         crop, cropp, maxcrop, upkeep, lastmupdate, created, expandedfrom)
+        VALUES
+        ($builderVillage, $builderOwner, 3, 'OV Builder Village', 1, 0, 0,
+         {$fixtureResources[0]}, {$fixtureResources[1]}, {$fixtureResources[2]}, 0, 0, 0, 1000000000,
+         {$fixtureResources[3]}, 10000, 1000000000, 10000, 0, " . time() . ", 0)");
+    $db->query("INSERT INTO fdata (kid, f1, f1t) VALUES ($builderVillage, 2, 1)");
+    $db->query("INSERT INTO building_upgrade (id, kid, building_field, isMaster, start_time, commence) VALUES
+        ($normalTask, $builderVillage, 1, 0, " . time() . ", $normalCommence),
+        ($firstMasterTask, $builderVillage, 1, 1, " . time() . ", " . time() . "),
+        ($secondMasterTask, $builderVillage, 1, 1, " . time() . ", " . time() . ")");
+
+    expect_true((new MasterBuilder())->updateCommence($builderVillage, false), 'Master Builder queue recalculation');
+    expect_same(
+        $normalCommence,
+        (int)$db->fetchScalar("SELECT commence FROM building_upgrade WHERE id=$firstMasterTask"),
+        'first Master Builder task starts after the active worker'
+    );
+    expect_true(
+        (int)$db->fetchScalar("SELECT commence FROM building_upgrade WHERE id=$secondMasterTask") >= time() + 99 * 86400,
+        'second Master Builder task cannot reuse resources reserved by the first'
+    );
+    expect_same(
+        3,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM building_upgrade WHERE kid=$builderVillage"),
+        'valid Master Builder tasks remain queued'
+    );
 } finally {
     $db->rollback();
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
     $db->query("ALTER TABLE artefacts AUTO_INCREMENT=$artefactAutoIncrement");
+    $db->query("ALTER TABLE building_upgrade AUTO_INCREMENT=$buildingUpgradeAutoIncrement");
 }
 
 echo "Runtime regression checks passed.\n";
