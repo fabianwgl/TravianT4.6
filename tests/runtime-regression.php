@@ -197,6 +197,28 @@ $researchAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='research'"
 );
 
+$nestedTransactionKid = 2000000019;
+$db->begin_transaction();
+try {
+    $db->query("INSERT INTO smithy (kid) VALUES ($nestedTransactionKid)");
+    expect_true($db->begin_transaction(), 'nested transaction started');
+    $db->query("UPDATE smithy SET u1=1 WHERE kid=$nestedTransactionKid");
+    expect_true($db->rollback(), 'nested transaction rolled back');
+    expect_same(0, (int)$db->fetchScalar("SELECT u1 FROM smithy WHERE kid=$nestedTransactionKid"), 'savepoint rollback preserves outer transaction');
+
+    expect_true($db->begin_transaction(), 'second nested transaction started');
+    $db->query("UPDATE smithy SET u1=2 WHERE kid=$nestedTransactionKid");
+    expect_true($db->commit(), 'nested transaction committed');
+    expect_same(2, (int)$db->fetchScalar("SELECT u1 FROM smithy WHERE kid=$nestedTransactionKid"), 'savepoint commit preserves nested effect');
+} finally {
+    $db->rollback();
+}
+expect_same(
+    0,
+    (int)$db->fetchScalar("SELECT COUNT(*) FROM smithy WHERE kid=$nestedTransactionKid"),
+    'outer rollback removes nested transaction fixture'
+);
+
 $researchKid = 2000000020;
 $researchTask = 2000000001;
 try {

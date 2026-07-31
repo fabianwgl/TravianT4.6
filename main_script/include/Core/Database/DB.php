@@ -15,6 +15,7 @@ class DB
     private $lastPing;
     private static $_self;
     private $details;
+    private $transactionDepth = 0;
 
     public function setDatabaseDetails($details)
     {
@@ -125,6 +126,7 @@ class DB
     public function real_connect($host = NULL, $username = NULL, $passwd = NULL, $dbname = NULL, $port = NULL, $socket = NULL)
     {
         $this->mysqli = new \mysqli($host, $username, $passwd, $dbname, $port, $socket);
+        $this->transactionDepth = 0;
         $status = $this->mysqli->ping();
         if ($status) {
             $this->set_charset("utf8");
@@ -173,17 +175,70 @@ class DB
 
     public function begin_transaction()
     {
-        return $this->mysqli->begin_transaction();
+        if ($this->transactionDepth === 0) {
+            if (!$this->mysqli->begin_transaction()) {
+                return false;
+            }
+            $this->transactionDepth = 1;
+
+            return true;
+        }
+
+        $savepoint = $this->savepointName($this->transactionDepth);
+        if (!$this->mysqli->query("SAVEPOINT $savepoint")) {
+            return false;
+        }
+        ++$this->transactionDepth;
+
+        return true;
     }
 
     public function commit()
     {
-        return $this->mysqli->commit();
+        if ($this->transactionDepth <= 1) {
+            $committed = $this->mysqli->commit();
+            if ($committed) {
+                $this->transactionDepth = 0;
+            }
+
+            return $committed;
+        }
+
+        $savepoint = $this->savepointName($this->transactionDepth - 1);
+        if (!$this->mysqli->query("RELEASE SAVEPOINT $savepoint")) {
+            return false;
+        }
+        --$this->transactionDepth;
+
+        return true;
     }
 
     public function rollback()
     {
-        return $this->mysqli->rollback();
+        if ($this->transactionDepth <= 1) {
+            $rolledBack = $this->mysqli->rollback();
+            if ($rolledBack) {
+                $this->transactionDepth = 0;
+            }
+
+            return $rolledBack;
+        }
+
+        $savepoint = $this->savepointName($this->transactionDepth - 1);
+        if (!$this->mysqli->query("ROLLBACK TO SAVEPOINT $savepoint")) {
+            return false;
+        }
+        if (!$this->mysqli->query("RELEASE SAVEPOINT $savepoint")) {
+            return false;
+        }
+        --$this->transactionDepth;
+
+        return true;
+    }
+
+    private function savepointName(int $depth): string
+    {
+        return 'openvillage_transaction_' . $depth;
     }
 
     public function next_result()

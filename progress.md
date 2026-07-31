@@ -63,6 +63,8 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   retry, and duplicate-delivery suppression against MariaDB.
 - Documented database invariants and the recovery status of every major
   scheduled-event family before adding constraints.
+- Added and regression-tested nested database transaction savepoints so queued
+  effects can safely call existing transactional game services.
 
 ## Current work
 
