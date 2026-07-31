@@ -96,11 +96,14 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   longer crash `vsprintf` rendering.
 - Normalized nullable database/resource values for PHP 8.3 and corrected the
   activation smoke request to match the confirmation form.
+- Added deterministic golden vectors for resources, construction, training,
+  villages, hero, artifacts, combat, and World Wonder endgame formulas; the
+  suite now runs in every verifier and CI clean install.
 
 ## Current work
 
 - Keep the complete-round regression and full verifier green while adding the
-  remaining deterministic clocks, golden formulas, and static-analysis gates.
+  remaining deterministic clocks and static-analysis gates.
 
 ## TODO
 

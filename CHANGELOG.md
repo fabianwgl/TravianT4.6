@@ -35,6 +35,8 @@
 - Added idempotent delivery keys for activation mail outboxes.
 - Added a disposable accelerated complete-round regression from registration
   through World Wonder level 100 and winner rendering.
+- Added deterministic golden formula vectors for economy, construction,
+  training, villages, heroes, artifacts, combat, and World Wonder endgame.
 
 ### Fixed
 
