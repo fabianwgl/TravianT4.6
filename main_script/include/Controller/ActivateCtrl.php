@@ -35,13 +35,13 @@ class ActivateCtrl extends OutOfGameCtrl
         if ($config->dynamic->maintenance == TRUE) {
             $this->redirect("login.php");
         }
-        $this->token = $token = filter_var(isset($_GET['token']) ? $_GET['token'] : (isset($_SESSION[WebService::fixSessionPrefix('token')]) ? $_SESSION[WebService::fixSessionPrefix('token')] : -1),FILTER_SANITIZE_STRING);
-        if ($token == -1) {
+        $this->token = $token = (string)(isset($_GET['token']) ? $_GET['token'] : ($_SESSION[WebService::fixSessionPrefix('token')] ?? ''));
+        if (preg_match('/^[a-f0-9]{48}$/D', $token) !== 1) {
             $this->redirect("login.php");
         }
         $db = DB::getInstance();
 
-        $stmt = $db->query("SELECT * FROM activation WHERE token='$token'");
+        $stmt = $db->run("SELECT * FROM activation WHERE token=? LIMIT 1", [$token])->get_result();
         $this->activationRow = false;
         if($stmt->num_rows){
             $this->activationRow = $stmt->fetch_assoc();

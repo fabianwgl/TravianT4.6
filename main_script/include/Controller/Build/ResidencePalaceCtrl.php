@@ -7,6 +7,7 @@ use Controller\BuildCtrl;
 use Core\Database\DB;
 use Core\Helper\TimezoneHelper;
 use Core\Session;
+use Core\Security\Password;
 use Core\Village;
 use Game\AllianceBonus\AllianceBonus;
 use Game\Formulas;
@@ -46,7 +47,7 @@ class ResidencePalaceCtrl extends AnyCtrl
                 $view->vars['error'] = '';
                 if (isset($_REQUEST['change_capital']) && !Village::getInstance()->isCapital() && !Village::getInstance()->isWW()) {
                     if (isset($_POST['pw'])) {
-                        if (sha1($_POST['pw']) == $_SESSION[Session::getInstance()->fixSessionPrefix('pw')]) {
+                        if (Password::verify($_POST['pw'], $_SESSION[Session::getInstance()->fixSessionPrefix('pw')])) {
                             $view->vars['showForm'] = FALSE;
                             $villageModel = new VillageModel();
                             $villageModel->changeCapital(Session::getInstance()->getPlayerId(), Session::getInstance()->getKid());

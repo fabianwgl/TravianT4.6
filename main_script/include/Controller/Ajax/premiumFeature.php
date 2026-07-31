@@ -12,6 +12,7 @@ use Core\Database\GlobalDB;
 use Core\Helper\TimezoneHelper;
 use Core\Helper\WebService;
 use Core\Session;
+use Core\Security\Password;
 use Core\Village;
 use Game\Buildings\BuildingAction;
 use Game\ExtraModules;
@@ -179,7 +180,7 @@ class premiumFeature extends AjaxBase
         $def = $globalConfig['staticParameters']['default_payment_location'];
         //package here.
         $data['functionToCall'] = 'renderDialog';
-        $data['options']['dialogOptions']['infoIcon'] = 'http://t4.answers.travian.com/index.php?aid=368#go2answer';
+        $data['options']['dialogOptions']['infoIcon'] = '/docs/index.php?aid=368#go2answer';
         $data['options']['dialogOptions']['saveOnUnload'] = FALSE;
         $data['options']['dialogOptions']['draggable'] = FALSE;
         $data['options']['dialogOptions']['buttonOk'] = FALSE;
@@ -189,7 +190,11 @@ class premiumFeature extends AjaxBase
         while ($row = $result->fetch_assoc()) {
             $locations[$row['id']] = $row;
         }
-        $selectedLocation = isset($_REQUEST['goldProductLocation']) && !empty($_REQUEST['goldProductLocation']) ? (int)$_REQUEST['goldProductLocation'] : isset($_SESSION[Session::getInstance()->fixSessionPrefix('default_payment_location')]) ? $_SESSION[Session::getInstance()->fixSessionPrefix('default_payment_location')] : $def;
+        $selectedLocation = isset($_REQUEST['goldProductLocation']) && !empty($_REQUEST['goldProductLocation'])
+            ? (int)$_REQUEST['goldProductLocation']
+            : (isset($_SESSION[Session::getInstance()->fixSessionPrefix('default_payment_location')])
+                ? $_SESSION[Session::getInstance()->fixSessionPrefix('default_payment_location')]
+                : $def);
         $Found = FALSE;
         foreach ($locations as $location) {
             if ($location['id'] == $selectedLocation) {
@@ -774,11 +779,11 @@ class premiumFeature extends AjaxBase
             return;
         }
         $newName = filter_var($_POST['accountNewName'], FILTER_SANITIZE_STRING);
-        $password = sha1(filter_var($_POST['accountPassword'], FILTER_SANITIZE_STRING));
+        $password = (string)($_POST['accountPassword'] ?? '');
         if (empty($newName) || empty($password)) {
             $this->response['error'] = TRUE;
             $this->response['errorMsg'] = T("Options", "Please enter a new account name and confirmation password");
-        } else if ($password != $_SESSION[Session::getInstance()->fixSessionPrefix('pw')]) {
+        } else if (!Password::verify($password, $_SESSION[Session::getInstance()->fixSessionPrefix('pw')])) {
             $this->response['error'] = TRUE;
             $this->response['errorMsg'] = T("Options", "Confirmation password does not match");
         } else {

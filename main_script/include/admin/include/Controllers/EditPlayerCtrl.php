@@ -103,7 +103,10 @@ class EditPlayerCtrl
                                                   desc2='" . $this->db->mysqli->real_escape_string(filter_var($_POST['desc2'])) . "'
                                                   WHERE id=" . (int)$_REQUEST['uid']);
                         if (isset($_POST['password']) && !empty($_POST['password'])) {
-                            $this->db->query("UPDATE users SET password='" . sha1($_POST['password']) . "' WHERE id=" . (int)$_POST['uid']);
+                            $this->db->run(
+                                "UPDATE users SET password=? WHERE id=?",
+                                [\Core\Security\Password::hash($_POST['password']), (int)$_POST['uid']]
+                            );
                         }
                         $dispatcher = Dispatcher::getInstance();
                         $dispatcher->appendContent("<hr><p class='error center'>Changes made....</p><hr>");

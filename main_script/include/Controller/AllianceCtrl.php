@@ -8,6 +8,7 @@ use Core\Helper\BBCode;
 use Core\Helper\StringChecker;
 use Core\Helper\TimezoneHelper;
 use Core\Helper\WebService;
+use Core\Security\Password;
 use Game\Formulas;
 use Game\Map\Map;
 use Game\NoticeHelper;
@@ -730,9 +731,9 @@ class AllianceCtrl extends GameCtrl
             $view->vars['error'] = '';
             $view->vars['a_user'] = (int)$_POST['a_user'];
             $view->vars['confirmed'] = FALSE;
-            if (isset($_POST['pw']) && sha1($_POST['pw']) != $_SESSION[WebService::fixSessionPrefix('pw')]) {
+            if (isset($_POST['pw']) && !Password::verify($_POST['pw'], $_SESSION[WebService::fixSessionPrefix('pw')])) {
                 $view->vars['error'] = T("Alliance", "wrongPassword");
-            } else if (isset($_POST['pw']) && sha1($_POST['pw']) == $_SESSION[WebService::fixSessionPrefix('pw')]) {
+            } else if (isset($_POST['pw']) && Password::verify($_POST['pw'], $_SESSION[WebService::fixSessionPrefix('pw')])) {
                 //kick it!
                 if ($this->session->getPlayerId() != (int)$_POST['a_user']) {
                     $name = $db->fetchScalar("SELECT name FROM users WHERE aid={$this->selectedAllianceID} AND id=" . (int)$_POST['a_user']);
@@ -791,4 +792,4 @@ class AllianceCtrl extends GameCtrl
         $view->vars['newlyJoined'] = time() - $this->session->getAllianceJoinTime() <= $max;
         $this->view->vars['content'] .= $view->output();
     }
-} 
+}

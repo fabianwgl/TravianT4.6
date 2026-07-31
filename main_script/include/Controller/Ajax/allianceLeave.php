@@ -4,6 +4,7 @@ namespace Controller\Ajax;
 
 use Core\Config;
 use Core\Session;
+use Core\Security\Password;
 use Model\AllianceModel;
 use resources\View\PHPBatchView;
 
@@ -32,7 +33,7 @@ class allianceLeave extends AjaxBase
                     $this->response['data']['html'] = $view->output();
                 } else if ($_REQUEST['action'] == 'leave') {
                     if (isset($_REQUEST['pass'])) {
-                        if (sha1($_REQUEST['pass']) == $_SESSION[Session::getInstance()->fixSessionPrefix('pw')]) {
+                        if (Password::verify($_REQUEST['pass'], $_SESSION[Session::getInstance()->fixSessionPrefix('pw')])) {
                             $m = new AllianceModel();
                             $m->leaveAlliance(Session::getInstance()->getPlayerId(), Session::getInstance()->getAllianceId());
                             $this->response['reload'] = true;

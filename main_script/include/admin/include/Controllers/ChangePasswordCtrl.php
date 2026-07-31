@@ -5,6 +5,7 @@ use Core\Database\DB;
 use Core\Database\GlobalDB;
 use Core\Helper\Notification;
 use Core\Helper\WebService;
+use Core\Security\Password;
 
 class ChangePasswordCtrl
 {
@@ -12,18 +13,17 @@ class ChangePasswordCtrl
     {
         $params = ['new_password' => '', 'error' => null];
         if (WebService::isPost()) {
-            $params['new_password'] = substr(md5(crypt(time())), 0, 16);
+            $params['new_password'] = rtrim(strtr(base64_encode(random_bytes(18)), '+/', '-_'), '=');
             if (empty($params['new_password'])) {
                 $params['error'] = 'fill the form';
             } else {
                 $params['error'] = 'Your new password is: "'.$params['new_password'].'".';
-                Notification::RealTimeNotify("Password change", "Your new administrator password is: " . $params['new_password']);
-                $loginToken = GlobalDB::getInstance()->fetchScalar("SELECT loginToken FROM paymentConfig");
-                $loginLink = Config::getProperty("settings", "gameWorldUrl").'login.php?action=multiLogin&hash='.sha1(sha1($params['new_password'])).'&token=' . $loginToken;
-                Notification::RealTimeNotify("Password change", "Your new administrator login link is: " . $loginLink);
                 AdminLog::getInstance()->addLog("Changed password!");
                 $db = DB::getInstance();
-                $db->query("UPDATE users SET password='" . sha1($params['new_password']) . "' WHERE (id='{$_SESSION[WebService::fixSessionPrefix('uid')]}' OR id <= 2)");
+                $passwordHash = Password::hash($params['new_password']);
+                $uid = (int)$_SESSION[WebService::fixSessionPrefix('uid')];
+                $db->run("UPDATE users SET password=? WHERE id=?", [$passwordHash, $uid]);
+                $_SESSION[WebService::fixSessionPrefix('pw')] = $passwordHash;
             }
         }
         $dispatcher = Dispatcher::getInstance();

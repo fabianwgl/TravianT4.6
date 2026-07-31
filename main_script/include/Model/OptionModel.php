@@ -5,6 +5,7 @@ use Core\Config;
 use Core\Database\DB;
 use Core\Database\GlobalDB;
 use Core\Helper\Mailer;
+use Core\Security\Password;
 use function miliseconds;
 use function strtolower;
 
@@ -204,9 +205,10 @@ class OptionModel
     public function changePassword($uid, $newPass)
     {
         $db = DB::getInstance();
-        $newPass = sha1($newPass);
+        $newPass = Password::hash($newPass);
         $uid = (int) $uid;
-        $db->query("UPDATE users SET password='$newPass' WHERE id=$uid");
+        $db->run("UPDATE users SET password=? WHERE id=?", [$newPass, $uid]);
+        return $newPass;
     }
 
     public function isDeletion($uid)

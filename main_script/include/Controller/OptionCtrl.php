@@ -8,9 +8,9 @@ use Core\Database\GlobalDB;
 use Core\Helper\TimezoneHelper;
 use Core\Helper\WebService;
 use Core\Session;
+use Core\Security\Password;
 use Game\Formulas;
 use Core\Locale;
-use function get_gpack_version;
 use Model\InfoBoxModel;
 use Model\OptionModel;
 use resources\View\GameView;
@@ -55,12 +55,6 @@ class OptionCtrl extends GameCtrl
             $this->Game();
         } else if ($selectedTab == 2) {
             $this->Account();
-            if (isset($_POST['gpackNew'])) {
-                if (trim($_POST['gpackNew']) != get_gpack_version()) {
-                    set_gpack_version(trim($_POST['gpackNew']));
-                    $this->redirect("options.php?s=2");
-                }
-            }
         } else if ($selectedTab == 3) {
             $this->Sitter();
         } else if ($selectedTab == 4 && Config::getProperty("game", "vacationDays") > 0) {
@@ -182,7 +176,7 @@ class OptionCtrl extends GameCtrl
                     if (empty($newName) || empty($_POST['account_rename_password_confirmation'])) {
                         $view->vars['error'] = T("Options",
                             "Please enter a new account name and confirmation password");
-                    } else if (sha1($_POST['account_rename_password_confirmation']) != $_SESSION[WebService::fixSessionPrefix('pw')]) {
+                    } else if (!Password::verify($_POST['account_rename_password_confirmation'], $_SESSION[WebService::fixSessionPrefix('pw')])) {
                         $view->vars['error'] = T("Options", "Confirmation password does not match");
                     } else {
                         $error = $m->doesNameMeetRequirements(Session::getInstance()->getName(), $newName);
@@ -239,17 +233,18 @@ class OptionCtrl extends GameCtrl
                 }
             }
             if (isset($_POST['pw1']) && isset($_POST['pw2']) && isset($_POST['pw3']) && !empty($_POST['pw1']) && !empty($_POST['pw2']) && !empty($_POST['pw3'])) {
-                if (sha1($_POST['pw1']) != $_SESSION[WebService::fixSessionPrefix('pw')]) {
+                if (!Password::verify($_POST['pw1'], $_SESSION[WebService::fixSessionPrefix('pw')])) {
                     $view->vars['error'] = T("Options", "password wrong");
                 } else if ($_POST['pw2'] != $_POST['pw3']) {
                     $view->vars['error'] = T("Options", "Confirmation password does not match");
                 } else {
-                    $m->changePassword(Session::getInstance()->getPlayerId(), $_POST['pw2']);
+                    $_SESSION[WebService::fixSessionPrefix('pw')] =
+                        $m->changePassword(Session::getInstance()->getPlayerId(), $_POST['pw2']);
                 }
             }
             if (isset($_POST['del_pw']) && isset($_POST['del']) && !empty($_POST['del_pw']) && $_POST['del'] == 1) {
                 if (!$m->getLatestPayment(Session::getInstance()->getPlayerId())) {
-                    if (sha1($_POST['del_pw']) != $_SESSION[WebService::fixSessionPrefix('pw')]) {
+                    if (!Password::verify($_POST['del_pw'], $_SESSION[WebService::fixSessionPrefix('pw')])) {
                         $view->vars['error'] = T("Options", "password wrong");
                     } else if (!$m->isDeletion(Session::getInstance()->getPlayerId())) {
                         if (Session::getInstance()->isInVacationMode()) {
@@ -409,4 +404,4 @@ class OptionCtrl extends GameCtrl
         $view->vars['vacationDays'] = max(1, ceil((Session::getInstance()->getVacationTil() - time()) / 86400));
         $this->view->vars['content'] .= $view->output();
     }
-} 
+}

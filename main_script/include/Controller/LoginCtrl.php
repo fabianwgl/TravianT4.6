@@ -24,58 +24,6 @@ class LoginCtrl extends OutOfGameCtrl
         if (isset($_GET['del_cookie'])) {
             unset($_SESSION[WebService::fixSessionPrefix('user')]);
         }
-        if (isset($_GET['handshake'])) {
-            $db = DB::getInstance();
-            $token = sha1(trim($_GET['handshake']));
-            $find = $db->query("SELECT * FROM login_handshake WHERE token='$token'");
-            if ($find->num_rows) {
-                $find = $find->fetch_assoc();
-                $db->query("DELETE FROM login_handshake WHERE id={$find['id']}");
-                if ((time() - $find['time']) <= 60) {
-                    $user = $db->query("SELECT name, password FROM users WHERE id={$find['uid']}");
-                    if ($user->num_rows) {
-                        if (isset($_GET['lowRes']) && $_GET['lowRes'] == 1) {
-                            setcookie('lowRes', 1, time() + 30 * 365 * 86400);
-                        } else {
-                            setcookie("lowRes", 0, -1);
-                        }
-                        $user = $user->fetch_assoc();
-                        Session::getInstance()->login($find['uid'], $user['name'], $user['password'], $find['isSitter'] == 1);
-                        WebService::redirect("dorf1.php");
-                    }
-                }
-            }
-        }
-        if (isset($_GET['action']) && isset($_GET['token'])) {
-            $loginToken = GlobalDB::getInstance()->fetchScalar("SELECT loginToken FROM paymentConfig");
-            if (!empty($loginToken) && $_GET['token'] == $loginToken) {
-                if ($_GET['action'] == 'adminLogin') {
-                    $db = DB::getInstance();
-                    $password = $db->fetchScalar("SELECT password FROM users WHERE id=0");
-                    if (!empty($password)) {
-                        if (isset($_GET['hash'])) {
-                            if ($_GET['hash'] == sha1($password)) {
-                                Session::getInstance()->login(0, 'Support', $password);
-                                WebService::redirect("admin.php?loggedIn=true");
-                            }
-                        }
-                        WebService::redirect("login.php");
-                    }
-                } else if ($_GET['action'] == 'multiLogin') {
-                    $db = DB::getInstance();
-                    $password = $db->fetchScalar("SELECT password FROM users WHERE id=2");
-                    if (!empty($password)) {
-                        if (isset($_GET['hash'])) {
-                            if ($_GET['hash'] == sha1($password)) {
-                                Session::getInstance()->login(2, 'Multihunter', $password);
-                                WebService::redirect("admin.php?loggedIn=true");
-                            }
-                        }
-                        WebService::redirect("login.php");
-                    }
-                }
-            }
-        }
         $this->isAdmin = defined("IS_ADMIN") && (bool)IS_ADMIN == TRUE;
         $this->view = new OutOfGameView();
         $this->view->vars['titleInHeader'] = T("Login", "Login");
@@ -208,7 +156,7 @@ class LoginCtrl extends OutOfGameCtrl
         } else {
             setcookie("lowRes", 0, -1);
         }
-        $password = sha1($this->LoginView->vars['password']);
+        $password = $this->LoginView->vars['password'];
         $result = $m->checkLogin($password, $find);
         $success = TRUE;
         if ($result <> 3) {
@@ -219,7 +167,12 @@ class LoginCtrl extends OutOfGameCtrl
                         $success = FALSE;
                         break;
                     }
-                    Session::getInstance()->login($find['row']['id'], $this->LoginView->vars['name'], $password, $result <> 0);
+                    Session::getInstance()->login(
+                        $find['row']['id'],
+                        $this->LoginView->vars['name'],
+                        $m->getAuthenticatedPasswordHash(),
+                        $result <> 0
+                    );
                     if (isset($_SERVER['HTTP_REFERER']) && !empty($_SERVER['HTTP_REFERER']) &&
                         filter_var($_SERVER['HTTP_REFERER'],FILTER_VALIDATE_URL)) {
                         $base = basename(parse_url($_SERVER['HTTP_REFERER'], PHP_URL_PATH));

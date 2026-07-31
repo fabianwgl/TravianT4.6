@@ -65,7 +65,7 @@ class Session
         }
         $uid = (int)$_SESSION[$this->fixSessionPrefix('uid')];
         $login = new LoginModel();
-        $result = $login->checkUserOrSitterLogin($uid, filter_var($_SESSION[$this->fixSessionPrefix('pw')], FILTER_SANITIZE_STRING));
+        $result = $login->checkUserOrSitterLogin($uid, (string)$_SESSION[$this->fixSessionPrefix('pw')]);
         if ($result <> 1) {
             $this->increaseClicks();
             $this->isLoggedIn = TRUE;
@@ -227,6 +227,7 @@ class Session
 
     public function login($uid, $username, $password, $isSitter = false)
     {
+        session_regenerate_id(true);
         if ($isSitter) {
             $this->db->run("UPDATE users SET last_login_time=? WHERE id=?", [time(), (int)$uid]);
         } else {
@@ -273,47 +274,14 @@ class Session
 
     public function checkForOverDueOnPayment()
     {
-        global $globalConfig;
-        if (
-        !(
-            strpos($globalConfig['staticParameters']['indexUrl'], "turbotra.ir") !== FALSE ||
-            strpos($globalConfig['staticParameters']['indexUrl'], "turbotra.com") !== FALSE
-        )
-        ) {
-            return;
-        }
-        $db = GlobalDB::getInstance();
-        $expireTime = $db->fetchScalar("SELECT expiretime FROM config");
-        if ($expireTime < time()) {
-            $redirectLocation = WebService::getPaymentUrl() . 'verifyOverdue.php?pay=1';
-            WebService::redirect($redirectLocation);
-        }
+        // Legacy hosted-license and payment enforcement is intentionally disabled.
     }
 
 
     public function checkAdminIP($onlyMain = false)
     {
-        global $globalConfig;
-        $this->checkForOverDueOnPayment();
-
+        // Administrator access is controlled by authenticated administrator sessions.
         return true;
-
-        $valid_ips = [
-            '51.68.28.70',
-            '148.251.95.197',
-        ];
-        return in_array(WebService::ipAddress(), $valid_ips);
-        /*$allow_countries = [
-            'ir',
-            'au',
-            'jo',
-        ];
-        if ($onlyMain) {
-            $allow_countries = ['ir'];
-        }
-        return in_array(WebService::ipAddress(),
-                $valid_ips) || in_array(strtolower(@geoip_country_code_by_name(WebService::ipAddress())),
-                $allow_countries);*/
     }
 
     private function checkAdmin()
@@ -415,7 +383,7 @@ class Session
     public function changeChecker()
     {
         if ($this->data['id'] == 0) {
-            $_SESSION[$this->fixSessionPrefix("SESS_KEY")] = sha1(uniqid() . miliseconds() . get_random_string(10));
+            $_SESSION[$this->fixSessionPrefix("SESS_KEY")] = bin2hex(random_bytes(32));
             return;
         }
         Village::getInstance()->changeChecker();
@@ -717,7 +685,7 @@ class Session
 
     public function changeAjaxToken()
     {
-        $_SESSION[$this->fixSessionPrefix('ajaxToken')] = sha1(time() - mt_rand());
+        $_SESSION[$this->fixSessionPrefix('ajaxToken')] = bin2hex(random_bytes(32));
         if ($this->isValid()) {
             $this->data['ajax_token'] = $_SESSION[$this->fixSessionPrefix('ajaxToken')];
             $this->db->run("UPDATE users SET ajax_token=? WHERE id=?", [
