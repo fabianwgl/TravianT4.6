@@ -32,6 +32,10 @@
 - World Wonder Natar attack-level scheduling, two-wave timing, and deterministic
   army fixtures.
 - Grey-area settlements now receive all 14 intended Natar waves.
+- Quest silver now has atomic accounting; village-scoped troop punishment now
+  recalculates crop upkeep for home, trapped, and reinforced armies.
+- Public-truce notices render content, and vacation duration and infobox state
+  remain synchronized on entry and abort.
 - GitHub Actions now installs its verification tools, and repository hygiene
   fails closed when ripgrep is unavailable.
 - Login JavaScript failures and external tracking requests.

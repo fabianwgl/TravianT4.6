@@ -16,6 +16,7 @@ class AuctionModel
 {
     public const FIRST_HORSE_TYPE = 103;
     public const FIRST_HORSE_SILVER = 100;
+    public const BOOKING_CAUSE_QUEST_REWARD = 'quest';
 
     private static $given_user_ids = [];
 
@@ -205,7 +206,50 @@ class AuctionModel
         if (is_array($cause)) {
             $cause = implode(",", $cause);
         }
+        $uid = (int)$uid;
+        $cause = $db->real_escape_string((string)$cause);
+        $reserve = (int)$reserve;
+        $balance = (int)$balance;
+        $time = (int)$time;
         $db->query("INSERT INTO accounting (uid, cause, reserve, balance, time) VALUES ($uid, '$cause', $reserve, $balance, $time)");
+
+        return $db->affectedRows() === 1;
+    }
+
+    public function creditSilver(int $uid, int $silver, string $cause, int $time = 0): bool
+    {
+        if ($uid <= 0 || $silver <= 0 || $cause === '') {
+            return false;
+        }
+
+        $db = DB::getInstance();
+        $db->begin_transaction();
+        try {
+            $currentSilver = $db->fetchScalar("SELECT silver FROM users WHERE id=$uid FOR UPDATE");
+            if ($currentSilver === false) {
+                $db->rollback();
+                return false;
+            }
+
+            $db->query("UPDATE users SET silver=silver+$silver WHERE id=$uid");
+            if ($db->affectedRows() !== 1 || !$this->addBooking(
+                $uid,
+                $cause,
+                $silver,
+                (int)$currentSilver + $silver,
+                $time > 0 ? $time : time()
+            )) {
+                $db->rollback();
+                return false;
+            }
+
+            $db->commit();
+            return true;
+        } catch (\Throwable $e) {
+            $db->rollback();
+            \logError('Unable to credit silver: ' . $e->getMessage());
+            return false;
+        }
     }
 
     public function changePlace($uid, $itemId, $placeId, $newPlaceId)

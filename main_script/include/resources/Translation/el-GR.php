@@ -379,6 +379,7 @@ $Definition['Auction']['showAccounting'] = 'Δείξε τη λογιστική �
 $Definition['Auction']['hideAccounting'] = 'Κρύψε τη λογιστική ασημιού.';
 $Definition['Auction']['noBooking'] = 'Δεν βρέθηκε τίποτα.';
 $Definition['Auction']['Adventure'] = 'Από περιπέτεια';
+$Definition['Auction']['Quest reward'] = 'Ανταμοιβή αποστολής';
 $Definition['Auction']['sell x items of y'] = 'Πώληση %s μονάδων(ας) από %s';
 $Definition['Auction']['buy x items of y'] = 'Αγόρα %s μονάδων(ας) από %s';
 $Definition['Auction']['currentBid'] = 'Τρέχουσα προσφορά';
@@ -4958,6 +4959,7 @@ $Definition['EVerify'] = [
     'LOGIN_BEFORE_GAME_DESCRIPTION_VERIFY' => 'Your account is activated and there is no need to verify your email for now. You can play right after server is started by entering your username and password.',
 ];
 $Definition['Truce'] = [
+    'public_infobox' => 'Δημόσια εκεχειρία ενεργή<br>Έναρξη: %s<br>Λήξη: %s',
     'reasons' => [
         0 => 'Normal',
         1 => 'Christmas',

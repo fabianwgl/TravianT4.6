@@ -372,6 +372,7 @@ $Definition['Auction']['showAccounting'] = 'عرض التفاصيل';
 $Definition['Auction']['hideAccounting'] = 'اخفاء التفاصيل';
 $Definition['Auction']['noBooking'] = 'لا يوجد شيء';
 $Definition['Auction']['Adventure'] = 'مغامرة';
+$Definition['Auction']['Quest reward'] = 'مكافأة المهمة';
 $Definition['Auction']['sell x items of y'] = 'بيع %s وحدة من %s';
 $Definition['Auction']['buy x items of y'] = 'شراء %s بند من %s';
 $Definition['Auction']['currentBid'] = 'السعر الحالي';
@@ -4799,6 +4800,7 @@ $Definition['EVerify'] = [
     'LOGIN_BEFORE_GAME_DESCRIPTION_VERIFY' => 'Your account is activated and there is no need to verify your email for now. You can play right after server is started by entering your username and password.',
 ];
 $Definition['Truce'] = [
+    'public_infobox' => 'الهدنة العامة نشطة<br>البداية: %s<br>النهاية: %s',
     'reasons' => [
         0 => 'Normal',
         1 => 'Christmas',

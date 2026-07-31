@@ -400,6 +400,7 @@ $Definition['Auction']['showAccounting'] = 'Show accounting details.';
 $Definition['Auction']['hideAccounting'] = 'Hide accounting details.';
 $Definition['Auction']['noBooking'] = 'Nothing found.';
 $Definition['Auction']['Adventure'] = 'Adventure';
+$Definition['Auction']['Quest reward'] = 'Quest reward';
 $Definition['Auction']['sell x items of y'] = 'sell %s items of %s';
 $Definition['Auction']['buy x items of y'] = 'buy %s items of %s';
 $Definition['Auction']['currentBid'] = 'Current bid';
@@ -5160,6 +5161,7 @@ $Definition['EVerify'] = [
     'LOGIN_BEFORE_GAME_DESCRIPTION_VERIFY' => 'Your account is activated and there is no need to verify your email for now. You can play right after server is started by entering your username and password.',
 ];
 $Definition['Truce'] = [
+    'public_infobox' => 'Public truce active<br>Start: %s<br>End: %s',
     'reasons' => [
         0 => 'Normal',
         1 => 'Christmas',

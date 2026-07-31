@@ -67,8 +67,10 @@ class VillageModel
             }
         }
         if ($Troops) {
+            $scope = $kid > 0 ? " AND v.kid=$kid" : '';
+            $upkeepVillages = [];
             //Starvation
-            $result = $db->query("SELECT u.* FROM units u, vdata v WHERE u.kid=v.kid AND v.owner={$uid}");
+            $result = $db->query("SELECT u.* FROM units u, vdata v WHERE u.kid=v.kid AND v.owner={$uid}$scope");
             while ($row = $result->fetch_assoc()) {
                 $modify = [];
                 for ($i = 1; $i <= 10; ++$i) {
@@ -76,9 +78,9 @@ class VillageModel
                     $modify[] = "u{$i}=$num";
                 }
                 $db->query("UPDATE units SET " . implode(",", $modify) . " WHERE kid={$row['kid']}");
-                ResourcesHelper::updateVillageResources($row['kid'], FALSE);
+                $upkeepVillages[(int)$row['kid']] = true;
             }
-            $result = $db->query("SELECT e.* FROM enforcement e, vdata v WHERE e.kid=v.kid AND v.owner={$uid}");
+            $result = $db->query("SELECT e.* FROM enforcement e, vdata v WHERE e.kid=v.kid AND v.owner={$uid}$scope");
             while ($row = $result->fetch_assoc()) {
                 $modify = [];
                 $total = $row['u11'];
@@ -92,9 +94,15 @@ class VillageModel
                 } else {
                     $db->query("DELETE FROM enforcement WHERE id={$row['id']}");
                 }
-                //TODO: update upkeep
+                $targetKid = (int)$db->fetchScalar("SELECT did FROM odata WHERE kid={$row['to_kid']}");
+                if ($targetKid <= 0) {
+                    $targetKid = (int)$row['to_kid'];
+                }
+                if ($targetKid > 0) {
+                    $upkeepVillages[$targetKid] = true;
+                }
             }
-            $result = $db->query("SELECT t.* FROM trapped t, vdata v WHERE t.kid=v.kid AND v.owner={$uid}");
+            $result = $db->query("SELECT t.* FROM trapped t, vdata v WHERE t.kid=v.kid AND v.owner={$uid}$scope");
             while ($row = $result->fetch_assoc()) {
                 $modify = [];
                 $total = $row['u11'];
@@ -108,7 +116,11 @@ class VillageModel
                 } else {
                     $db->query("DELETE FROM trapped WHERE id={$row['id']}");
                 }
-                //TODO: update upkeep
+                $upkeepVillages[(int)$row['kid']] = true;
+            }
+            foreach (array_keys($upkeepVillages) as $upkeepKid) {
+                ResourcesHelper::updateVillageResources($upkeepKid, FALSE);
+                ResourcesHelper::updateVillageUpkeep(-1, $upkeepKid);
             }
         }
         if (($punishBuildings + $punishResourcesBuildings) > 0) {

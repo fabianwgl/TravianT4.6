@@ -690,6 +690,8 @@ class HeroAuctionCtrl extends GameCtrl
                 $view->vars['latestBookings'] .= '<td class="cause">';
                 if ($row['cause'] === '1') {
                     $view->vars['latestBookings'] .= T("Auction", "Adventure");
+                } else if ($row['cause'] === AuctionModel::BOOKING_CAUSE_QUEST_REWARD) {
+                    $view->vars['latestBookings'] .= T("Auction", "Quest reward");
                 } else {
                     $cause = explode(",", $row['cause']);
                     $item = $heroItems->getHeroItemProperties($cause[1], $cause[2]);

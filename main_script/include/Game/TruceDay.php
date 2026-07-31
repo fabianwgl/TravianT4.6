@@ -2,6 +2,7 @@
 namespace Game;
 use Core\Config;
 use Core\Database\DB;
+use Core\Helper\TimezoneHelper;
 use Model\InfoBoxModel;
 
 class TruceDay
@@ -22,6 +23,19 @@ class TruceDay
     public static function getTo(){
         $config = Config::getInstance();
         return $config->dynamic->truceTo;
+    }
+    public static function renderPublicNotice(array $row): string
+    {
+        $params = trim((string)($row['params'] ?? ''));
+        if ($params !== '') {
+            return $params;
+        }
+
+        return sprintf(
+            T("Truce", "public_infobox"),
+            TimezoneHelper::autoDate((int)($row['showFrom'] ?? 0), true),
+            TimezoneHelper::autoDate((int)($row['showTo'] ?? 0), true)
+        );
     }
     public static function saveTruce($from, $to, $reasonId){
         $config = Config::getInstance();

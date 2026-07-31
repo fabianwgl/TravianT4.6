@@ -331,7 +331,7 @@ class GameView
                     TimezoneHelper::autoDateString($offer['offerFrom'], true),
                     TimezoneHelper::autoDateString($offer['offer'], true));
             } else if ($row['autoType'] == 2) {
-                //TODO: Public Peace day.
+                $view->vars['content'] .= TruceDay::renderPublicNotice($row);
             } else {
                 $view->vars['content'] .= $row['params'];
             }

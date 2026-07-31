@@ -372,6 +372,7 @@ $Definition['Auction']['showAccounting'] = 'نمایش جزئیات در مور�
 $Definition['Auction']['hideAccounting'] = 'عدم نمایش جزئیات در مورد سکه‌های نقره‌‎ی تراوین رزرو شده در حراجی‌ها.';
 $Definition['Auction']['noBooking'] = 'چیزی یافت نشد.';
 $Definition['Auction']['Adventure'] = 'ماجراجویی';
+$Definition['Auction']['Quest reward'] = 'پاداش مأموریت';
 $Definition['Auction']['sell x items of y'] = 'فروش %s مقدار از %s';
 $Definition['Auction']['buy x items of y'] = 'خرید %s مقدار از %s';
 $Definition['Auction']['currentBid'] = 'پیشنهاد فعلی';
@@ -4745,6 +4746,7 @@ $Definition['EVerify'] = [
     'LOGIN_BEFORE_GAME_DESCRIPTION_VERIFY' => 'اکانت شما فعال شده و فعلا نیازی به تایید ایمیل نمی باشد. بعد از شروع بازی شما بلافاصله می توانید با استفاده از نام کاربری و رمز عبور خود وارد بازی شوید.',
 ];
 $Definition['Truce'] = [
+    'public_infobox' => 'آتش‌بس عمومی فعال است<br>شروع: %s<br>پایان: %s',
     'reasons' => [
         0 => 'معمولی',
         1 => 'کریسمس',

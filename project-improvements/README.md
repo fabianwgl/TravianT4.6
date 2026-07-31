@@ -151,7 +151,7 @@ establish the required remediation scope before a broad engine rewrite.
 - [x] Restore or remove the missing Plus graph backend.
 - [x] Finish first-horse exchange and normal hero horse selling.
 - [x] Correct Master Builder queued-level and projected-resource calculations.
-- [ ] Audit quest silver, punishment upkeep, public-peace notices, and vacation
+- [x] Audit quest silver, punishment upkeep, public-peace notices, and vacation
       notifications.
 - [x] Complete Egyptian and Hun wall, simulator, hero-speed, and manual behavior
       only if those tribes are in the frozen ruleset.

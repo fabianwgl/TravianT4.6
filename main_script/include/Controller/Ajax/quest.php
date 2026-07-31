@@ -83,10 +83,14 @@ class Quest extends AjaxBase
                         break;
                     case 'Battle_08':
                         if ($quest->questBitwiseRewardMatch("battle", 8)) {
-                            //TODO: silver accounting...
-                            $db->query("UPDATE users SET silver=silver+500 WHERE id=" . Session::getInstance()->getPlayerId(),
-                                1);
-                            $quest->setQuestBitwise("battle", 8, 2);
+                            $auction = new AuctionModel();
+                            if ($auction->creditSilver(
+                                $session->getPlayerId(),
+                                500,
+                                AuctionModel::BOOKING_CAUSE_QUEST_REWARD
+                            )) {
+                                $quest->setQuestBitwise("battle", 8, 2);
+                            }
                         }
                         break;
                     case 'Battle_09':

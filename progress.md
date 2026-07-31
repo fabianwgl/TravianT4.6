@@ -51,10 +51,16 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   and a fail-closed hygiene prerequisite, then passed the local verifier.
 - Updated the checkout action to its Node 24 runtime and recorded the exact
   upstream baseline with a read-only drift check and safe import procedure.
+- Added atomic quest-silver accounting and corrected scoped troop-punishment
+  upkeep across home, trapped, and reinforced armies.
+- Restored public-truce content, corrected vacation-day clamping, synchronized
+  vacation infobox state, and covered all four audit areas with regressions.
+- Rebuilt the stack, verified quest accounting and vacation/truce infoboxes in
+  a real browser with zero console errors, and removed every temporary fixture.
 
 ## Current work
 
-- Audit quest silver, punishment upkeep, public-peace, and vacation notifications.
+- Document database invariants and test scheduled task behavior across retries.
 
 ## TODO
 

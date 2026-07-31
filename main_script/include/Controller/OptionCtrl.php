@@ -384,9 +384,8 @@ class OptionCtrl extends GameCtrl
         ];
         $remainingVacationDays = Formulas::maxVacationDays() - Session::getInstance()->getUsedVacationDays();
         if (WebService::isPost() && !Session::getInstance()->isInVacationMode()) {
-            $days = max(max((int)$_POST['days'], $remainingVacationDays), 1);
-            if (array_sum($view->vars['conditions']) == 9 && $remainingVacationDays >= $days) {
-                $m->enterVacationMode(Session::getInstance()->getPlayerId(), $days);
+            $days = OptionModel::vacationDaysToUse((int)$_POST['days'], $remainingVacationDays);
+            if ($days > 0 && array_sum($view->vars['conditions']) == 9 && $m->enterVacationMode(Session::getInstance()->getPlayerId(), $days)) {
                 Session::getInstance()->setVacationTill($days * 86400 + time());
                 Session::getInstance()->setVacationUsedDays(Session::getInstance()->getUsedVacationDays() + $days);
                 $this->showVacationActive();

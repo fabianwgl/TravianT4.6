@@ -8,9 +8,12 @@ use Core\Security\Password;
 use Controller\RallyPoint\Simulator;
 use Game\Buildings\BuildingHelper;
 use Game\Formulas;
+use Game\TruceDay;
 use Model\AuctionModel;
 use Model\MasterBuilder;
 use Model\NatarsModel;
+use Model\OptionModel;
+use Model\VillageModel;
 use Model\WonderOfTheWorldModel;
 
 require '/app/main_script/copyable/include/env.php';
@@ -100,6 +103,22 @@ expect_same(
     MasterBuilder::calculateResourceWait([100, 100, 100, 0], [100, 100, 100, -10], [100, 100, 100, 1]),
     'Master Builder never-ready crop state'
 );
+expect_same(1, OptionModel::vacationDaysToUse(1, 10), 'requested vacation duration');
+expect_same(10, OptionModel::vacationDaysToUse(99, 10), 'vacation duration upper bound');
+expect_same(0, OptionModel::vacationDaysToUse(1, 0), 'no vacation days remaining');
+expect_same(
+    'Configured public truce',
+    TruceDay::renderPublicNotice(['params' => 'Configured public truce']),
+    'configured public-truce notice'
+);
+expect_true(
+    str_contains(TruceDay::renderPublicNotice([
+        'params' => '',
+        'showFrom' => time(),
+        'showTo' => time() + 3600,
+    ]), 'Public truce active'),
+    'generated public-truce notice'
+);
 
 $zeros = array_fill(0, 10, 0);
 $defenders = $zeros;
@@ -162,6 +181,15 @@ $accountingAutoIncrement = (int)$db->fetchScalar(
 );
 $movementAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='movement'"
+);
+$enforcementAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='enforcement'"
+);
+$trappedAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='trapped'"
+);
+$infoBoxAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='infobox'"
 );
 $db->begin_transaction();
 try {
@@ -417,6 +445,23 @@ try {
         (int)$db->fetchScalar("SELECT silver FROM users WHERE id=$horseOwner"),
         'replayed horse exchange cannot duplicate silver'
     );
+    expect_true(
+        $auction->creditSilver($horseOwner, 500, AuctionModel::BOOKING_CAUSE_QUEST_REWARD, time()),
+        'quest silver credited with accounting'
+    );
+    expect_same(
+        625,
+        (int)$db->fetchScalar("SELECT silver FROM users WHERE id=$horseOwner"),
+        'quest silver balance'
+    );
+    expect_same(
+        'quest|500|625',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(cause, '|', reserve, '|', balance)
+             FROM accounting WHERE uid=$horseOwner ORDER BY id DESC LIMIT 1"
+        ),
+        'quest silver accounting entry'
+    );
 } finally {
     $db->query("DELETE FROM accounting WHERE uid=$horseOwner");
     $db->query("DELETE FROM items WHERE uid=$horseOwner OR id IN ($firstHorse, $otherHorse)");
@@ -424,6 +469,130 @@ try {
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
     $db->query("ALTER TABLE items AUTO_INCREMENT=$itemAutoIncrement");
     $db->query("ALTER TABLE accounting AUTO_INCREMENT=$accountingAutoIncrement");
+}
+
+$vacationOwner = 2000000005;
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id=$vacationOwner"),
+        'vacation fixture user ID available'
+    );
+    $db->query("INSERT INTO users (id, uuid, name, password, email, race, kid, desc1, desc2, note)
+        VALUES ($vacationOwner, 'ov-regression-vacation', 'OVTestVacation', 'x', '', 1, 1, '', '', '')");
+
+    $vacation = new OptionModel();
+    $vacationStart = time();
+    expect_true($vacation->enterVacationMode($vacationOwner, 2), 'vacation mode entered');
+    $vacationTill = (int)$db->fetchScalar("SELECT vacationActiveTil FROM users WHERE id=$vacationOwner");
+    expect_true(
+        $vacationTill >= $vacationStart + 2 * 86400 && $vacationTill <= time() + 2 * 86400,
+        'vacation end persisted'
+    );
+    expect_same(
+        "2|$vacationTill",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(vacationUsedDays, '|', vacationActiveTil) FROM users WHERE id=$vacationOwner"
+        ),
+        'vacation duration accounted'
+    );
+    expect_same(
+        "13|$vacationTill",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(type, '|', showTo) FROM infobox WHERE uid=$vacationOwner ORDER BY id DESC LIMIT 1"
+        ),
+        'vacation infobox notification'
+    );
+    expect_true($vacation->abortVacation($vacationOwner), 'vacation mode aborted');
+    expect_same(
+        '0|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(vacationActiveTil, '|', (SELECT COUNT(*) FROM infobox WHERE uid=$vacationOwner AND type=13))
+             FROM users WHERE id=$vacationOwner"
+        ),
+        'vacation notification removed on abort'
+    );
+} finally {
+    $db->query("DELETE FROM infobox WHERE uid=$vacationOwner");
+    $db->query("DELETE FROM users WHERE id=$vacationOwner");
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE infobox AUTO_INCREMENT=$infoBoxAutoIncrement");
+}
+
+$punishedOwner = 2000000006;
+$receiverOwner = 2000000007;
+$punishedVillage = 2000000010;
+$receiverVillage = 2000000011;
+$untouchedVillage = 2000000012;
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id IN ($punishedOwner, $receiverOwner)"),
+        'punishment fixture user IDs available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM vdata WHERE kid IN ($punishedVillage, $receiverVillage, $untouchedVillage)"),
+        'punishment fixture village IDs available'
+    );
+    $db->query("INSERT INTO users (id, uuid, name, password, email, race, kid, desc1, desc2, note) VALUES
+        ($punishedOwner, 'ov-regression-punished', 'OVTestPunished', 'x', '', 1, $punishedVillage, '', '', ''),
+        ($receiverOwner, 'ov-regression-receiver', 'OVTestReceiver', 'x', '', 1, $receiverVillage, '', '', '')");
+    $lastUpdate = miliseconds();
+    $db->query("INSERT INTO vdata
+        (kid, owner, fieldtype, name, capital, pop, cp, wood, clay, iron, woodp, clayp, ironp, maxstore,
+         crop, cropp, maxcrop, upkeep, lastmupdate, created, expandedfrom)
+        VALUES
+        ($punishedVillage, $punishedOwner, 3, 'OV Punished', 1, 0, 0, 0, 0, 0, 0, 0, 0, 1000000, 1000, 1000, 1000000, 120, $lastUpdate, " . time() . ", 0),
+        ($receiverVillage, $receiverOwner, 3, 'OV Receiver', 1, 0, 0, 0, 0, 0, 0, 0, 0, 1000000, 1000, 1000, 1000000, 40, $lastUpdate, " . time() . ", 0),
+        ($untouchedVillage, $punishedOwner, 3, 'OV Untouched', 0, 0, 0, 0, 0, 0, 0, 0, 0, 1000000, 1000, 1000, 1000000, 30, $lastUpdate, " . time() . ", 0)");
+    $db->query("INSERT INTO fdata (kid) VALUES ($punishedVillage), ($receiverVillage), ($untouchedVillage)");
+    $db->query("INSERT INTO units (kid, race, u1) VALUES
+        ($punishedVillage, 1, 100),
+        ($receiverVillage, 1, 0),
+        ($untouchedVillage, 1, 30)");
+    $db->query("INSERT INTO enforcement (uid, kid, to_kid, race, u1)
+        VALUES ($punishedOwner, $punishedVillage, $receiverVillage, 1, 40)");
+    $db->query("INSERT INTO trapped (kid, to_kid, race, u1)
+        VALUES ($punishedVillage, $receiverVillage, 1, 20)");
+
+    expect_true(
+        (new VillageModel())->punishPlayer($punishedOwner, $punishedVillage, 0, 50, 0, 0),
+        'village troop punishment'
+    );
+    expect_same(
+        '50|30|20|10',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT u1 FROM units WHERE kid=$punishedVillage), '|',
+                (SELECT u1 FROM units WHERE kid=$untouchedVillage), '|',
+                (SELECT u1 FROM enforcement WHERE kid=$punishedVillage), '|',
+                (SELECT u1 FROM trapped WHERE kid=$punishedVillage)
+            )"
+        ),
+        'punishment troop scope and reductions'
+    );
+    expect_same(
+        '60|20|30',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT upkeep FROM vdata WHERE kid=$punishedVillage), '|',
+                (SELECT upkeep FROM vdata WHERE kid=$receiverVillage), '|',
+                (SELECT upkeep FROM vdata WHERE kid=$untouchedVillage)
+            )"
+        ),
+        'punishment upkeep recalculation'
+    );
+} finally {
+    $db->query("DELETE FROM enforcement WHERE kid=$punishedVillage OR to_kid=$receiverVillage");
+    $db->query("DELETE FROM trapped WHERE kid=$punishedVillage OR to_kid=$receiverVillage");
+    $db->query("DELETE FROM units WHERE kid IN ($punishedVillage, $receiverVillage, $untouchedVillage)");
+    $db->query("DELETE FROM fdata WHERE kid IN ($punishedVillage, $receiverVillage, $untouchedVillage)");
+    $db->query("DELETE FROM vdata WHERE kid IN ($punishedVillage, $receiverVillage, $untouchedVillage)");
+    $db->query("DELETE FROM users WHERE id IN ($punishedOwner, $receiverOwner)");
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE enforcement AUTO_INCREMENT=$enforcementAutoIncrement");
+    $db->query("ALTER TABLE trapped AUTO_INCREMENT=$trappedAutoIncrement");
 }
 
 echo "Runtime regression checks passed.\n";
