@@ -21,7 +21,7 @@ volumes and operator-created backups retain data independently of containers.
 ## Default processors and network flows
 
 The maintained stack does not enable payments, newsletters, analytics,
-removed-analytics, Telegram, hosted help services, or third-party transactional email.
+Statcounter, Telegram, hosted help services, or third-party transactional email.
 It binds the web port to `127.0.0.1`. Docker image retrieval is an installation
 activity, not an in-game data processor.
 

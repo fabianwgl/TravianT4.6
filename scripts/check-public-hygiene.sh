@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 if rg -n --hidden \
     --glob '!.git/**' \
     --glob '!scripts/check-public-hygiene.sh' \
-    '(/Users/REDACTED (OPENSSH|RSA|EC) PRIVATE KEY|sftp\.json|removed-analytics|openvillage|contributor|redacted@example.invalid)' .; then
+    '(/Users/|BEGIN (OPENSSH|RSA|EC) PRIVATE KEY|sftp\.json|statcounter|molon-lave|chamirhossein|travianarab@yahoo)' .; then
     echo 'Sensitive path, key, or legacy personal metadata found.' >&2
     exit 1
 fi

@@ -12,7 +12,7 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
 - Fixed `/game/` front-controller routing and verified registration → activation → village → login.
 - Fixed PHP 8 authenticated-page failures caused by AJAX token width and empty build queues.
 - Verified village fields, village center, map, building, and profile pages against a real local account.
-- Removed third-party removed-analytics tracking, legacy public links, obsolete footer identity, and the login JavaScript crash.
+- Removed third-party Statcounter tracking, legacy public links, obsolete footer identity, and the login JavaScript crash.
 - Added a local OpenVillage UI identity override and verified it visually with Playwright.
 - Added the MariaDB client required by automated worker backups.
 - Added automated gameplay smoke checks, repository-hygiene checks, CI, and a combined verifier.
