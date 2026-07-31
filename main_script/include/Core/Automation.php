@@ -367,27 +367,46 @@ class Automation
 
     public function referenceCheck()
     {
-        $inviteGold = Config::getProperty("gold", "invitePlayerGold");
-        $refLimit = Config::getAdvancedProperty("refLimit");
-
         $db = DB::getInstance();
-        $result = $db->query("SELECT * FROM player_references WHERE rewardGiven=0 LIMIT 100");
+        $result = $db->query("SELECT id FROM player_references WHERE rewardGiven=0 ORDER BY id ASC LIMIT 100");
         while ($row = $result->fetch_assoc()) {
+            $this->processReferenceTask((int)$row['id']);
+        }
+    }
+
+    public function processReferenceTask(int $taskId): bool
+    {
+        $inviteGold = (int)Config::getProperty("gold", "invitePlayerGold");
+        $refLimit = (int)Config::getAdvancedProperty("refLimit");
+
+        return TransactionalTask::mutate('player_references', $taskId, function (array $row) use ($inviteGold, $refLimit): void {
+            if ((int)$row['rewardGiven'] !== 0) {
+                return;
+            }
+            $db = DB::getInstance();
+            $userIds = array_unique([(int)$row['uid'], (int)$row['ref_uid']]);
+            sort($userIds, SORT_NUMERIC);
+            $lockedUsers = implode(',', $userIds);
+            if ($lockedUsers !== '') {
+                $db->query("SELECT id FROM users WHERE id IN ($lockedUsers) ORDER BY id FOR UPDATE");
+            }
             $totalVillagesCount = $db->fetchScalar("SELECT total_villages FROM users WHERE id={$row['uid']}");
             if (!$totalVillagesCount) {
                 $db->query("DELETE FROM player_references WHERE id={$row['id']}");
-                continue;
+                return;
             }
-            $countTotal = $db->fetchScalar("SELECT COUNT(id) FROM player_references WHERE rewardGiven=1 AND ref_uid={$row['ref_uid']}");
+            $countTotal = $db->fetchScalar(
+                "SELECT COUNT(id) FROM player_references WHERE rewardGiven=1 AND ref_uid={$row['ref_uid']}"
+            );
             if ($countTotal >= $refLimit) {
                 $db->query("UPDATE player_references SET rewardGiven=2 WHERE id={$row['id']}");
-                continue;
+                return;
             }
             if ($totalVillagesCount >= 2) {
                 $db->query("UPDATE player_references SET rewardGiven=1 WHERE id={$row['id']}");
                 $db->query("UPDATE users SET gift_gold=gift_gold+$inviteGold WHERE id={$row['ref_uid']}");
             }
-        }
+        });
     }
 
     public function deleteOasisComplete()

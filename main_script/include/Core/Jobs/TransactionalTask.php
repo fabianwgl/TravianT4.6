@@ -18,6 +18,9 @@ final class TransactionalTask
         'training',
         'alliance_bonus_upgrade_queue',
         'voting_reward_queue',
+        'player_references',
+        'odelete',
+        'traderoutes',
     ];
 
     public static function consume(string $table, int $id, callable $effect): bool

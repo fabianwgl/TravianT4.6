@@ -227,6 +227,9 @@ $banQueueAutoIncrement = (int)$db->fetchScalar(
 $messageAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='mdata'"
 );
+$playerReferenceAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='player_references'"
+);
 
 $nestedTransactionKid = 2000000019;
 $db->begin_transaction();
@@ -604,6 +607,81 @@ try {
     $db->query("ALTER TABLE buyGoldMessages AUTO_INCREMENT=$buyGoldMessageAutoIncrement");
     $db->query("ALTER TABLE banQueue AUTO_INCREMENT=$banQueueAutoIncrement");
     $db->query("ALTER TABLE mdata AUTO_INCREMENT=$messageAutoIncrement");
+}
+
+$referenceOwner = 2000000012;
+$referenceInvitee = 2000000013;
+$referenceTask = 2000000001;
+$referenceCrashTask = 2000000002;
+$inviteGold = (int)Config::getProperty('gold', 'invitePlayerGold');
+$db->begin_transaction();
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id IN ($referenceOwner, $referenceInvitee)"),
+        'referral fixture users available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM player_references WHERE id IN ($referenceTask, $referenceCrashTask)"),
+        'referral fixture tasks available'
+    );
+    $db->query("INSERT INTO users (id, uuid, name, password, email, race, kid, total_villages, desc1, desc2, note)
+        VALUES
+        ($referenceOwner, 'ov-regression-referrer', 'OVReferrer', 'x', '', 1, 1, 1, '', '', ''),
+        ($referenceInvitee, 'ov-regression-invitee', 'OVInvitee', 'x', '', 1, 2, 2, '', '', '')");
+    $db->query("INSERT INTO player_references (id, ref_uid, uid) VALUES
+        ($referenceTask, $referenceOwner, $referenceInvitee),
+        ($referenceCrashTask, $referenceOwner, $referenceInvitee)");
+
+    $automation = Automation::getInstance();
+    expect_true($automation->processReferenceTask($referenceTask), 'referral reward processed');
+    expect_same(
+        "1|$inviteGold",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(rewardGiven, '|', (SELECT gift_gold FROM users WHERE id=$referenceOwner))
+             FROM player_references WHERE id=$referenceTask"
+        ),
+        'referral state and gold grant commit together'
+    );
+    expect_true($automation->processReferenceTask($referenceTask), 'replayed referral delivery ignored safely');
+    expect_same(
+        $inviteGold,
+        (int)$db->fetchScalar("SELECT gift_gold FROM users WHERE id=$referenceOwner"),
+        'replayed referral cannot duplicate gold'
+    );
+
+    try {
+        TransactionalTask::mutate('player_references', $referenceCrashTask, function (array $row) use ($db, $referenceOwner): void {
+            $db->query("UPDATE users SET gift_gold=gift_gold+1 WHERE id=$referenceOwner");
+            throw new RuntimeException('Simulated referral worker crash.');
+        });
+        throw new RuntimeException('Simulated referral worker crash was not propagated.');
+    } catch (RuntimeException $e) {
+        expect_same('Simulated referral worker crash.', $e->getMessage(), 'referral crash propagated');
+    }
+    expect_same(
+        "0|$inviteGold|1",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT rewardGiven FROM player_references WHERE id=$referenceCrashTask), '|',
+                (SELECT gift_gold FROM users WHERE id=$referenceOwner), '|',
+                (SELECT attempts FROM scheduled_task_failures WHERE task_table='player_references' AND task_id=$referenceCrashTask)
+            )"
+        ),
+        'referral crash rolls back effects and preserves task'
+    );
+    expect_true($automation->processReferenceTask($referenceCrashTask), 'referral retry processed');
+    expect_same(
+        $inviteGold * 2,
+        (int)$db->fetchScalar("SELECT gift_gold FROM users WHERE id=$referenceOwner"),
+        'referral retry grants exactly once'
+    );
+} finally {
+    $db->query("DELETE FROM scheduled_task_failures WHERE task_table='player_references' AND task_id IN ($referenceTask, $referenceCrashTask)");
+    $db->rollback();
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE player_references AUTO_INCREMENT=$playerReferenceAutoIncrement");
 }
 
 $db->begin_transaction();

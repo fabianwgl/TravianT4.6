@@ -81,6 +81,8 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   with the new failure-ledger migration and crash/replay regressions.
 - Made voting rewards, purchase messages, and expired-ban processing
   transactional; covered messages, access, infoboxes, and replay in MariaDB.
+- Made referral rewards row-locked and idempotent, including crash rollback,
+  bounded retry, and duplicate-delivery regression coverage.
 
 ## Current work
 

@@ -28,6 +28,7 @@
 - Updated GitHub Actions to the current Node 24 checkout runtime.
 - Added savepoint-backed nested database transactions for atomic worker effects
   that invoke existing transactional services.
+- Added locked, idempotent referral reward processing with crash/retry coverage.
 
 ### Fixed
 
@@ -62,6 +63,8 @@
   tracked child.
 - Voting rewards, purchase messages, and expired bans now commit queue and
   player-facing state atomically and suppress duplicate delivery.
+- Referral rewards now commit referral state and gift gold atomically, with
+  replay-safe processing and recoverable failures.
 - Login JavaScript failures and external tracking requests.
 
 ### Removed
