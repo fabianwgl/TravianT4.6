@@ -110,7 +110,7 @@ $favorText = sprintf(T('villageOverview', 'Select x as favor tab'), T("villageOv
 					"dialog": false,
 					"plusDialog": {
 						"featureKey": "villageStatistics",
-						"infoIcon": "http:\/\/t4.answers.travian.com\/index.php?aid=Travian Answers#go2answer"
+						"infoIcon": "/docs/index.php?aid=Travian Answers#go2answer"
 					},
 					"goldclubDialog": false,
 					"containerId": "",
@@ -156,7 +156,7 @@ $favorText = sprintf(T('villageOverview', 'Select x as favor tab'), T("villageOv
 					"dialog": false,
 					"plusDialog": {
 						"featureKey": "villageStatistics",
-						"infoIcon": "http:\/\/t4.answers.travian.com\/index.php?aid=Travian Answers#go2answer"
+						"infoIcon": "/docs/index.php?aid=Travian Answers#go2answer"
 					},
 					"goldclubDialog": false,
 					"containerId": "",
@@ -202,7 +202,7 @@ $favorText = sprintf(T('villageOverview', 'Select x as favor tab'), T("villageOv
 					"dialog": false,
 					"plusDialog": {
 						"featureKey": "villageStatistics",
-						"infoIcon": "http:\/\/t4.answers.travian.com\/index.php?aid=Travian Answers#go2answer"
+						"infoIcon": "/docs/index.php?aid=Travian Answers#go2answer"
 					},
 					"goldclubDialog": false,
 					"containerId": "",
@@ -248,7 +248,7 @@ $favorText = sprintf(T('villageOverview', 'Select x as favor tab'), T("villageOv
 					"dialog": false,
 					"plusDialog": {
 						"featureKey": "villageStatistics",
-						"infoIcon": "http:\/\/t4.answers.travian.com\/index.php?aid=Travian Answers#go2answer"
+						"infoIcon": "/docs/index.php?aid=Travian Answers#go2answer"
 					},
 					"goldclubDialog": false,
 					"containerId": "",

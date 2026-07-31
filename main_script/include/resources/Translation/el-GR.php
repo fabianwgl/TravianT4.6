@@ -1147,7 +1147,7 @@ $Definition['Global']['Footer']['Links'] = 'Links';
 $Definition['Global']['Footer']['Terms'] = 'Όροι χρήσης';
 $Definition['Global']['Footer']['Imprint'] = 'Στοιχεία Εκδόσεως';
 $Definition['Global']['Footer']['Register'] = 'Εγγραφή';
-$Definition['Global']['SUPPORT_MESSAGE_EXTRA_THINGS'] = '<br /><br />-----<br />ATTENTION: We would like to invite you to help improve our support! <br />It would be great if you can spare a few minutes to fill out a short survey!<br />To the survey: <a target="_blank" href="http://goto.traviangames.com/t-com">http://goto.traviangames.com/t-com</a><br />-----<br /><br />T4 Travian online help: <a target="_blank" href="http://t4.answers.travian.com/">http://t4.answers.travian.com/</a><br />T2.5/T3 Travian online help: <a target="_blank" href="http://t3.answers.travian.com/">http://t3.answers.travian.com/</a><br />Web: <a target="_blank" href="http://www.travian.com/">http://www.travian.com/</a><br />Email: <a href="mailto:admin@' . WebService::getJustDomain() . '">admin@' . WebService::getJustDomain() . '</a><br /><br />--<br />Travian Games GmbH<br />Wilhelm-Wagenfeld-Straße 22<br />80807 München<br />Germany<br /><br /><a target="_blank" href="http://www.traviangames.com">http://www.traviangames.com</a><br /><br />CEO: Lars Janssen<br /><br />Registration court: Munich district court<br />Business license number: HRB 173511<br /><br />Tax ID number: DE 246258085<br />–<br />This email and its attachments are strictly confidential and are intended<br />solely for the attention of the person to whom it is addressed. If you are<br />not the intended recipient of this email, please delete it including its<br />attachments immediately and inform us accordingly.<br />–<br /><br /><br />-----<br /><br /><br />';
+$Definition['Global']['SUPPORT_MESSAGE_EXTRA_THINGS'] = '<br /><br />-----<br />ATTENTION: We would like to invite you to help improve our support! <br />It would be great if you can spare a few minutes to fill out a short survey!<br />To the survey: <a target="_blank" href="/docs/">/docs/</a><br />-----<br /><br />T4 Travian online help: <a target="_blank" href="/docs/">/docs/</a><br />T2.5/T3 Travian online help: <a target="_blank" href="/docs/">/docs/</a><br />Web: <a target="_blank" href="/docs/">/docs/</a><br />Email: <a href="mailto:admin@' . WebService::getJustDomain() . '">admin@' . WebService::getJustDomain() . '</a><br /><br />--<br />Travian Games GmbH<br />Wilhelm-Wagenfeld-Straße 22<br />80807 München<br />Germany<br /><br /><a target="_blank" href="/docs/">/docs/</a><br /><br />CEO: Lars Janssen<br /><br />Registration court: Munich district court<br />Business license number: HRB 173511<br /><br />Tax ID number: DE 246258085<br />–<br />This email and its attachments are strictly confidential and are intended<br />solely for the attention of the person to whom it is addressed. If you are<br />not the intended recipient of this email, please delete it including its<br />attachments immediately and inform us accordingly.<br />–<br /><br /><br />-----<br /><br /><br />';
 $Definition['Global']['SUPPORT_MESSAGE_EXTRA_THINGS_UNIQUE_FINDER'] = 'ATTENTION: We would like to invite you to help improve our support!';
 $Definition['Global']['INVITATION_WITH_PRE_REGISTRATION_CODE_EMAIL_SUBJECT'] = 'New server is coming';
 $Definition['Global']['INVITATION_WITH_PRE_REGISTRATION_CODE_EMAIL'] = '<strong>Hello [EMAIL]</strong>,
@@ -2328,7 +2328,7 @@ $Definition['inGame']['bannedClickPage'] = '
     <li>Περιφρονώντας τους άλλους παίκτες</li>
     <li>Προσπαθώντας να διαβάλει το σύστημα</li>
     <br>
-    <br>Για περισσότερες πληροφορίες επικοινωνήστε <a href="messages.php?t=1&id=4">Multihunter</a> or <a href="messages.php?t=1&id=1">Support</a> ή στείλτε email στο <b>redacted@example.invalid</b>.
+    <br>Για περισσότερες πληροφορίες επικοινωνήστε <a href="messages.php?t=1&id=4">Multihunter</a> or <a href="messages.php?t=1&id=1">Support</a> ή στείλτε email στο <b>in-game support</b>.
     <br>
     <br>Με εκτίμηση, η ομάδα του ΜΟΛΩΝ ΛΑΒΕ</div>
 ';
@@ -3368,7 +3368,7 @@ $Definition['Profile']['WoW'] = 'WoW';
 $Definition['Profile']['Support'] = 'Support';
 $Definition['Profile']['Game rules'] = 'Game rules';
 $Definition['Profile']['To ignore messages from a specific player, go to its profile and click on "Ignore"!'] = 'Για να αγνοήσετε τα μηνύματα ενός παίκτη, πηγαίνετε στο προφίλ του και πατήστε "Αγνόησε"';
-$Definition['Profile']['MultihunterDesc'] = 'The Multihunters are responsible for compliance with the <a href="http://www.travian.com/spielregeln.php" target="_blank">rules of the game</a>. If you have questions about the rules or would like to report violations, you can message the Multihunters.';
+$Definition['Profile']['MultihunterDesc'] = 'The Multihunters are responsible for compliance with the <a href="/terms.html" target="_blank">rules of the game</a>. If you have questions about the rules or would like to report violations, you can message the Multihunters.';
 $Definition['Profile']['Support and Multihunter'] = 'Support and Multihunter';
 $Definition['Profile']['The support consists of experienced players who will gladly answer your questions'] = 'The support consists of experienced players who will gladly answer your questions.';
 $Definition['Profile']['capital'] = 'Πρωτεύουσα';
@@ -4831,7 +4831,7 @@ $Definition['LinkList']['Farms'] = 'Φάρμες';
 $Definition['LinkList']['Go to admin panel'] = 'Go to admin panel';
 $Definition['LinkList']['Contact Support'] = 'Επικοινωνίστε με την τεχνική υποστήριξη';
 
-$Definition['Email']['serverStartEmailSubject'] = 'openvillage new server starts soon';
+$Definition['Email']['serverStartEmailSubject'] = 'OpenVillage new server starts soon';
 $Definition['Email']['serverStartEmail'] = '
 <div style="font-size: 14px;">
 Dear [PLAYERNAME], <br /> The <b><u>[SERVER_NAME]</b></u> game world will be started soon!

@@ -232,31 +232,6 @@ $total_pop = Session::getInstance()->get("total_pop");
             </tbody>
         </table>
     <?php endif; ?>
-        <h4 class="round spacer"><?= T("Options", "Graphic pack"); ?></h4>
-        <table cellpadding="1" cellspacing="1" class="account transparent">
-            <tbody>
-            <tr>
-                <td colspan="2"><?= T("Options", "You can change the way the game looks for you"); ?></td>
-            </tr>
-            <tr>
-                <th>
-                    <?= T("Options", "Graphic pack"); ?>
-                </th>
-                <td>
-                    <select name="gpackNew">
-                        <?php
-                        global $globalConfig;
-                        foreach($globalConfig['staticParameters']['gpacks']['list'] as $key => $value){
-                            echo '<option value="'.$key.'"'.($key == get_gpack_version() ? ' selected="selected"' : '').'>'.$value['name'].' '.($value['isNew'] ? '('.T("Options", "new").')' : "").'</option>';
-                        }
-                        ?>
-                    </select>
-                </td>
-            </tr>
-            </tbody>
-        </table>
-
-
     <h4 class="round spacer"><?=T("Options", "Delete account"); ?></h4>
     <table cellpadding="1" cellspacing="1" id="del_acc"
            class="account transparent">

@@ -20,6 +20,7 @@ use Core\Helper\PreferencesHelper;
 
     <?php endif; ?>
     <link href="<?=get_gpack_link_and_hash("fixes.css", false); ?>?rev13" rel="stylesheet" type="text/css"/>
+    <link href="openvillage.css?rev1" rel="stylesheet" type="text/css"/>
 
     <script type="text/javascript">
         window.ajaxToken = '<?=(isset($vars['ajaxToken']) ? $vars['ajaxToken'] : null);?>';
@@ -28,10 +29,6 @@ use Core\Helper\PreferencesHelper;
     <script type="text/javascript" src="js/default/jquery-3.2.1.min.js"></script>
     <script type="text/javascript" src="js/default/jquery.md5.min.js"></script>
     <script type="text/javascript" src="js/default/jquery.scrollbar.min.js"></script>
-    <script type="text/javascript" src="js/default/d3/d3.min.js"></script>
-    <script type="text/javascript" src="js/default/d3/d3pie.min.js"></script>
-    <script type="text/javascript" src="js/default/gsap/minified/TweenMax.min.js"></script>
-    <script type="text/javascript" src="js/default/gsap/minified/plugins/MorphSVGPlugin.min.js"></script>
     <script type="text/javascript" src="js/Game/General/General.js"></script>
     <script type="text/javascript">
         <?php
@@ -71,13 +68,10 @@ use Core\Helper\PreferencesHelper;
         $buttonTemplate = '<button ><div class="button-container addHoverClick"><div class="button-background"><div class="buttonStart"><div class="buttonEnd"><div class="buttonMiddle"></div></div></div></div><div class="button-content"></div></div></button>';
 
 
-        $eventJamHtml = '<a href="http://t4.answers.travian.ir/index.php?aid=249#go2answer" target="blank" title="پاسخ‌های تراوین"><span class="c0 t">0:00:0</span>?</a>';
-        if (!isset($vars['autoReload']) OR $vars['autoReload'] == 0) {
-            $eventJamHtml = '<a href="javascript:void" onclick="document.location.reload();"><img src="img/refresh.png"></a>';
-        }
+        $eventJamHtml = '<a href="javascript:void" onclick="document.location.reload();"><img src="img/refresh.png" alt="Reload"></a>';
         ?>
-        Travian.applicationId = 'T4.4 Game';
-        Travian.Game.version = '4.4';
+        Travian.applicationId = 'OpenVillage Game';
+        Travian.Game.version = '4.6';
         Travian.Game.worldId = '<?=getWorldId();?>';
         Travian.Game.speed = <?=getGameSpeed();?>;
         Travian.Game.country = '<?=get_language_properties('country'); ?>';
@@ -96,20 +90,4 @@ use Core\Helper\PreferencesHelper;
         };
         Travian.Game.Preferences.initialize(<?=json_encode($preferences);?>);
     </script>
-    <!-- Default removed-analytics code for Molon Lave
-    https://openvillage.net -->
-    <script type="text/javascript">
-        var sc_project=12377439; 
-        var sc_invisible=1; 
-        var sc_security="cd86d596"; 
-    </script>
-    <script type="text/javascript" src="https://www.removed-analytics.com/counter/counter.js" async></script>
-    <noscript>
-        <div class="removed-analytics">
-            <a title="Web Analytics" href="https://removed-analytics.com/" target="_blank">
-                <img class="removed-analytics" src="https://c.removed-analytics.com/12377439/0/cd86d596/1/" alt="Web Analytics">
-            </a>
-        </div>
-    </noscript>
-    <!-- End of removed-analytics Code -->
 </head>

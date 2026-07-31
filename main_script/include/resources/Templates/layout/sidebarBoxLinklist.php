@@ -33,7 +33,7 @@
                                 "id": "<?=$vars['editBlack'];?>",
                                 "redirectUrl": "<?=$vars['plus'] ? "linklist.php" : '';?>",
                                 "redirectUrlExternal": "",
-                                <?=$vars['plus'] ? '' : '"plusDialog":{"featureKey":"linkList","infoIcon":"http:\/\/t4.answers.travian.us\/index.php?aid=Help#go2answer"},';?>"title": "<?=T("links", "Link list");?> || <?=$vars['plus'] ? T("links", "edit link list") : T("links", "Travian Plus allows you to make a link list");?>"
+                                <?=$vars['plus'] ? '' : '"plusDialog":{"featureKey":"linkList","infoIcon":"/docs/index.php?aid=Help#go2answer"},';?>"title": "<?=T("links", "Link list");?> || <?=$vars['plus'] ? T("links", "edit link list") : T("links", "Travian Plus allows you to make a link list");?>"
                             }]);
                         });
                     }

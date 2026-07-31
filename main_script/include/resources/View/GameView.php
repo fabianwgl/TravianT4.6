@@ -681,7 +681,7 @@ class GameView
                 "speechBubble" => "",
                 "plusDialog"   => $allowed ? [] : [
                     "featureKey" => "directLinks",
-                    "infoIcon"   => "http://t4.answers.travian.com/index.php?aid=Travian Answers#go2answer",
+                    "infoIcon"   => "/docs/index.php?aid=Travian Answers#go2answer",
                 ],
                 "redirectUrl"  => Village::getInstance()->hasWorkshop() ? 'build.php?id=' . $data['workshopBuildingFieldId'] : '',
             ];
@@ -717,7 +717,7 @@ class GameView
                 "speechBubble" => "",
                 "plusDialog"   => $allowed ? [] : [
                     "featureKey" => "directLinks",
-                    "infoIcon"   => "http://t4.answers.travian.com/index.php?aid=Travian Answers#go2answer",
+                    "infoIcon"   => "/docs/index.php?aid=Travian Answers#go2answer",
                 ],
                 "redirectUrl"  => Village::getInstance()->hasStable() ? 'build.php?id=' . $data['stableBuildingFieldId'] : '',
             ];
@@ -753,7 +753,7 @@ class GameView
                 "speechBubble" => "",
                 "plusDialog"   => $allowed ? [] : [
                     "featureKey" => "directLinks",
-                    "infoIcon"   => "http://t4.answers.travian.com/index.php?aid=Travian Answers#go2answer",
+                    "infoIcon"   => "/docs/index.php?aid=Travian Answers#go2answer",
                 ],
                 "redirectUrl"  => Village::getInstance()->hasBarracks() ? 'build.php?id=' . $data['barracksBuildingFieldId'] : '',
             ];
@@ -789,7 +789,7 @@ class GameView
                 "speechBubble" => "",
                 "plusDialog"   => $allowed ? [] : [
                     "featureKey" => "directLinks",
-                    "infoIcon"   => "http://t4.answers.travian.com/index.php?aid=Travian Answers#go2answer",
+                    "infoIcon"   => "/docs/index.php?aid=Travian Answers#go2answer",
                 ],
                 "redirectUrl"  => Village::getInstance()->hasMarketPlace() ? 'build.php?id=' . $data['marketplaceBuildingFieldId'] : '',
             ];

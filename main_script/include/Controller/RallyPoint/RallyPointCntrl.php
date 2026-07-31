@@ -111,7 +111,7 @@ class RallyPointCntrl extends AnyCtrl
                 $l['evasionSaveButton'] = getButton(["type" => "submit", "class" => "green",], ["data" => ["type" => "submit", "value" => T("Global", "General.save"), "class" => "green",],], T("Global", "General.save"));
                 if (!$session->hasGoldClub()) {
                     $l['goldClubEvasionDesc'] = T("RallyPoint", "goldClubEvasionDesc");
-                    $l['goldClubButton'] = getButton(["type" => "button", "class" => "gold builder ", "title" => T("RallyPoint", "evasion in capital") . '||' . T("RallyPoint", "needClubToBeActive"),], ["data" => ["type" => "button", "class" => "gold builder ", "value" => T("RallyPoint", "goldclub"), "goldclubDialog" => ["featureKey" => "troopEscape", "infoIcon" => "http://t4.answers.travian.com/index.php?aid=Travian Answers#go2answer",],],], T("RallyPoint", "goldclub"));
+                    $l['goldClubButton'] = getButton(["type" => "button", "class" => "gold builder ", "title" => T("RallyPoint", "evasion in capital") . '||' . T("RallyPoint", "needClubToBeActive"),], ["data" => ["type" => "button", "class" => "gold builder ", "value" => T("RallyPoint", "goldclub"), "goldclubDialog" => ["featureKey" => "troopEscape", "infoIcon" => "/docs/index.php?aid=Travian Answers#go2answer",],],], T("RallyPoint", "goldclub"));
                 }
                 $view = new PHPBatchView('rallypoint/escape');
                 $view->vars = $l;

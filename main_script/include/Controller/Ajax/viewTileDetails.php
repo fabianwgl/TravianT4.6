@@ -208,7 +208,7 @@ class viewTileDetails extends AjaxBase
             } else {
                 $view->vars['options'] .= '<br><div class="option"><span class="a arrow needGoldClub" id="raidListButtonNoGoldClub" title="' . T("map", "for this feature you need the goldclub actived") . '">' . T("map", "Add to farm list") . '</span></div>';
                 $view->vars['options'] .= <<<JSON
-<script type="text/javascript">jQuery(function() { jQuery('#raidListButtonNoGoldClub').click(function () {jQuery(window).trigger('buttonClicked', [event.target, {"goldclubDialog":{"featureKey":"raidList","infoIcon":"http:\/\/t4.answers.travian.com\/index.php?aid=Travian Answers#go2answer"}}]);})});</script>
+<script type="text/javascript">jQuery(function() { jQuery('#raidListButtonNoGoldClub').click(function () {jQuery(window).trigger('buttonClicked', [event.target, {"goldclubDialog":{"featureKey":"raidList","infoIcon":"/docs/index.php?aid=Travian Answers#go2answer"}}]);})});</script>
 JSON;
             }
         } else {
@@ -448,7 +448,7 @@ JSON;
         } else {
             $view->vars['options'] .= '<br><div class="option"><span class="a arrow needGoldClub" id="raidListButtonNoGoldClub" title="' . T("map", "for this feature you need the goldclub actived") . '">' . T("map", "Add to farm list") . '</span></div>';
             $view->vars['options'] .= <<<JSON
-<script type="text/javascript">jQuery(function() { jQuery('#raidListButtonNoGoldClub').addEvent('click',function () {jQuery(window).trigger('buttonClicked', [event.target, {"goldclubDialog":{"featureKey":"raidList","infoIcon":"http:\/\/t4.answers.travian.com\/index.php?aid=Travian Answers#go2answer"}}]);})});</script>
+<script type="text/javascript">jQuery(function() { jQuery('#raidListButtonNoGoldClub').addEvent('click',function () {jQuery(window).trigger('buttonClicked', [event.target, {"goldclubDialog":{"featureKey":"raidList","infoIcon":"/docs/index.php?aid=Travian Answers#go2answer"}}]);})});</script>
 JSON;
         }
         return $other . $view->output();

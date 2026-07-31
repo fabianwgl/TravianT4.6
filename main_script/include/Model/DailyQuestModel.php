@@ -44,7 +44,7 @@ class DailyQuestModel
                     "stepDescription" => NULL,
                 ],
             ],
-            "answersLink" => "http://t4.answers.travian.com/index.php?aid=%%achievementQuests.achQuest_01_answer (en)%%#go2answer",
+            "answersLink" => "/docs/index.php?aid=%%achievementQuests.achQuest_01_answer (en)%%#go2answer",
         ],
         "AchievementQuest_02" => [
             "id"          => "AchievementQuest_02",
@@ -70,7 +70,7 @@ class DailyQuestModel
                     "stepDescription" => NULL,
                 ],
             ],
-            "answersLink" => "http://t4.answers.travian.com/index.php?aid=%%achievementQuests.achQuest_02_answer (en)%%#go2answer",
+            "answersLink" => "/docs/index.php?aid=%%achievementQuests.achQuest_02_answer (en)%%#go2answer",
         ],
         "AchievementQuest_03" => [
             "id"          => "AchievementQuest_03",
@@ -96,7 +96,7 @@ class DailyQuestModel
                     "stepDescription" => NULL,
                 ],
             ],
-            "answersLink" => "http://t4.answers.travian.com/index.php?aid=%%achievementQuests.achQuest_03_answer (en)%%#go2answer",
+            "answersLink" => "/docs/index.php?aid=%%achievementQuests.achQuest_03_answer (en)%%#go2answer",
         ],
         "AchievementQuest_04" => [
             "id"          => "AchievementQuest_04",
@@ -112,7 +112,7 @@ class DailyQuestModel
                     "stepDescription" => NULL,
                 ],
             ],
-            "answersLink" => "http://t4.answers.travian.com/index.php?aid=%%achievementQuests.achQuest_04_answer (en)%%#go2answer",
+            "answersLink" => "/docs/index.php?aid=%%achievementQuests.achQuest_04_answer (en)%%#go2answer",
         ],
         "AchievementQuest_05" => [
             "id"          => "AchievementQuest_05",
@@ -138,7 +138,7 @@ class DailyQuestModel
                     "stepDescription" => NULL,
                 ],
             ],
-            "answersLink" => "http://t4.answers.travian.com/index.php?aid=%%achievementQuests.achQuest_05_answer (en)%%#go2answer",
+            "answersLink" => "/docs/index.php?aid=%%achievementQuests.achQuest_05_answer (en)%%#go2answer",
         ],
         "AchievementQuest_06" => [
             "id"          => "AchievementQuest_06",
@@ -164,7 +164,7 @@ class DailyQuestModel
                     "stepDescription" => NULL,
                 ],
             ],
-            "answersLink" => "http://t4.answers.travian.com/index.php?aid=%%achievementQuests.achQuest_06_answer (en)%%#go2answer",
+            "answersLink" => "/docs/index.php?aid=%%achievementQuests.achQuest_06_answer (en)%%#go2answer",
         ],
         "AchievementQuest_07" => [
             "id"          => "AchievementQuest_07",
@@ -190,7 +190,7 @@ class DailyQuestModel
                     "stepDescription" => NULL,
                 ],
             ],
-            "answersLink" => "http://t4.answers.travian.com/index.php?aid=%%achievementQuests.achQuest_07_answer (en)%%#go2answer",
+            "answersLink" => "/docs/index.php?aid=%%achievementQuests.achQuest_07_answer (en)%%#go2answer",
         ],
         "AchievementQuest_08" => [
             "id"          => "AchievementQuest_08",
@@ -216,7 +216,7 @@ class DailyQuestModel
                     "stepDescription" => NULL,
                 ],
             ],
-            "answersLink" => "http://t4.answers.travian.com/index.php?aid=%%achievementQuests.achQuest_08_answer (en)%%#go2answer",
+            "answersLink" => "/docs/index.php?aid=%%achievementQuests.achQuest_08_answer (en)%%#go2answer",
         ],
         "AchievementQuest_09" => [
             "id"          => "AchievementQuest_09",
@@ -242,7 +242,7 @@ class DailyQuestModel
                     "stepDescription" => NULL,
                 ],
             ],
-            "answersLink" => "http://t4.answers.travian.com/index.php?aid=%%achievementQuests.achQuest_09_answer (en)%%#go2answer",
+            "answersLink" => "/docs/index.php?aid=%%achievementQuests.achQuest_09_answer (en)%%#go2answer",
         ],
         "AchievementQuest_10" => [
             "id"          => "AchievementQuest_10",
@@ -268,7 +268,7 @@ class DailyQuestModel
                     "stepDescription" => NULL,
                 ],
             ],
-            "answersLink" => "http://t4.answers.travian.com/index.php?aid=%%achievementQuests.achQuest_10_answer (en)%%#go2answer",
+            "answersLink" => "/docs/index.php?aid=%%achievementQuests.achQuest_10_answer (en)%%#go2answer",
         ],
         "AchievementQuest_11" => [
             "id"          => "AchievementQuest_11",
@@ -294,7 +294,7 @@ class DailyQuestModel
                     "stepDescription" => NULL,
                 ],
             ],
-            "answersLink" => "http://t4.answers.travian.com/index.php?aid=%%achievementQuests.achQuest_11_answer (en)%%#go2answer",
+            "answersLink" => "/docs/index.php?aid=%%achievementQuests.achQuest_11_answer (en)%%#go2answer",
         ],
     ];
 

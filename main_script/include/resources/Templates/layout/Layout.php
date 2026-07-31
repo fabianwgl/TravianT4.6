@@ -18,8 +18,7 @@ use Core\Helper\TimezoneHelper;
         <img style="filter:chroma();" src="img/x.gif" id="msfilter" alt=""/>
 
         <div id="header">
-            <a id="logo" href="<?=Config::getInstance()->settings->indexUrl; ?>" target="_blank"
-               title="<?=T("Global", "Travian"); ?>"></a>
+            <a id="logo" href="/" title="OpenVillage 4.6"></a>
             <?php
             if ($vars['showNavBar']) {
                 ?>
@@ -149,13 +148,6 @@ use Core\Helper\TimezoneHelper;
                                  alt="<?=T("inGame", "Forum.Forum"); ?>"/>
                         </a>
                     </li>
-                    <?php
-                    /*<li class="chat">
-                        <a target="_blank" href="http://natar.travian.org:8080" title="Chat||Chat in IRC with other players from your server.">
-                            <img src="img/x.gif" alt="Chat" />
-                        </a>
-                    </li>*/
-                    ?>
                     <li class="help">
                         <a href="help.php"
                            title="<?=T("inGame", "Help.Help"); ?>||<?=T("inGame",
@@ -405,32 +397,14 @@ use Core\Helper\TimezoneHelper;
         <div id="footer">
             <!--email_off-->
             <div id="pageLinks">
-                <a href="<?=Config::getInstance()->settings->indexUrl; ?>"
-                   target="_blank"><?=T("Global", "Footer.HomePage"); ?></a>
-                <a href="<?=getForumUrl(); ?>"
-                   target="_blank"><?=T("Global", "Footer.Forum"); ?></a>
-                <a href="<?=Config::getInstance()->settings->indexUrl; ?>links.php"
-                   target="_blank"><?=T("Global", "Footer.Links"); ?></a>
-                <a href="<?=getAnswersUrl(); ?>"
-                   target="_blank"><?=T("Global", "Footer.FAQ"); ?></a>
-                <a href="<?=Config::getInstance()->settings->indexUrl; ?>agb.php"
-                   target="_blank"><?=T("Global", "Footer.Terms"); ?></a>
-                <a href="<?=Config::getInstance()->settings->indexUrl; ?>impressum.php"
-                   target="_blank"><?=T("Global", "Footer.Imprint"); ?></a>
+                <a href="/">Home</a>
+                <a href="/docs/">Rules and operations</a>
+                <a href="/terms.html">Terms</a>
+                <a href="/privacy.html">Privacy</a>
                 <div class="clear"></div>
             </div>
             <br/>
-            <p class="copyright" style="direction:ltr;">© 2011 - <?=date("Y"); ?> Travian Games GmbH</p>
-            <?php if (getDisplay("showCopyright")): ?>
-                <p class="copyright" style="direction:ltr;">
-                    Developed By <a style="font-weight: bold; color: orange;" href="mailto:redacted@example.invalid">Amirhossein</a>.
-                </p>
-                <div id="pageLinks">
-                    <a href="/credits.php"><?=empty(T("Global", "Footer.Credits")) ? 'Credits' : T("Global",
-                            "Footer.Credits"); ?></a>
-                    <div class="clear"></div>
-                </div>
-            <?php endif; ?>
+            <p class="copyright" style="direction:ltr;">OpenVillage preservation project · Not affiliated with Travian Games.</p>
             <!--/email_off-->
             <br/>
         </div>

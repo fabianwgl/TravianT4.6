@@ -357,7 +357,7 @@ class SpielerCtrl extends GameCtrl
             }
             $title = htmlspecialchars('<span class="gloriatitle">' . T("Profile",
                     "mySpeicalMTitle.$type") . '</span><div class="gloriacontent">' . $title . '</div>');
-            $HTML .= '<img class="' . (getDisplay("useYooreshMedals") ? '' : 'medalGloria') . '" src="//gpack.' . WebService::getJustDomain() . '/gloria/' . $img[$type] . '" alt="' . $title . '" title="' . $title . '">&nbsp;&nbsp;';
+            $HTML .= '<img class="' . (getDisplay("useYooreshMedals") ? '' : 'medalGloria') . '" src="' . get_gpack_cdn_base_url() . 'gloria/' . $img[$type] . '" alt="' . $title . '" title="' . $title . '">&nbsp;&nbsp;';
             $title = null;
         }
         if ($count <= 0) {
@@ -473,7 +473,7 @@ class SpielerCtrl extends GameCtrl
                         $view->vars['villages'] .= '<button type="button" id="raidListGoldclub' . (++$kkk) . '" class="icon gold" title="' . T("Reports","Add to farm list||For this feature you need the Gold club activated") . '"><img class="reportButton" ' . $x_style . ' src="' . get_gpack_cdn_mainPage_url() . 'img_'.$direction.'/report/raidList_small.png"></button>';
                         $view->vars['villages'] .= <<<HTML
 <script type="text/javascript">
-jQuery(function() { jQuery('#raidListGoldclub{$kkk}').click(function () {jQuery(window).trigger('buttonClicked', [event.target, {"goldclubDialog":{"featureKey":"raidList","infoIcon":"http:\/\/t4.answers.travian.com\/index.php?aid=Travian Answers#go2answer"}}]);})});</script>
+jQuery(function() { jQuery('#raidListGoldclub{$kkk}').click(function () {jQuery(window).trigger('buttonClicked', [event.target, {"goldclubDialog":{"featureKey":"raidList","infoIcon":"/docs/index.php?aid=Travian Answers#go2answer"}}]);})});</script>
 HTML;
 
                     } else {

@@ -1,0 +1,23 @@
+div#header #logo {
+    background-image: none !important;
+    color: #29341f;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    line-height: 38px;
+    text-align: center;
+    text-decoration: none;
+}
+
+div#header #logo::before {
+    content: "OPENVILLAGE";
+}
+
+.activate div#header #logo,
+.login div#header #logo,
+.logout div#header #logo {
+    font-size: 24px;
+    line-height: 60px;
+    text-align: left;
+}

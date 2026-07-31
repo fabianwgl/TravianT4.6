@@ -227,7 +227,7 @@ class GoldHelper
                             'data'              => [
                                 'cmd'      => 'finishNowPopup',
                                 'context'  => 'finishNow',
-                                'infoIcon' => 'http://t4.answers.travian.com/index.php?aid=372#go2answer',
+                                'infoIcon' => '/docs/index.php?aid=372#go2answer',
                             ],
                             'preventFormSubmit' => true,
                         ],
@@ -636,7 +636,7 @@ class GoldHelper
                             'cmd'        => 'demolishNowPopup',
                             'additional' => ['gidCallback' => 'getGid'],
                             'context'    => 'demolishNow',
-                            'infoIcon'   => 'http:\/\/t4.answers.travian.com\/index.php?aid=%%answers.demolishNow (en)%%#go2answer',
+                            'infoIcon'   => '/docs/index.php?aid=%%answers.demolishNow (en)%%#go2answer',
                         ],
                         'preventFormSubmit' => true,
                     ],

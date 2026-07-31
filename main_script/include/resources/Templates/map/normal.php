@@ -140,7 +140,7 @@
                         jQuery(window).trigger("buttonClicked", [this, {
                             "plusDialog": {
                                 "featureKey": "fullScreen",
-                                "infoIcon": "http:\/\/t4.answers.travian.com\/index.php?aid=Travian Answers#go2answer"
+                                "infoIcon": "/docs/index.php?aid=Travian Answers#go2answer"
                             }
                         }]);
                     })
@@ -154,7 +154,7 @@
                         jQuery(window).trigger("buttonClicked", [this, {
                             "goldclubDialog": {
                                 "featureKey": "cropFinder",
-                                "infoIcon": "http:\/\/t4.answers.travian.com\/index.php?aid=Travian Answers#go2answer"
+                                "infoIcon": "/docs/index.php?aid=Travian Answers#go2answer"
                             }
                         }]);
                     })
