@@ -28,11 +28,19 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   ownership with unsigned player IDs.
 - Verified the rebuilt stack, a disposable empty-volume install, and the final
   browser render after canonical graphic-pack pruning.
+- Corrected Master Builder target levels, net crop timing, resource reservation,
+  and due-task rescheduling; added deterministic queue regressions.
+- Restored authenticated AJAX by sending the canonical page token, replaced
+  dynamic response execution with a structured dialog command, and made legacy
+  timers and dialog positioning compatible with the runtime CSP.
+- Verified the rebuilt authenticated quest/building flow with zero browser
+  errors, then passed the full verifier and a disposable empty-volume install.
 
 ## Current work
 
-- Reconcile the roadmap and release evidence with the final verified state.
+- Create responsibility-scoped commits and rebuild the sanitized publish history.
 
 ## TODO
 
-- Create and push atomic commits grouped by responsibility.
+- Publish the sanitized history after explicit approval of the required public
+  `main` history rewrite.
