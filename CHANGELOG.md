@@ -19,6 +19,7 @@
 - Updated the application for PHP 8.3 and current MariaDB/Redis runtimes.
 - Replaced hosted help/statistics/logout integrations with local behavior.
 - Frozen the tested profile to Romans, Teutons, and Gauls on a 10× local world.
+- Updated GitHub Actions to the current Node 24 checkout runtime.
 
 ### Fixed
 
