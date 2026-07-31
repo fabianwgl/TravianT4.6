@@ -390,13 +390,7 @@ class Quest extends AjaxBase
         $quest = \Model\Quest::getInstance();
         if (!$quest->isTutorial()) {
             setcookie("questTutorialId", '', -1);
-            $this->response['javascript'] = <<<JS
-            var c = Travian.WindowManager.getWindows();
-            var d =(c.length) ? c[c.length-1]:null;
-            if(c.length>0&&!!d){
-                c[c.length-1].close()
-            }
-JS;
+            $this->response['closeTopDialog'] = true;
             return;
         }
         $current = explode('-', $quest->getTutorial());
