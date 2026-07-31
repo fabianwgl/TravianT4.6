@@ -71,6 +71,8 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   upkeep, bonus, retry, and duplicate-delivery state with database regressions.
 - Made merchant-send processing transactional and verified resource and route
   state against duplicate delivery.
+- Made movement completion transactional and verified returning troop arrivals
+  against duplicate delivery.
 
 ## Current work
 

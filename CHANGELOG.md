@@ -53,6 +53,8 @@
   troops/upkeep or bonus effects, and duplicate-delivery suppression.
 - Merchant sends now commit queue consumption, resource movement, and the next
   route in one transaction and ignore duplicate delivery.
+- Movement completion now commits battles, arrivals, or returns with event
+  consumption under one row lock; return-arrival replay is regression-tested.
 - Login JavaScript failures and external tracking requests.
 
 ### Removed

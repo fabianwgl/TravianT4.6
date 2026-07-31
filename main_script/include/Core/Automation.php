@@ -124,29 +124,32 @@ class Automation
     public function attackMovementComplete()
     {
         $db = DB::getInstance();
-        $movements = $db->query("SELECT * FROM movement WHERE mode=0 AND end_time <= " . miliseconds() . " ORDER BY end_time ASC, id ASC LIMIT 250");
+        $movements = $db->query("SELECT id FROM movement WHERE mode=0 AND end_time <= " . miliseconds() . " ORDER BY end_time ASC, id ASC LIMIT 250");
         $this->processMovementComplete($movements);
     }
 
     public function otherMovementComplete()
     {
         $db = DB::getInstance();
-        $movements = $db->query("SELECT * FROM movement WHERE mode=1 AND end_time <= " . miliseconds() . " ORDER BY end_time ASC, id ASC LIMIT 250");
+        $movements = $db->query("SELECT id FROM movement WHERE mode=1 AND end_time <= " . miliseconds() . " ORDER BY end_time ASC, id ASC LIMIT 250");
         $this->processMovementComplete($movements);
     }
 
     public function processMovementComplete(\mysqli_result $movements)
     {
-        $db = DB::getInstance();
         mt_srand(make_seed());
         while ($row = $movements->fetch_assoc()) {
-            $db->query("DELETE FROM movement WHERE id={$row['id']}");
-            if (!$db->affectedRows()) {
-                continue;
-            }
+            $this->processMovementTask((int)$row['id']);
+        }
+    }
+
+    public function processMovementTask(int $taskId): bool
+    {
+        return TransactionalTask::consume('movement', $taskId, function (array $row): void {
             if ($row['mode'] == 1) {
                 new ReturnProcessor($row);
-                continue;
+
+                return;
             }
             switch ($row['attack_type']) {
                 case MovementsModel::ATTACKTYPE_EVASION:
@@ -167,7 +170,7 @@ class Automation
                     new SettlersProcessor($row);
                     break;
             }
-        }
+        });
     }
 
     public function handleAllianceBonusTasks()

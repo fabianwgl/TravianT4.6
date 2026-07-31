@@ -437,6 +437,60 @@ try {
     $db->query("ALTER TABLE send AUTO_INCREMENT=$sendAutoIncrement");
 }
 
+$returnOwner = 2000000010;
+$returnVillage = 2000000025;
+$returnOrigin = 2000000026;
+$returnTask = 2000000001;
+$db->begin_transaction();
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id=$returnOwner"),
+        'return-movement fixture user ID available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM vdata WHERE kid=$returnVillage"),
+        'return-movement fixture village ID available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM movement WHERE id=$returnTask"),
+        'return-movement fixture task ID available'
+    );
+    $db->query("INSERT INTO users (id, uuid, name, password, email, race, kid, desc1, desc2, note)
+        VALUES ($returnOwner, 'ov-regression-return', 'OVReturn', 'x', '', 1, $returnVillage, '', '', '')");
+    $lastUpdate = miliseconds();
+    $db->query("INSERT INTO vdata
+        (kid, owner, fieldtype, name, capital, pop, cp, wood, clay, iron, woodp, clayp, ironp, maxstore,
+         crop, cropp, maxcrop, upkeep, lastmupdate, created, expandedfrom)
+        VALUES
+        ($returnVillage, $returnOwner, 3, 'OV Return Village', 1, 0, 0,
+         0, 0, 0, 0, 0, 0, 1000000, 0, 0, 1000000, 0, $lastUpdate, " . time() . ", 0)");
+    $db->query("INSERT INTO fdata (kid) VALUES ($returnVillage)");
+    $db->query("INSERT INTO units (kid, race) VALUES ($returnVillage, 1)");
+    $db->query("INSERT INTO movement
+        (id, kid, to_kid, race, u1, mode, attack_type, start_time, end_time, data)
+        VALUES ($returnTask, $returnOrigin, $returnVillage, 1, 5, 1, 3, 0, 0, '')");
+
+    $automation = Automation::getInstance();
+    expect_true($automation->processMovementTask($returnTask), 'return movement processed');
+    expect_same(
+        '0|5',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT((SELECT COUNT(*) FROM movement WHERE id=$returnTask), '|', u1)
+             FROM units WHERE kid=$returnVillage"
+        ),
+        'return movement queue and troop arrival commit together'
+    );
+    expect_same(false, $automation->processMovementTask($returnTask), 'duplicate return movement ignored');
+    expect_same(5, (int)$db->fetchScalar("SELECT u1 FROM units WHERE kid=$returnVillage"), 'return movement troops not duplicated');
+} finally {
+    $db->rollback();
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE movement AUTO_INCREMENT=$movementAutoIncrement");
+}
+
 $db->begin_transaction();
 try {
     $holder = 2000000001;

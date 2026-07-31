@@ -59,7 +59,7 @@ invariant is:
 3. A crash rolls back both the effect and event consumption.
 4. Retrying or redelivering the same event cannot duplicate its effect.
 
-`research`, normal `building_upgrade`, `demolition`, `send`, `training`, and
+`research`, normal `building_upgrade`, `demolition`, `movement`, `send`, `training`, and
 `alliance_bonus_upgrade_queue` satisfy this invariant: `TransactionalTask`
 locks the row and commits its game effect and queue mutation in one MariaDB
 transaction. Master Builder and partial training rows use the same lock and
@@ -71,7 +71,6 @@ must not be described as crash-safe:
 
 | Queue or trigger | Clock | Current risk |
 | --- | --- | --- |
-| `movement` | Unix milliseconds | Row is deleted before battle, arrival, or return effects. |
 | voting, purchase-message, ban, and notification queues | Unix seconds or immediate | Row is deleted before its reward, message, state change, or external notification. |
 | recurring config timestamps and trade routes | Unix seconds | Next-run time can advance before the complete effect. |
 

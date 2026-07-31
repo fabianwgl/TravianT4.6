@@ -9,6 +9,7 @@ final class TransactionalTask
     private const TABLES = [
         'building_upgrade',
         'demolition',
+        'movement',
         'research',
         'send',
         'training',
