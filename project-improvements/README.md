@@ -137,9 +137,9 @@ provisioning performs host-level changes in
       [`DB.php`](../main_script/include/Core/Database/DB.php#L146).
 
 Game scheduled queues now use locked, replay-tested transactions, including the
-cross-database notification outbox. Activation reminder mail still marks the
-global reminder before the external send, so its at-least-once delivery policy
-is the next reliability follow-up.
+cross-database notification outbox. Activation reminder mail queues its outbox
+before marking the reminder; the cross-database progress path is intentionally
+at-least-once and remains a follow-up for delivery-key deduplication.
 
 ### 7. Close confirmed gameplay gaps
 

@@ -92,8 +92,8 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
 
 ## Current work
 
-- Review activation reminder delivery semantics and then run the full verifier
-  and sanitized publication flow.
+- Review activation reminder delivery-key deduplication after the outbox-ordering
+  fix, then keep the full verifier and sanitized publication flow green.
 
 ## TODO
 

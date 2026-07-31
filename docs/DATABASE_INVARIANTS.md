@@ -78,7 +78,7 @@ must not be described as crash-safe:
 
 | Queue or trigger | Clock | Current risk |
 | --- | --- | --- |
-| activation reminder mail | Unix seconds | The global reminder marker is written before the external mail send. |
+| activation reminder mail | Unix seconds | The game-world marker and global mail outbox use separate databases; a crash after outbox insertion can duplicate a reminder. |
 
 Database-only effects should use a row lock and one transaction. External mail
 or notification effects require an outbox with a stable delivery key; a

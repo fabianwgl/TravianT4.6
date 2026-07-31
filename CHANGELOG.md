@@ -74,6 +74,8 @@
   only after a successful dispatch or deliberate no-op.
 - Notification queue rows now retry safely across the game/global databases;
   stable delivery keys suppress duplicate global notices.
+- Activation reminder jobs now queue mail before marking reminders delivered;
+  the cross-database progress reminder remains explicitly at-least-once.
 - Login JavaScript failures and external tracking requests.
 
 ### Removed

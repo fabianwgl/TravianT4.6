@@ -1034,10 +1034,23 @@ class Automation
                         "worldUniqueId") . "  LIMIT 20");
                 $view = new PHPBatchView("mail/activationReminder");
                 while ($row = $result->fetch_assoc()) {
-                    $globalDB->query("UPDATE activation SET reminded=1 WHERE id={$row['id']}");
-                    $view->vars['name'] = $row['name'];
-                    $view->vars['activationCode'] = $row['activationCode'];
-                    Mailer::sendEmail($row['email'], T("Mail", "Email verification reminder"), $view->output());
+                    if (!$globalDB->begin_transaction()) {
+                        throw new \RuntimeException('Unable to begin activation reminder transaction.');
+                    }
+                    try {
+                        $view->vars['name'] = $row['name'];
+                        $view->vars['activationCode'] = $row['activationCode'];
+                        if (Mailer::sendEmail($row['email'], T("Mail", "Email verification reminder"), $view->output()) !== 1) {
+                            throw new \RuntimeException('Unable to queue activation reminder.');
+                        }
+                        $globalDB->query("UPDATE activation SET reminded=1 WHERE id={$row['id']}");
+                        if (!$globalDB->commit()) {
+                            throw new \RuntimeException('Unable to commit activation reminder.');
+                        }
+                    } catch (\Throwable $e) {
+                        $globalDB->rollback();
+                        throw $e;
+                    }
                 }
             }
             $interval = getCustom("activationProgressReminderInterval");
@@ -1045,10 +1058,14 @@ class Automation
                 $result = $db->query("SELECT * FROM activation WHERE time>0 AND reminded=0 AND (" . time() . "-IF(time <= $startTime, $startTime, time) >= $interval) LIMIT 20");
                 $view = new PHPBatchView("mail/activationProgressReminder");
                 while ($row = $result->fetch_assoc()) {
-                    $db->query("UPDATE activation SET reminded=1 WHERE id={$row['id']}");
                     $view->vars['name'] = $row['name'];
                     $view->vars['token'] = $row['token'];
-                    Mailer::sendEmail($row['email'], T("Mail", "Activation progress reminder"), $view->output());
+                    if (Mailer::sendEmail($row['email'], T("Mail", "Activation progress reminder"), $view->output()) !== 1) {
+                        throw new \RuntimeException('Unable to queue activation progress reminder.');
+                    }
+                    if (!$db->query("UPDATE activation SET reminded=1 WHERE id={$row['id']}")) {
+                        throw new \RuntimeException('Unable to mark activation progress reminder.');
+                    }
                 }
             }
         }
