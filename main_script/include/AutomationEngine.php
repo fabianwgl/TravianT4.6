@@ -6,24 +6,22 @@ declare(ticks=1);
 
 use Core\ErrorHandler;
 use Core\Jobs;
+use Core\Jobs\WorkerRegistry;
 
 require(__DIR__ . "/bootstrap.php");
 $automationLogFile = dirname(ERROR_LOG_FILE) . "/automation.log";
-global $PIDs, $loop;
-$PIDs = [];
+global $workerRegistry, $loop;
+$workerRegistry = new WorkerRegistry();
 $loop = TRUE;
 
 function sig_handler($signal)
 {
-    global $PIDs, $loop;
+    global $workerRegistry, $loop;
     $loop = FALSE;
-    foreach ($PIDs as $k => $v) {
-        try {
-            posix_kill($v, SIGTERM);
-            unset($PIDs[$k]);
-        } catch (\Throwable $e) {
-            ErrorHandler::getInstance()->handleExceptions($e);
-        }
+    try {
+        $workerRegistry->signalAll(SIGTERM);
+    } catch (\Throwable $e) {
+        ErrorHandler::getInstance()->handleExceptions($e);
     }
 }
 
@@ -35,4 +33,16 @@ Jobs\Launcher::lunchJobs();
 while ($loop) {
     sleep(1);
     pcntl_signal_dispatch();
+    if (!$loop) {
+        break;
+    }
+    $exitedWorkers = $workerRegistry->reapExited();
+    if ($exitedWorkers) {
+        foreach ($exitedWorkers as $identity => $state) {
+            logError("Automation worker exited unexpectedly: $identity (PID {$state['pid']}).");
+        }
+        $loop = FALSE;
+        $workerRegistry->signalAll(SIGTERM);
+    }
 }
+$workerRegistry->shutdown(15);

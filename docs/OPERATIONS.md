@@ -38,6 +38,11 @@ The worker should remain running and recent logs must not contain PHP fatal
 errors. The health endpoint reports readiness only after MariaDB, Redis, and the
 installed game configuration are available.
 
+Each forked automation worker has a unique logical identity. If any child exits
+unexpectedly, the parent terminates the remaining children and exits so the
+container restart policy can restore the complete worker set. Normal shutdown
+signals every tracked child, waits up to 15 seconds, and then reaps it.
+
 The verifier rejects a running application image whose maintained source does
 not match the checkout. Rebuild with `docker compose up -d --build --wait`
 after changing application or regression-test files.

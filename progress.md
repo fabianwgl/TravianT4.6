@@ -73,6 +73,8 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   state against duplicate delivery.
 - Made movement completion transactional and verified returning troop arrivals
   against duplicate delivery.
+- Added unique automation-worker identities, unexpected-exit detection, and
+  graceful signal/reap shutdown tracking for every forked child.
 
 ## Current work
 

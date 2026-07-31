@@ -6,6 +6,7 @@ use Core\Config;
 use Core\Automation;
 use Core\Database\DB;
 use Core\Jobs\TransactionalTask;
+use Core\Jobs\WorkerRegistry;
 use Core\Security\Password;
 use Controller\RallyPoint\Simulator;
 use Game\Buildings\BuildingHelper;
@@ -93,6 +94,11 @@ expect_true(Password::verify($password, $hash), 'current password verification')
 expect_same(false, Password::verify($password . '-wrong', $hash), 'wrong password rejection');
 expect_true(Password::verify($password, sha1($password)), 'legacy SHA-1 verification');
 expect_true(Password::needsRehash(sha1($password)), 'legacy SHA-1 migration signal');
+
+$workerRegistry = new WorkerRegistry();
+expect_same('movementComplete:1', $workerRegistry->nextIdentity('movementComplete'), 'first worker identity');
+expect_same('movementComplete:2', $workerRegistry->nextIdentity('movementComplete'), 'duplicate job name gets unique worker identity');
+expect_same(0, $workerRegistry->count(), 'worker identity allocation does not register a process');
 
 expect_same(4, MasterBuilder::queuedTargetLevel(2, 1, 0), 'first queued Master Builder target level');
 expect_same(5, MasterBuilder::queuedTargetLevel(2, 1, 1), 'second queued Master Builder target level');

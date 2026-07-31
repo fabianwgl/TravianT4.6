@@ -30,15 +30,20 @@ class Job
         $this->name = $name;
         $this->callback = $callBack;
         if ($daemon) {
-            global $PIDs, $loop;
-            $PIDs[$name] = pcntl_fork();
+            global $workerRegistry, $loop;
+            $identity = $workerRegistry->nextIdentity($name);
+            $pid = pcntl_fork();
+            if ($pid === -1) {
+                throw new \RuntimeException("Unable to fork automation worker $identity.");
+            }
             $loop = TRUE;
-            pcntl_signal(SIGTERM,
-                function ($signal) {
-                    global $prgName, $loop;
-                    $loop = FALSE;
-                });
-            if ($PIDs[$name] === 0) {
+            if ($pid === 0) {
+                $prgName = $identity;
+                pcntl_signal(SIGTERM,
+                    function ($signal) {
+                        global $prgName, $loop;
+                        $loop = FALSE;
+                    });
                 $this->setInterval($interval);
                 $db = DB::getInstance()->forceNewDatabase();
                 $config = Config::getInstance();
@@ -57,7 +62,11 @@ class Job
                         continue;
                     }
                     $exclude = $name == 'postService' && $config->dynamic->postServiceDone == 0;
-                    if ($config->dynamic->finishStatusSet && !$exclude) $loop = false;
+                    if ($config->dynamic->finishStatusSet && !$exclude) {
+                        sleep(5);
+                        pcntl_signal_dispatch();
+                        continue;
+                    }
                     try {
                         if ($config->dynamic->automationState || $exclude) $this->runJob($callBack, TRUE);
                     } catch (\Exception $e) {
@@ -76,6 +85,7 @@ class Job
                 }
                 exit();
             }
+            $workerRegistry->register($identity, $pid);
         } else {
             $this->setInterval($interval);
             return $this;

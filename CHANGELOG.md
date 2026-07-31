@@ -55,6 +55,9 @@
   route in one transaction and ignore duplicate delivery.
 - Movement completion now commits battles, arrivals, or returns with event
   consumption under one row lock; return-arrival replay is regression-tested.
+- Forked automation workers now have unique identities, unexpected child exits
+  fail the parent for container recovery, and shutdown signals and reaps every
+  tracked child.
 - Login JavaScript failures and external tracking requests.
 
 ### Removed

@@ -130,7 +130,7 @@ provisioning performs host-level changes in
 - [ ] Test task and event behavior across crashes and duplicate delivery.
 - [ ] Add atomic task claims, leases, retry limits, and idempotency where tests
       demonstrate gaps.
-- [ ] Give every worker a unique identity and reliable shutdown tracking.
+- [x] Give every worker a unique identity and reliable shutdown tracking.
 - [x] Replace sub-millisecond busy polling with bounded polling or a due-event
       queue.
 - [x] Fix the reversed database connection-age check in
