@@ -105,6 +105,9 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   installer return handling, and other PHPStan-discovered runtime defects.
 - Added a pinned PHPStan level-0 gate to local verification and CI; the full
   maintained `main_script/include` tree now reports no static-analysis errors.
+- Added a release-boundary parity matrix linking the frozen profile to canonical
+  code, fixtures, and executable checks; updated the ruleset and release gates
+  to reflect verified complete-round coverage.
 
 ## Current work
 

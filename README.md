@@ -50,7 +50,8 @@ login, and authenticated gameplay routes.
 
 ## Documentation
 
-- [Ruleset and parity](docs/RULESET.md)
+- [Supported ruleset](docs/RULESET.md)
+- [Ruleset parity matrix](docs/PARITY.md)
 - [Operations](docs/OPERATIONS.md)
 - [Privacy](docs/PRIVACY.md)
 - [Release readiness](docs/RELEASE.md)

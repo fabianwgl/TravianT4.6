@@ -18,6 +18,8 @@
 - An exact upstream baseline, read-only drift check, and guarded import guide
   for the sanitized modernization history.
 - A pinned PHPStan static-analysis gate covering the maintained PHP source tree.
+- A ruleset parity matrix linking supported behavior to canonical code and
+  executable regression evidence.
 
 ### Changed
 

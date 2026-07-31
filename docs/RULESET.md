@@ -57,12 +57,13 @@ wave order.
 
 Registration, activation, village creation, login, village fields, village
 center, map, building, profile, sessions, map-coordinate boundaries, core
-ruleset timers, supported-tribe costs, production/storage formulas, a golden
-combat fixture, password migration, and the level-50 endgame plan gate are
-exercised by maintained checks. Natar attack levels, armies, travel time, wave
-ordering, and grey-area wave count have deterministic database fixtures.
-Conquest, artifact capture, and a complete player-built level-100 World Wonder
-still need deterministic full-round coverage before a 1.0 compatibility claim.
+ruleset timers, supported-tribe costs, production/storage formulas, combat,
+conquest, artifact capture, and the level-50 endgame plan gate are exercised by
+maintained checks. The accelerated complete-round fixture reaches a player-built
+World Wonder level 100 and renders both winner surfaces. Natar attack levels,
+armies, travel time, wave ordering, and grey-area wave count have deterministic
+database fixtures. The full mapping is maintained in the
+[parity matrix](PARITY.md).
 
 The old schema filename `T4.4.sql` is retained as a historical filename only.
 Compatibility is determined by migrations and runtime verification, not by that

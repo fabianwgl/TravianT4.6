@@ -17,15 +17,16 @@ Docker profile. It is not approved for payments or an unattended public server.
   Wonder second-plan semantics;
 - a golden combat fixture and supported-profile resource, unit, and storage
   formulas;
+- deterministic complete-round coverage through a player World Wonder level
+  100, including construction, training, trade, conquest, hero, artifact,
+  Natar, crash/retry, and winner fixtures;
 - isolated clean installation, forward migrations, backup, and restore;
-- PHP and JavaScript syntax, application logs, and public-repository hygiene;
+- PHP and JavaScript syntax, static analysis, application logs, and
+  public-repository hygiene;
 - localhost-only default exposure and disabled payments/hosted integrations.
 
 ## Gates before 1.0
 
-- deterministic complete-round coverage through a player World Wonder level 100;
-- construction, training, conquest, hero, artifact-capture, Natar, and
-  crash/retry fixtures;
 - replacement or qualified review of legacy visual, audio, and translated assets;
 - self-service account export and verified account deletion;
 - public-host deployment controls, observability, load tests, and runbooks;

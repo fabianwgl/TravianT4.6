@@ -68,7 +68,7 @@ third-party material. For example, the bundled
 - [x] Specify tribes, server speeds, map sizes, beginners protection, artifacts,
       building plans, Natar attacks, and World Wonder victory.
 - [x] Decide whether Egyptian and Hun mechanics belong to the initial release.
-- [ ] Create a parity matrix mapping each rule to code, fixtures, and tests.
+- [x] Create a parity matrix mapping each rule to code, fixtures, and tests.
 - [x] Treat the `T4.4.sql` filename as an audit warning, not proof of
       incompatibility.
 
