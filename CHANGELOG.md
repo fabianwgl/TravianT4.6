@@ -37,6 +37,8 @@
   through World Wonder level 100 and winner rendering.
 - Added deterministic golden formula vectors for economy, construction,
   training, villages, heroes, artifacts, combat, and World Wonder endgame.
+- Added process-local deterministic clock/seed controls and ordered disposable
+  map fixtures for repeatable complete-round tests.
 
 ### Fixed
 

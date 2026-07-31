@@ -116,7 +116,8 @@ provisioning performs host-level changes in
 - [x] Build an accelerated end-to-end test:
       register → build → train → trade → attack → settle → conquer → artifacts →
       plans → World Wonder level 100 → winner.
-- [ ] Add deterministic clocks, random seeds, map generation, and fixtures.
+- [x] Add deterministic clocks, random seeds, ordered map generation, and
+      disposable fixtures.
 - [x] Add golden tests for resources, construction, training, combat, conquest,
       hero, artifact, and endgame formulas.
 - [ ] Run linting, static analysis, schema imports, and smoke tests in CI.

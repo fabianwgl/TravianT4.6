@@ -2,11 +2,13 @@
 
 use Core\Caching\Caching;
 use Core\Config;
+use Core\Clock;
 use Core\ErrorHandler;
 use Core\Helper\ReCaptcha;
 use Core\Helper\TimezoneHelper;
 use Core\Helper\WebService;
 use Core\Locale;
+use Core\Random;
 use Core\Session;
 use Model\DailyQuestModel;
 use Model\Quest;
@@ -63,7 +65,7 @@ function shuffle_assoc($list)
 function getGameElapsedSeconds()
 {
     $config = Config::getInstance();
-    return time() - $config->game->start_time;
+    return Clock::now() - $config->game->start_time;
 }
 
 function getGameElapsedMiliSeconds()
@@ -124,7 +126,7 @@ function clean_string_from_white($string)
 
 function make_seed()
 {
-    return unpack('N', random_bytes(4))[1];
+    return Random::seed();
 }
 
 function calculate_dailyquest_bonus($x, $type)
@@ -316,8 +318,8 @@ function multiply_packages($rate, $type = 7)
  */
 function miliseconds($fixed = false)
 {
-    if ($fixed) {
-        return time() * 1000;
+    if ($fixed || Clock::isFrozen()) {
+        return Clock::milliseconds();
     }
     $microtime = microtime();
     $comps = explode(' ', $microtime);
@@ -332,6 +334,10 @@ function getDifMilisecondsToSeconds($miliseconds)
 
 function nanoseconds()
 {
+    if (Clock::isFrozen()) {
+        return Clock::nanoseconds();
+    }
+
     /*if (function_exists('exec')) {
         exec('date +%s%N', $nano);
         return trim($nano[0]);
@@ -560,7 +566,7 @@ function secondsToString($seconds, $isTrainingTime = false)
             return milisecondsToString($seconds);
         }
     }
-    if ($seconds == time()) {
+    if ($seconds == Clock::now()) {
         return TimezoneHelper::date("H:i:s");
     }
     $h = (int)floor($seconds / 3600);

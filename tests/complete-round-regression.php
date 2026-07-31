@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 use Controller\WinnerCtrl;
 use Core\Automation;
+use Core\Clock;
 use Core\Config;
 use Core\Database\DB;
+use Core\Random;
 use Game\Buildings\BuildingHelper;
 use Game\Formulas;
 use Model\ArtefactsModel;
@@ -110,6 +112,7 @@ $autoIncrementTables = [
 ];
 $autoIncrements = [];
 $roundStage = 'initialisation';
+$roundNow = (int)$config->game->start_time + 86400;
 set_exception_handler(static function (Throwable $exception) use (&$roundStage): void {
     fwrite(STDERR, "complete-round stage [$roundStage]: " . $exception->getMessage() . "\n");
     exit(1);
@@ -130,7 +133,12 @@ set_error_handler(static function (int $severity, string $message) use (&$roundS
 });
 
 try {
-    mt_srand(13371337);
+    Clock::freeze($roundNow);
+    Random::freeze(13371337);
+    mt_srand(make_seed());
+    round_expect_same($roundNow, Clock::now(), 'fixture clock is frozen');
+    round_expect_same($roundNow * 1000, miliseconds(true), 'fixture millisecond clock is frozen');
+    round_expect_same(13371337, make_seed(), 'fixture random seed is frozen');
     // Registration normally runs in a web session. Keep the CLI fixture
     // deterministic and let the test's explicit build step cover construction.
     $config->game->firstVillageCreationFieldsLevel = 0;
@@ -183,7 +191,7 @@ try {
     // Build: consume a real scheduled building task.
     $roundStage = 'build';
     $beforeBuildLevel = (int)$db->fetchScalar("SELECT f1 FROM fdata WHERE kid=$baseKid");
-    $db->query("INSERT INTO building_upgrade (kid, building_field, isMaster, start_time, commence) VALUES ($baseKid, 1, 0, " . time() . ", " . time() . ")");
+    $db->query("INSERT INTO building_upgrade (kid, building_field, isMaster, start_time, commence) VALUES ($baseKid, 1, 0, $roundNow, $roundNow)");
     $buildTask = (int)$db->lastInsertId();
     round_expect_true($automation->processBuildingTask($buildTask), 'building task completed');
     round_expect_same($beforeBuildLevel + 1, (int)$db->fetchScalar("SELECT f1 FROM fdata WHERE kid=$baseKid"), 'building level advanced');
@@ -199,7 +207,7 @@ try {
     // Trade: deliver resources and create the merchant return leg.
     $roundStage = 'trade';
     $defenderWoodBefore = (int)$db->fetchScalar("SELECT wood FROM vdata WHERE kid=$defenderKid");
-    $db->query("INSERT INTO send (kid, to_kid, wood, clay, iron, crop, x, mode, end_time) VALUES ($baseKid, $defenderKid, 125, 100, 75, 50, 1, 0, " . (time() - 1) . ")");
+    $db->query("INSERT INTO send (kid, to_kid, wood, clay, iron, crop, x, mode, end_time) VALUES ($baseKid, $defenderKid, 125, 100, 75, 50, 1, 0, " . ($roundNow - 1) . ")");
     $sendTask = (int)$db->lastInsertId();
     round_expect_true((new MarketPlaceProcessor())->processRow(['id' => $sendTask]), 'merchant delivery completed');
     round_expect_same($defenderWoodBefore + 125, (int)$db->fetchScalar("SELECT wood FROM vdata WHERE kid=$defenderKid"), 'trade delivered wood');
@@ -210,7 +218,7 @@ try {
     $attackUnits = array_fill(1, 11, 0);
     $attackUnits[1] = 1000;
     $movement = new MovementsModel();
-    $past = (time() - 10) * 1000;
+    $past = ($roundNow - 10) * 1000;
     $attackId = (int)$movement->addMovement($baseKid, $defenderKid, 1, $attackUnits, 0, 0, 0, 0, 0, MovementsModel::ATTACKTYPE_NORMAL, $past, $past);
     round_expect_true($attackId > 0, 'attack movement queued');
     round_expect_true($automation->processMovementTask($attackId), 'attack movement resolved');
@@ -241,12 +249,12 @@ try {
     $db->query("UPDATE config SET ArtifactsReleased=1, WWPlansReleased=0");
     $config->dynamic->ArtifactsReleased = 1;
     $config->dynamic->WWPlansReleased = 0;
-    $db->query("INSERT INTO artefacts (uid, kid, release_kid, type, size, conquered, num, effecttype, effect, aoe, status, active) VALUES (1, $defenderKid, $defenderKid, 2, 1, " . (time() - 100) . ", 1, 2, 4, 1, 1, 0)");
+    $db->query("INSERT INTO artefacts (uid, kid, release_kid, type, size, conquered, num, effecttype, effect, aoe, status, active) VALUES (1, $defenderKid, $defenderKid, 2, 1, " . ($roundNow - 100) . ", 1, 2, 4, 1, 1, 0)");
     $artifactId = (int)$db->lastInsertId();
     $artifacts = new ArtefactsModel();
     $artifacts->captureArtefact($artifactId, $defenderKid, $actorUid);
     round_expect_same($actorUid, (int)$db->fetchScalar("SELECT uid FROM artefacts WHERE id=$artifactId"), 'artifact captured by actor');
-    $db->query("UPDATE artefacts SET conquered=" . (time() - ArtefactsModel::getArtifactActivationTime() - 1) . " WHERE id=$artifactId");
+    $db->query("UPDATE artefacts SET conquered=" . ($roundNow - ArtefactsModel::getArtifactActivationTime() - 1) . " WHERE id=$artifactId");
     $artifactRow = $db->query("SELECT * FROM artefacts WHERE id=$artifactId")->fetch_assoc();
     $artifacts->activateArtifact($artifactRow);
     round_expect_same(1, (int)$db->fetchScalar("SELECT active FROM artefacts WHERE id=$artifactId"), 'captured artifact activated');
@@ -259,11 +267,11 @@ try {
     $config->custom->wwPlansEnabled = true;
     $config->custom->needAllianceWWPlan = true;
     round_expect_same(2, (new BuildingHelper())->checkArtifactDependencies($allianceId, $actorUid, $wwKid, 40, true, 0), 'WW requires player plan before release');
-    $db->query("INSERT INTO artefacts (uid, kid, release_kid, type, size, conquered, num, effecttype, effect, aoe, status, active) VALUES ($actorUid, $defenderKid, $defenderKid, 12, 1, " . time() . ", 0, 12, 0, 1, 1, 1)");
+    $db->query("INSERT INTO artefacts (uid, kid, release_kid, type, size, conquered, num, effecttype, effect, aoe, status, active) VALUES ($actorUid, $defenderKid, $defenderKid, 12, 1, $roundNow, 0, 12, 0, 1, 1, 1)");
     $playerPlanId = (int)$db->lastInsertId();
     round_expect_same(0, (new BuildingHelper())->checkArtifactDependencies($allianceId, $actorUid, $wwKid, 40, true, 0), 'player plan unlocks WW start');
     round_expect_same(3, (new BuildingHelper())->checkArtifactDependencies($allianceId, $actorUid, $wwKid, 40, true, 50), 'allied plan required after level 50');
-    $db->query("INSERT INTO artefacts (uid, kid, release_kid, type, size, conquered, num, effecttype, effect, aoe, status, active) VALUES ($defenderUid, $defenderKid, $defenderKid, 12, 1, " . time() . ", 0, 12, 0, 1, 1, 1)");
+    $db->query("INSERT INTO artefacts (uid, kid, release_kid, type, size, conquered, num, effecttype, effect, aoe, status, active) VALUES ($defenderUid, $defenderKid, $defenderKid, 12, 1, $roundNow, 0, 12, 0, 1, 1, 1)");
     round_expect_same(0, (new BuildingHelper())->checkArtifactDependencies($allianceId, $actorUid, $wwKid, 40, true, 50), 'allied plan unlocks late WW levels');
     round_expect_true($playerPlanId > 0, 'player plan persisted');
 
@@ -297,6 +305,8 @@ try {
     $config->custom->wwPlansEnabled = $originalWwPlansEnabled;
     $config->custom->needAllianceWWPlan = $originalNeedAlliancePlan;
     $config->game->firstVillageCreationFieldsLevel = $originalFirstVillageFieldsLevel;
+    Clock::reset();
+    Random::reset();
     if ($started) {
         $db->rollback();
     }

@@ -99,11 +99,13 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
 - Added deterministic golden vectors for resources, construction, training,
   villages, hero, artifacts, combat, and World Wonder endgame formulas; the
   suite now runs in every verifier and CI clean install.
+- Added process-local deterministic clock and seed overrides for regression
+  fixtures, with explicit ordered map coordinates and automatic cleanup.
 
 ## Current work
 
 - Keep the complete-round regression and full verifier green while adding the
-  remaining deterministic clocks and static-analysis gates.
+  remaining static-analysis gates.
 
 ## TODO
 
