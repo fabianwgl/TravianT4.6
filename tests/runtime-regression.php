@@ -199,6 +199,15 @@ $infoBoxAutoIncrement = (int)$db->fetchScalar(
 $researchAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='research'"
 );
+$trainingAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='training'"
+);
+$allianceAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='alidata'"
+);
+$allianceBonusQueueAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='alliance_bonus_upgrade_queue'"
+);
 
 $nestedTransactionKid = 2000000019;
 $db->begin_transaction();
@@ -270,6 +279,96 @@ try {
     $db->query("DELETE FROM research WHERE id=$researchTask OR kid=$researchKid");
     $db->query("DELETE FROM smithy WHERE kid=$researchKid");
     $db->query("ALTER TABLE research AUTO_INCREMENT=$researchAutoIncrement");
+}
+
+$scheduledOwner = 2000000008;
+$scheduledVillage = 2000000022;
+$scheduledAlliance = 2000000001;
+$trainingTask = 2000000001;
+$allianceBonusTask = 2000000001;
+$db->begin_transaction();
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id=$scheduledOwner"),
+        'scheduled-task fixture user ID available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM vdata WHERE kid=$scheduledVillage"),
+        'scheduled-task fixture village ID available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM alidata WHERE id=$scheduledAlliance"),
+        'scheduled-task fixture alliance ID available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM training WHERE id=$trainingTask"),
+        'training fixture task ID available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM alliance_bonus_upgrade_queue WHERE id=$allianceBonusTask"),
+        'alliance bonus fixture task ID available'
+    );
+    $db->query("INSERT INTO alidata (id, name, tag) VALUES ($scheduledAlliance, 'OV Scheduled', 'OVS')");
+    $db->query("INSERT INTO users (id, uuid, aid, name, password, email, race, kid, desc1, desc2, note)
+        VALUES ($scheduledOwner, 'ov-regression-scheduled', $scheduledAlliance, 'OVScheduled', 'x', '', 1, $scheduledVillage, '', '', '')");
+    $lastUpdate = miliseconds();
+    $db->query("INSERT INTO vdata
+        (kid, owner, fieldtype, name, capital, pop, cp, wood, clay, iron, woodp, clayp, ironp, maxstore,
+         crop, cropp, maxcrop, upkeep, lastmupdate, created, expandedfrom)
+        VALUES
+        ($scheduledVillage, $scheduledOwner, 3, 'OV Scheduled Village', 1, 0, 0,
+         0, 0, 0, 0, 0, 0, 1000000, 1000, 1000, 1000000, 0, $lastUpdate, " . time() . ", 0)");
+    $db->query("INSERT INTO fdata (kid) VALUES ($scheduledVillage)");
+    $db->query("INSERT INTO units (kid, race) VALUES ($scheduledVillage, 1)");
+    $db->query("INSERT INTO training (id, kid, nr, num, item_id, training_time, commence, end_time)
+        VALUES ($trainingTask, $scheduledVillage, 1, 3, 19, 0, 0, 0)");
+
+    $automation = Automation::getInstance();
+    expect_true($automation->processTrainingTask($trainingTask), 'training task processed');
+    expect_same(
+        '0|3|3',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM training WHERE id=$trainingTask), '|',
+                (SELECT u1 FROM units WHERE kid=$scheduledVillage), '|', upkeep
+            ) FROM vdata WHERE kid=$scheduledVillage"
+        ),
+        'training queue, troops, and upkeep commit together'
+    );
+    expect_same(false, $automation->processTrainingTask($trainingTask), 'duplicate training delivery ignored');
+    expect_same(3, (int)$db->fetchScalar("SELECT u1 FROM units WHERE kid=$scheduledVillage"), 'training effect not duplicated');
+
+    $db->query("INSERT INTO alliance_bonus_upgrade_queue (id, aid, type, time)
+        VALUES ($allianceBonusTask, $scheduledAlliance, 1, 0)");
+    expect_true($automation->processAllianceBonusTask($allianceBonusTask), 'alliance bonus task processed');
+    expect_same(
+        '0|1|1',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM alliance_bonus_upgrade_queue WHERE id=$allianceBonusTask), '|',
+                (SELECT training_bonus_level FROM alidata WHERE id=$scheduledAlliance), '|',
+                pending_training_alliance_bonus_unlock_animation
+            ) FROM users WHERE id=$scheduledOwner"
+        ),
+        'alliance bonus queue and effects commit together'
+    );
+    expect_same(false, $automation->processAllianceBonusTask($allianceBonusTask), 'duplicate alliance bonus delivery ignored');
+    expect_same(
+        1,
+        (int)$db->fetchScalar("SELECT training_bonus_level FROM alidata WHERE id=$scheduledAlliance"),
+        'alliance bonus effect not duplicated'
+    );
+} finally {
+    $db->rollback();
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE training AUTO_INCREMENT=$trainingAutoIncrement");
+    $db->query("ALTER TABLE alidata AUTO_INCREMENT=$allianceAutoIncrement");
+    $db->query("ALTER TABLE alliance_bonus_upgrade_queue AUTO_INCREMENT=$allianceBonusQueueAutoIncrement");
 }
 
 $db->begin_transaction();

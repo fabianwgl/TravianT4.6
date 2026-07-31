@@ -188,9 +188,17 @@ class Automation
         $m = new AllianceBonusModel();
         $stmt = $db->query("SELECT * FROM alliance_bonus_upgrade_queue WHERE time < " . time() . " LIMIT 100");
         while ($row = $stmt->fetch_assoc()) {
-            $db->query("DELETE FROM alliance_bonus_upgrade_queue WHERE id={$row['id']}");
-            $m->levelUpBonus($row['aid'], $row['type']);
+            $this->processAllianceBonusTask((int)$row['id'], $m);
         }
+    }
+
+    public function processAllianceBonusTask(int $taskId, ?AllianceBonusModel $allianceBonus = null): bool
+    {
+        $allianceBonus = $allianceBonus ?? new AllianceBonusModel();
+
+        return TransactionalTask::consume('alliance_bonus_upgrade_queue', $taskId, function (array $row) use ($allianceBonus): void {
+            $allianceBonus->levelUpBonus((int)$row['aid'], (int)$row['type']);
+        });
     }
 
     public function marketComplete()
@@ -234,18 +242,27 @@ class Automation
         $delay = 0;
         $time = getGame("useNanoseconds") ? (nanoseconds() - $delay * 1e9) : (getGame("useMilSeconds") ? (miliseconds() - $delay * 1000) : (time() - $delay));
         $immediate_train = implode(",", [9, 10, 11]);
-        $result = $db->query("SELECT * FROM training WHERE nr IN($immediate_train) AND commence < $time LIMIT 100");
+        $result = $db->query("SELECT id FROM training WHERE nr IN($immediate_train) AND commence < $time LIMIT 100");
         while ($row = $result->fetch_assoc()) {
-            $training->handleTrainingCompleteResult($row);
+            $this->processTrainingTask((int)$row['id'], $training);
         }
         if (getGameSpeed() > 20) {
             $delay = min(max(0, floor(getGameSpeed() / 1000) * 5), 30);
         }
         $time = getGame("useNanoseconds") ? (nanoseconds() - $delay * 1e9) : (getGame("useMilSeconds") ? (miliseconds() - $delay * 1000) : (time() - $delay));
-        $result = $db->query("SELECT * FROM training WHERE nr NOT IN($immediate_train) AND commence < $time LIMIT 100");
+        $result = $db->query("SELECT id FROM training WHERE nr NOT IN($immediate_train) AND commence < $time LIMIT 100");
         while ($row = $result->fetch_assoc()) {
-            $training->handleTrainingCompleteResult($row);
+            $this->processTrainingTask((int)$row['id'], $training);
         }
+    }
+
+    public function processTrainingTask(int $taskId, ?TrainingModel $training = null): bool
+    {
+        $training = $training ?? new TrainingModel();
+
+        return TransactionalTask::mutate('training', $taskId, function (array $row) use ($training): void {
+            $training->handleTrainingCompleteResult($row);
+        });
     }
 
     public function zeroPopVillages()

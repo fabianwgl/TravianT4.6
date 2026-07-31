@@ -10,6 +10,8 @@ final class TransactionalTask
         'building_upgrade',
         'demolition',
         'research',
+        'training',
+        'alliance_bonus_upgrade_queue',
     ];
 
     public static function consume(string $table, int $id, callable $effect): bool

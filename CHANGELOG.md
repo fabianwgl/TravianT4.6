@@ -49,6 +49,8 @@
   delivery cannot apply the effect twice.
 - Building completion and demolition now commit their queue consumption and
   game-state effects together, with duplicate delivery suppressed by row locks.
+- Training and alliance-bonus completion now atomically persist queue state,
+  troops/upkeep or bonus effects, and duplicate-delivery suppression.
 - Login JavaScript failures and external tracking requests.
 
 ### Removed
