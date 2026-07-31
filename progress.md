@@ -116,6 +116,9 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   adding a focused account-action contract check.
 - Extended authenticated smoke coverage to render account options and assert the
   checker token and absence of legacy cancellation links.
+- Converted sitter assignment and removal controls to checker-protected POST
+  actions, removed the legacy GET mutation links, and added focused static and
+  authenticated smoke coverage.
 
 ## Current work
 

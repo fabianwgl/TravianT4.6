@@ -11,8 +11,7 @@ if(isset($vars['error'])){
 <form id="settings" action="options.php" method="post">
 	<input type="hidden" name="e" value="3"/>
 	<input type="hidden" name="s" value="3"/>
-	<input type="hidden" name="a"
-	       value="<?=Session::getInstance()->getChecker(); ?>"/>
+	<?=Session::getCheckerInput();?>
 	<input type="hidden" name="sitter_flag_posted" value="1"/>
 
 	<div class="text">
@@ -52,7 +51,7 @@ if(isset($vars['error'])){
 				if($sitter[1]['uid'] == 0) {
 					echo '<input onkeyup="cloneName(this, \'sitterName0\')" class="text" type="text" name="sitter[0]" maxlength="15" value="" />';
 				} else {
-					echo '<button type="button" class="icon " onclick="window.location.href = \'options.php?s=3&amp;e=3&amp;id='.$sitter[1]['uid'].'&amp;a='.Session::getInstance()->getChecker().'&amp;type=1\'; return false;"><img src="img/x.gif" class="del" alt="del"></button>&nbsp;'.$sitter[1]['name'];
+					echo '<button type="submit" class="icon" name="removeSitter1" value="'.(int)$sitter[1]['uid'].'"><img src="img/x.gif" class="del" alt="del"></button>&nbsp;'.$sitter[1]['name'];
 				}
 				?>
 			</td>
@@ -80,7 +79,7 @@ if(isset($vars['error'])){
 				if($sitter[2]['uid'] == 0) {
 					echo '<input onkeyup="cloneName(this, \'sitterName1\')" class="text" type="text" name="sitter[-1]" maxlength="15" value="" />';
 				} else {
-					echo '<button type="button" class="icon " onclick="window.location.href = \'options.php?s=3&amp;e=3&amp;id='.$sitter[2]['uid'].'&amp;a='.Session::getInstance()->getChecker().'&amp;type=1\'; return false;"><img src="img/x.gif" class="del" alt="del"></button>&nbsp;'.$sitter[2]['name'];
+					echo '<button type="submit" class="icon" name="removeSitter1" value="'.(int)$sitter[2]['uid'].'"><img src="img/x.gif" class="del" alt="del"></button>&nbsp;'.$sitter[2]['name'];
 				}
 				?>
 			</td>
@@ -226,7 +225,7 @@ if(isset($vars['error'])){
 				if($sitter[1]['uid'] == 0) {
 					echo '<span class="errorMessage">'.T("Options", "no entry").'</span>';
 				} else {
-					echo '<button type="button" class="icon " onclick="window.location.href = \'options.php?s=3&amp;e=3&amp;id='.$sitter[1]['uid'].'&amp;a='.Session::getInstance()->getChecker().'&amp;type=2\'; return false;"><img src="img/x.gif" class="del" alt="del"></button>&nbsp;'.$sitter[1]['name'];
+					echo '<button type="submit" class="icon" name="removeSitter2" value="'.(int)$sitter[1]['uid'].'"><img src="img/x.gif" class="del" alt="del"></button>&nbsp;'.$sitter[1]['name'];
 				}
 				?>
 			</td>
@@ -254,7 +253,7 @@ if(isset($vars['error'])){
 				if($sitter[2]['uid'] == 0) {
 					echo '<span class="errorMessage">'.T("Options", "no entry").'</span>';
 				} else {
-					echo '<button type="button" class="icon " onclick="window.location.href = \'options.php?s=3&amp;e=3&amp;id='.$sitter[2]['uid'].'&amp;a='.Session::getInstance()->getChecker().'&amp;type=2\'; return false;"><img src="img/x.gif" class="del" alt="del"></button>&nbsp;'.$sitter[2]['name'];
+					echo '<button type="submit" class="icon" name="removeSitter2" value="'.(int)$sitter[2]['uid'].'"><img src="img/x.gif" class="del" alt="del"></button>&nbsp;'.$sitter[2]['name'];
 				}
 				?>
 			</td>

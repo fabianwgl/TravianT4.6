@@ -8,6 +8,7 @@ docker compose config --quiet
 ./scripts/check-public-hygiene.sh
 ./scripts/check-game-actions.sh
 ./scripts/check-account-actions.sh
+./scripts/check-sitter-actions.sh
 
 checkout_checksum=$(./scripts/source-checksum.sh)
 if ! container_checksum=$(docker compose exec -T app /app/scripts/source-checksum.sh); then

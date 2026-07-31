@@ -287,55 +287,67 @@ class OptionCtrl extends GameCtrl
         $view = new PHPBatchView("options/Sitters");
         $m = new OptionModel();
         $db = DB::getInstance();
-        if (WebService::isPost() && $_REQUEST['a'] == Session::getInstance()->getChecker()) {
-            $sitter1 = $this->mergeSitter(1);
-            $sitter2 = $this->mergeSitter(0);
-            if (!empty($sitter1['name'])) {
-                $uid = $m->getUserByName($sitter1['name']);
-                if ($uid && ($uid != $this->session->getPlayerId()) && ($uid != $this->session->getSittersId(2) || $this->session->getSittersId(2) == 0)) {
-                    if ($this->getTotalSitterCount($uid, $this->session->getPlayerId()) < 2) {
-                        $db->query("UPDATE users SET sit1Uid=$uid, sit1Permissions='{$sitter1['perm']}' WHERE id=" . $this->session->getPlayerId());
-                        $this->session->setSittersId(1, $uid);
-                        $this->session->setSittersPermissions(1, $sitter1['perm']);
-                    } else {
-                        $view->vars['error'] = T("Options", "This player is sitter for 2 players");
+        $removeSitterType = 0;
+        $removeSitterId = 0;
+        if (isset($_POST['removeSitter1'])) {
+            $removeSitterType = 1;
+            $removeSitterId = abs((int)$_POST['removeSitter1']);
+        } else if (isset($_POST['removeSitter2'])) {
+            $removeSitterType = 2;
+            $removeSitterId = abs((int)$_POST['removeSitter2']);
+        }
+        if (WebService::isPost()
+            && isset($_POST[Session::getCheckerName()])
+            && Session::validateChecker()) {
+            if ($removeSitterType > 0 && $removeSitterId > 0) {
+                if ($removeSitterType == 1) {
+                    $id = $removeSitterId;
+                    if ($this->session->getSittersId(1) == $id) {
+                        $db->query("UPDATE users SET sit1Uid=0, sit1Permissions=87 WHERE id=" . $this->session->getPlayerId());
+                        $this->session->setSittersId(1, 0);
+                        $this->session->setSittersPermissions(1, 87);
+                    } else if ($this->session->getSittersId(2) == $id) {
+                        $db->query("UPDATE users SET sit2Uid=0, sit2Permissions=87 WHERE id=" . $this->session->getPlayerId());
+                        $this->session->setSittersId(2, 0);
+                        $this->session->setSittersPermissions(2, 87);
                     }
-                }
-            }
-            if (!empty($sitter2['name'])) {
-                $uid = $m->getUserByName($sitter2['name']);
-                if ($uid && ($uid != $this->session->getPlayerId()) && ($uid != $this->session->getSittersId(1) || $this->session->getSittersId(1) == 0)) {
-                    if ($this->getTotalSitterCount($uid, $this->session->getPlayerId()) < 2) {
-                        $db->query("UPDATE users SET sit2Uid=$uid, sit2Permissions='{$sitter2['perm']}' WHERE id=" . $this->session->getPlayerId());
-                        $this->session->setSittersId(2, $uid);
-                        $this->session->setSittersPermissions(2, $sitter2['perm']);
-                    } else {
-                        $view->vars['error'] = T("Options", "This player is sitter for 2 players");
-                    }
-                }
-            }
-            $this->session->changeChecker();
-        } else if (isset($_GET['id']) && isset($_GET['type']) && $_GET['a'] == $this->session->getChecker()) {
-            $this->session->changeChecker();
-            $id = abs((int)$_GET['id']);
-            if ($_GET['type'] == 1) {
-                if ($this->session->getSittersId(1) == $id) {
-                    $db->query("UPDATE users SET sit1Uid=0, sit1Permissions=87 WHERE id=" . $this->session->getPlayerId());
-                    $this->session->setSittersId(1, 0);
-                    $this->session->setSittersPermissions(1, 87);
-                } else if ($this->session->getSittersId(2) == $id) {
-                    $db->query("UPDATE users SET sit2Uid=0, sit2Permissions=87 WHERE id=" . $this->session->getPlayerId());
-                    $this->session->setSittersId(2, 0);
-                    $this->session->setSittersPermissions(2, 87);
-                }
-            } else if ($_GET['type'] == 2) {
-                $uid = $this->session->getPlayerId();
-                $db->query("UPDATE users SET
-                sit1Uid=IF(sit1Uid=$uid, 0, sit1Uid),
-                sit2Uid=IF(sit2Uid=$uid, 0, sit2Uid),
+                } else if ($removeSitterType == 2) {
+                    $id = $removeSitterId;
+                    $uid = $this->session->getPlayerId();
+                    $db->query("UPDATE users SET
                 sit1Permissions=IF(sit1Uid=$uid, 87, sit1Permissions),
-                sit2Permissions=IF(sit2Uid=$uid, 87, sit2Permissions)
+                sit2Permissions=IF(sit2Uid=$uid, 87, sit2Permissions),
+                sit1Uid=IF(sit1Uid=$uid, 0, sit1Uid),
+                sit2Uid=IF(sit2Uid=$uid, 0, sit2Uid)
                 WHERE id=$id");
+                }
+            } else if (isset($_POST['sitter_flag_posted'])) {
+                $sitter1 = $this->mergeSitter(1);
+                $sitter2 = $this->mergeSitter(0);
+                if (!empty($sitter1['name'])) {
+                    $uid = $m->getUserByName($sitter1['name']);
+                    if ($uid && ($uid != $this->session->getPlayerId()) && ($uid != $this->session->getSittersId(2) || $this->session->getSittersId(2) == 0)) {
+                        if ($this->getTotalSitterCount($uid, $this->session->getPlayerId()) < 2) {
+                            $db->query("UPDATE users SET sit1Uid=$uid, sit1Permissions='{$sitter1['perm']}' WHERE id=" . $this->session->getPlayerId());
+                            $this->session->setSittersId(1, $uid);
+                            $this->session->setSittersPermissions(1, $sitter1['perm']);
+                        } else {
+                            $view->vars['error'] = T("Options", "This player is sitter for 2 players");
+                        }
+                    }
+                }
+                if (!empty($sitter2['name'])) {
+                    $uid = $m->getUserByName($sitter2['name']);
+                    if ($uid && ($uid != $this->session->getPlayerId()) && ($uid != $this->session->getSittersId(1) || $this->session->getSittersId(1) == 0)) {
+                        if ($this->getTotalSitterCount($uid, $this->session->getPlayerId()) < 2) {
+                            $db->query("UPDATE users SET sit2Uid=$uid, sit2Permissions='{$sitter2['perm']}' WHERE id=" . $this->session->getPlayerId());
+                            $this->session->setSittersId(2, $uid);
+                            $this->session->setSittersPermissions(2, $sitter2['perm']);
+                        } else {
+                            $view->vars['error'] = T("Options", "This player is sitter for 2 players");
+                        }
+                    }
+                }
             }
         }
         $this->view->vars['content'] .= $view->output();

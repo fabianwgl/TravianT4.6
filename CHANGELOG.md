@@ -24,8 +24,9 @@
   validation and generated forms.
 - POST-only account deletion and pending-email cancellation controls with
   checker validation.
+- POST-only sitter assignment and removal controls with checker validation.
 - Authenticated smoke coverage for the account-options page and its checker
-  token.
+  token, plus the sitter-options page.
 
 ### Changed
 

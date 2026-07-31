@@ -65,12 +65,29 @@ request_status 200 -b "$game_cookies" -c "$game_cookies" \
     "$base_url/game/activate.php?page=sector"
 expect_body 'Select your starting position'
 
-request_status 200 -b "$game_cookies" -c "$game_cookies" --data 'sector=sw' \
-    "$base_url/game/activate.php?page=confirmation"
-expect_body 'PLAY NOW'
+activation_completed=0
+for sector in sw se nw ne; do
+    request_status 200 -b "$game_cookies" -c "$game_cookies" --data "sector=$sector" \
+        "$base_url/game/activate.php?page=confirmation"
+    expect_body 'PLAY NOW'
 
-request_status 302 -b "$game_cookies" -c "$game_cookies" --data 'sector=sw' \
-    "$base_url/game/activate.php?page=dorf"
+    actual=$(curl -sS -o "$body" -D "$headers" -w '%{http_code}' \
+        -b "$game_cookies" -c "$game_cookies" --data "sector=$sector" \
+        "$base_url/game/activate.php?page=dorf")
+    if [ "$actual" = '302' ]; then
+        activation_completed=1
+        break
+    fi
+    if [ "$actual" != '200' ] || ! rg -qi 'unable to generate a new village' "$body"; then
+        echo "Expected activation redirect or an unavailable sector, received HTTP $actual." >&2
+        sed -n '1,80p' "$body" >&2
+        exit 1
+    fi
+done
+if [ "$activation_completed" -ne 1 ]; then
+    echo 'No starting sector had an available village field.' >&2
+    exit 1
+fi
 request_status 200 -b "$game_cookies" -c "$game_cookies" \
     "$base_url/game/dorf1.php?finished=1"
 expect_body "$player"
@@ -83,7 +100,7 @@ request_status 302 -b "$launcher_cookies" -c "$launcher_cookies" \
     --data-urlencode 'w=1440:900' \
     "$base_url/game/dorf1.php"
 
-for route in dorf1.php dorf2.php karte.php 'build.php?id=1' profile.php 'options.php?s=2'; do
+for route in dorf1.php dorf2.php karte.php 'build.php?id=1' profile.php 'options.php?s=2' 'options.php?s=3'; do
     request_status 200 -b "$launcher_cookies" "$base_url/game/$route"
     if rg -q 'Fatal error|Uncaught (Error|Exception)|class="outerLoginBox"' "$body"; then
         echo "Authenticated gameplay check failed for $route." >&2
@@ -93,6 +110,13 @@ for route in dorf1.php dorf2.php karte.php 'build.php?id=1' profile.php 'options
         expect_body 'name="mpvt_token"'
         if rg -q 'email_abbrechen|a=1&amp;e=2' "$body"; then
             echo 'Account options still expose a state-changing GET cancellation link.' >&2
+            exit 1
+        fi
+    fi
+    if [ "$route" = 'options.php?s=3' ]; then
+        expect_body 'name="mpvt_token"'
+        if rg -q 'options.php\?s=3&amp;e=3&amp;id=' "$body"; then
+            echo 'Sitter options still expose a state-changing GET mutation link.' >&2
             exit 1
         fi
     fi
