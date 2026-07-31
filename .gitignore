@@ -1,0 +1,15 @@
+.env
+.DS_Store
+*.log
+*.pid
+*.sqlite
+*.sqlite3
+*.bak
+*.swp
+
+main_script/copyable/backups/
+main_script/copyable/include/runtime/
+main_script/copyable/include/error_log.log
+main_script/copyable/include/automation.log
+test-results/
+backups/

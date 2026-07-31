@@ -2,22 +2,21 @@
 if(!(php_sapi_name() == 'cli')){
     exit("CLI Only!");
 }
+define("IS_INSTALLER", true);
 require __DIR__ . "/env.php";
-if(IS_DEV){
-    require "/travian/main_script_dev/include/bootstrap.php";
-} else {
-    require "/travian/main_script/include/bootstrap.php";
-}
+require dirname(__DIR__, 2) . "/include/bootstrap.php";
+require __DIR__ . '/migrate.php';
 use Core\Config;
 use Core\Database\DB;
 use Model\InstallerModel;
+run_schema_migrations();
 mt_srand(make_seed());
 class shell_installer
 {
     public function __construct($password)
     {
         if (empty($password)) {
-            $password = sha1(time());
+            throw new InvalidArgumentException('An initial administrator password is required.');
         }
         echo 'before install.';
         if (Config::getInstance()->dynamic->installed) {
@@ -38,4 +37,4 @@ class shell_installer
         }
     }
 }
-new shell_installer(trim($argv[2]));
+new shell_installer(trim($argv[2] ?? ''));

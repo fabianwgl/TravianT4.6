@@ -111,9 +111,9 @@ CREATE TABLE `activation`
 (
   `id`       INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
   `name`     VARCHAR(15)      NOT NULL,
-  `password` VARCHAR(40)      NOT NULL,
+  `password` VARCHAR(255)     NOT NULL,
   `email`    VARCHAR(90)      NULL     DEFAULT '',
-  `token`    VARCHAR(32)      NOT NULL,
+  `token`    VARCHAR(64)      NOT NULL,
   `refUid`   INT(11)          NOT NULL,
   `time`     INT UNSIGNED     NOT NULL DEFAULT '0',
   `reminded` TINYINT UNSIGNED NOT NULL DEFAULT '0',
@@ -159,7 +159,7 @@ DROP TABLE IF EXISTS `adventure`;
 CREATE TABLE `adventure`
 (
   `id`   INT(11) UNSIGNED    NOT NULL AUTO_INCREMENT,
-  `uid`  INT(11)             NOT NULL,
+  `uid`  INT(11) UNSIGNED    NOT NULL,
   `kid`  INT(6) UNSIGNED     NOT NULL,
   `dif`  TINYINT(1)          NOT NULL,
   `time` INT(10) UNSIGNED    NOT NULL,
@@ -1461,7 +1461,7 @@ CREATE TABLE IF NOT EXISTS `users`
   `alliance_join_time`                               INT(11) UNSIGNED      NOT NULL DEFAULT '0',
   `alliance_contributions`                           BIGINT(11) UNSIGNED   NOT NULL DEFAULT '0',
   `name`                                             VARCHAR(20)           NOT NULL,
-  `password`                                         VARCHAR(40)           NOT NULL,
+  `password`                                         VARCHAR(255)          NOT NULL,
   `email`                                            VARCHAR(99)           NULL     DEFAULT '',
   `email_verified`                                   TINYINT(3) UNSIGNED   NOT NULL DEFAULT '0',
   `race`                                             TINYINT(1) UNSIGNED   NOT NULL,
@@ -1560,7 +1560,7 @@ CREATE TABLE IF NOT EXISTS `users`
   `profileCacheVersion`                              INT(10) UNSIGNED      NOT NULL DEFAULT '0',
   `vacationUsedDays`                                 INT(5) UNSIGNED       NOT NULL DEFAULT '0',
   `hidden`                                           TINYINT(1) UNSIGNED   NOT NULL DEFAULT '0',
-  `ajax_token`                                       VARCHAR(50)           NULL     DEFAULT NULL,
+  `ajax_token`                                       VARCHAR(64)           NULL     DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `findPlayer` (`name`, `email`),
   KEY `sitters` (`sit1Uid`, `sit2Uid`),

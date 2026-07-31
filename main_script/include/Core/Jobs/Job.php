@@ -68,7 +68,7 @@ class Job
                         sleep(2);
                     }
                     if ($config->game->start_time > time()) sleep(5);
-                    usleep(max($this->interval * 1000 * 1000, 500));
+                    usleep(max($this->interval * 1000 * 1000, 100000));
                     pcntl_signal_dispatch();
                     if (rand(5, 100) % 5 == 0) {
                         gc_collect_cycles(); //Forces collection of any existing garbage cycles

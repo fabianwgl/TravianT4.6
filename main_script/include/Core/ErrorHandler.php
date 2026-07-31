@@ -57,13 +57,16 @@ class ErrorHandler
         } else if ($e instanceof \Error) {
             $this->log($e->getMessage());
         }
-        return TRUE;
+        if ($this->isCLI) {
+            fwrite(STDERR, $e->getMessage() . PHP_EOL);
+            exit(1);
+        }
     }
 
     public function handleFatalErrors()
     {
         $error = error_get_last();
-        if ($error["type"] == E_ERROR) {
+        if ($error !== null && $error["type"] == E_ERROR) {
             $this->handleErrors($error["type"], $error["message"], $error["file"], $error["line"]);
         }
     }
@@ -76,6 +79,8 @@ class ErrorHandler
             case E_STRICT       :
             case E_NOTICE       :
             case E_USER_NOTICE  :
+            case E_DEPRECATED   :
+            case E_USER_DEPRECATED:
                 $type = 'warning';
                 break;
             default             :
@@ -91,7 +96,7 @@ class ErrorHandler
         $errString = 'Backtrace from ' . $type . ' \'' . $errMessage . '\' at ' . $errFile . ' ' . $errLine . ': ' . join(' | ',
                 $items);
         $this->log($errString);
-        if ($this->isCLI) {
+        if ($this->isCLI && $type !== 'warning') {
             throw new \ErrorException($errString, 0, $errNumber, $errFile, $errLine);
         }
         return TRUE;

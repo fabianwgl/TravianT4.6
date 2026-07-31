@@ -1,0 +1,109 @@
+services:
+  database:
+    image: mariadb:11.4.10
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-local-root-password}
+      MARIADB_DATABASE: ${GLOBAL_DB_NAME:-openvillage_global}
+      MARIADB_USER: ${GAME_DB_USER:-openvillage}
+      MARIADB_PASSWORD: ${GAME_DB_PASSWORD:-local-game-password}
+      GAME_DB_NAME: ${GAME_DB_NAME:-openvillage_game}
+      GAME_MAP_SIZE: ${GAME_MAP_SIZE:-25}
+      GAME_SPEED: ${GAME_SPEED:-10}
+    volumes:
+      - database-data:/var/lib/mysql
+      - ./:/workspace:ro
+      - ./docker/mariadb/init.sh:/docker-entrypoint-initdb.d/10-openvillage.sh:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4.8-alpine
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  bootstrap:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    command:
+      - php
+      - /app/main_script/copyable/include/install.php
+      - local
+      - ${INITIAL_ADMIN_PASSWORD:-change-me-before-sharing}
+    environment: &app-environment
+      APP_URL: http://127.0.0.1:8080
+      GAME_WORLD_URL: http://127.0.0.1:8080/game/
+      APP_SECRET: ${APP_SECRET:-local-development-only}
+      APP_TIMEZONE: ${APP_TIMEZONE:-UTC}
+      GAME_DB_HOST: database
+      GAME_DB_NAME: ${GAME_DB_NAME:-openvillage_game}
+      GAME_DB_USER: ${GAME_DB_USER:-openvillage}
+      GAME_DB_PASSWORD: ${GAME_DB_PASSWORD:-local-game-password}
+      GLOBAL_DB_HOST: database
+      GLOBAL_DB_NAME: ${GLOBAL_DB_NAME:-openvillage_global}
+      GLOBAL_DB_USER: ${GAME_DB_USER:-openvillage}
+      GLOBAL_DB_PASSWORD: ${GAME_DB_PASSWORD:-local-game-password}
+      REDIS_HOST: redis
+      GAME_SPEED: ${GAME_SPEED:-10}
+      GAME_MAP_SIZE: ${GAME_MAP_SIZE:-25}
+      GAME_ROUND_LENGTH_DAYS: ${GAME_ROUND_LENGTH_DAYS:-35}
+      GAME_WORLD_ID: local
+      GAME_TITLE: OpenVillage 4.6
+      GAME_SERVER_NAME: Local World
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - runtime-data:/app/main_script/copyable/include/runtime
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    environment: *app-environment
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - runtime-data:/app/main_script/copyable/include/runtime
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/health.php"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    command: ["php", "/app/main_script/copyable/include/Automation.php"]
+    environment: *app-environment
+    volumes:
+      - runtime-data:/app/main_script/copyable/include/runtime
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    stop_grace_period: 20s
+    restart: unless-stopped
+
+volumes:
+  database-data:
+  redis-data:
+  runtime-data:

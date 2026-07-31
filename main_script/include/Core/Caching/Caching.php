@@ -22,18 +22,26 @@ class Caching
      */
     public static function singleton($key = null)
     {
-        global $globalConfig;
         $config = Config::getInstance();
         if (!(self::$instance instanceof Redis)) {
             if(is_null($key)){
-                $key = trim(getWorldUniqueId() . explode(".", $config->settings->indexUrl)[1] . ':');
+                $host = parse_url($config->settings->indexUrl, PHP_URL_HOST) ?: 'local';
+                $key = trim(getWorldUniqueId() . ':' . preg_replace('/[^a-z0-9_.-]/i', '_', $host) . ':');
             }
             try {
                 $redis = new Redis();
-                $redis->connect("127.0.0.1");
+                $redis->connect(
+                    getenv('REDIS_HOST') ?: 'redis',
+                    (int)(getenv('REDIS_PORT') ?: 6379),
+                    2.0
+                );
+                $password = getenv('REDIS_PASSWORD');
+                if ($password !== false && $password !== '') {
+                    $redis->auth($password);
+                }
                 $redis->setOption(Redis::OPT_PREFIX, $key);
                 self::$instance = $redis;
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 die("Server unavailable. Please try again in a few minutes.");
             }
         }
@@ -42,7 +50,10 @@ class Caching
 
     public function add($key, $value, $expiration = null)
     {
-        self::singleton()->setex($key, $expiration, serialize($value));
+        if ($expiration === null) {
+            return self::singleton()->set($key, serialize($value), ['nx']);
+        }
+        return self::singleton()->set($key, serialize($value), ['nx', 'ex' => max(1, (int)$expiration)]);
     }
 
     public function lock($key)
@@ -67,7 +78,10 @@ class Caching
 
     public function set($key, $value, $expiration = null)
     {
-        self::singleton()->setex($key, $expiration, serialize($value));
+        if ($expiration === null) {
+            return self::singleton()->set($key, serialize($value));
+        }
+        return self::singleton()->setex($key, max(1, (int)$expiration), serialize($value));
     }
 
     public function delete($key)
