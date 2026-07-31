@@ -22,6 +22,10 @@
   executable regression evidence.
 - POST-only Rally Point troop and movement mutations with per-village checker
   validation and generated forms.
+- POST-only account deletion and pending-email cancellation controls with
+  checker validation.
+- Authenticated smoke coverage for the account-options page and its checker
+  token.
 
 ### Changed
 

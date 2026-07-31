@@ -111,6 +111,11 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
 - Converted Rally Point trapped-unit kill/free and outgoing movement cancellation
   from GET links into checker-protected POST forms, preserving confirmation and
   adding a focused game-mutation contract check to the verifier.
+- Converted account deletion and pending-email cancellation controls to
+  checker-protected POST buttons, removing their state-changing GET links and
+  adding a focused account-action contract check.
+- Extended authenticated smoke coverage to render account options and assert the
+  checker token and absence of legacy cancellation links.
 
 ## Current work
 

@@ -256,6 +256,20 @@ class OptionCtrl extends GameCtrl
                     }
                 }
             }
+            $cancelEmailChange = isset($_POST['cancelEmailChange']) && $_POST['cancelEmailChange'] === '1';
+            $cancelDeletion = isset($_POST['cancelDeletion']) && $_POST['cancelDeletion'] === '1';
+            if (($cancelEmailChange || $cancelDeletion) && Session::validateChecker()) {
+                if ($cancelEmailChange) {
+                    $m->cancelEmailChange(Session::getInstance()->getPlayerId());
+                }
+                if ($cancelDeletion) {
+                    if (Config::getInstance()->dynamic->serverFinished) {
+                        $this->innerRedirect("InGameWinnerPage");
+                    }
+                    $m->cancelDeletion(Session::getInstance()->getPlayerId());
+                    InfoBoxModel::invalidateUserInfoBoxCache(Session::getInstance()->getPlayerId());
+                }
+            }
             if (isset($_POST['newsletter_posted']) && $_POST['newsletter_posted'] == 1) {
                 if (isset($_POST['newsletter_4']) && $_POST['newsletter_4'] == 1) {
                     $m->subscribeNewsletter(Session::getInstance()->getEmail());
@@ -264,14 +278,6 @@ class OptionCtrl extends GameCtrl
                 }
             }
             Session::getInstance()->changeChecker();
-        } else if (isset($_GET['email_abbrechen']) && $_GET['a'] == Session::getInstance()->getChecker()) {
-            $m->cancelEmailChange(Session::getInstance()->getPlayerId());
-        } else if (isset($_GET['a']) && $_GET['a'] == 1) {
-            if (Config::getInstance()->dynamic->serverFinished) {
-                $this->innerRedirect("InGameWinnerPage");
-            }
-            $m->cancelDeletion(Session::getInstance()->getPlayerId());
-            InfoBoxModel::invalidateUserInfoBoxCache(Session::getInstance()->getPlayerId());
         }
         $this->view->vars['content'] .= $view->output();
     }

@@ -83,11 +83,18 @@ request_status 302 -b "$launcher_cookies" -c "$launcher_cookies" \
     --data-urlencode 'w=1440:900' \
     "$base_url/game/dorf1.php"
 
-for route in dorf1.php dorf2.php karte.php 'build.php?id=1' profile.php; do
+for route in dorf1.php dorf2.php karte.php 'build.php?id=1' profile.php 'options.php?s=2'; do
     request_status 200 -b "$launcher_cookies" "$base_url/game/$route"
     if rg -q 'Fatal error|Uncaught (Error|Exception)|class="outerLoginBox"' "$body"; then
         echo "Authenticated gameplay check failed for $route." >&2
         exit 1
+    fi
+    if [ "$route" = 'options.php?s=2' ]; then
+        expect_body 'name="mpvt_token"'
+        if rg -q 'email_abbrechen|a=1&amp;e=2' "$body"; then
+            echo 'Account options still expose a state-changing GET cancellation link.' >&2
+            exit 1
+        fi
     fi
 done
 

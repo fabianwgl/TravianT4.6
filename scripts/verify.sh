@@ -7,6 +7,7 @@ verify_started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 docker compose config --quiet
 ./scripts/check-public-hygiene.sh
 ./scripts/check-game-actions.sh
+./scripts/check-account-actions.sh
 
 checkout_checksum=$(./scripts/source-checksum.sh)
 if ! container_checksum=$(docker compose exec -T app /app/scripts/source-checksum.sh); then
