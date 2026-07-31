@@ -8,6 +8,8 @@ use Model\StatisticsModel;
 
 class EditAllianceCtrl
 {
+    private $db;
+
     public function __construct()
     {
         $this->db = DB::getInstance();

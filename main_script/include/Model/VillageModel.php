@@ -416,7 +416,7 @@ class VillageModel
         return 0;
     }
 
-    public static function getEmptyFields($kid)
+    public function getEmptyFields($kid)
     {
        return array_keys(
             array_filter($this->getBuildingsAssoc($kid), function($elem, $index){

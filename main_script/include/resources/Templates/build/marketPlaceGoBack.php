@@ -82,4 +82,3 @@ if (Session::getInstance()->hasGoldClub() || Session::getInstance()->hasPlus()):
         </select> <?= T("MarketPlace", "go"); ?>
     </div>
 <?php endif; ?>
-

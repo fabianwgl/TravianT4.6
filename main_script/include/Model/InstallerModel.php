@@ -1510,6 +1510,7 @@ class InstallerModel
             $dst_y++;
             ++$i;
         }
+        return true;
     }
 
     public function finalize($password)

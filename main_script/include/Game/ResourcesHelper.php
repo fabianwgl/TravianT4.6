@@ -100,7 +100,6 @@ class ResourcesHelper
                 //halved production in ww villages once building plans released
                 $upkeep /= 2;
             }
-            unset($w);
         }
         $db->query("UPDATE vdata SET upkeep=$upkeep WHERE kid=$kid");
         return $upkeep;

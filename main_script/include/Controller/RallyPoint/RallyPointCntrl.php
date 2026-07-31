@@ -118,19 +118,9 @@ class RallyPointCntrl extends AnyCtrl
                 $x['content'] .= $view->output();
                 break;
             case 1:
-                function MergeSubFilters($id, $subFiltersArray)
-                {
-                    if ($subFiltersArray[$id]) {//filter is active link must deactivate it!
-                        $subFiltersArray[$id] = 0;
-                    } else {//key is not active! merge with current
-                        $subFiltersArray[$id] = 1;
-                    }
-                    return implodeActiveSubFilters($subFiltersArray);
-                }
-
                 $filter = isset($_REQUEST['filter']) && is_numeric($_REQUEST['filter']) && $_REQUEST['filter'] >= 1 && $_REQUEST['filter'] <= 4 ? $_REQUEST['filter'] : 0;
                 $subFiltersArray = $filter == 1 ? [1 => 1, 2 => 1, 3 => 0,] : [4 => 1, 5 => 1, 6 => 0];
-                function implodeActiveSubFilters($subFiltersArray)
+                $implodeActiveSubFilters = static function ($subFiltersArray)
                 {
                     $implode = [];
                     foreach ($subFiltersArray as $subFilterId => $subFilterActive) {
@@ -139,13 +129,13 @@ class RallyPointCntrl extends AnyCtrl
                         }
                     }
                     return implode(",", $implode);
-                }
+                };
 
                 if ($filter == 1 || $filter == 2) {
                     $subFiltersCookieName = 'active_rallypoint_sub_filters_' . $filter;
                     if (!isset($_COOKIE[$subFiltersCookieName])) {
-                        setcookie($subFiltersCookieName, implodeActiveSubFilters($subFiltersArray), time() + 86400 * 365 * 4); // 4years!
-                        $_COOKIE[$subFiltersCookieName] = implodeActiveSubFilters($subFiltersArray);
+                        setcookie($subFiltersCookieName, $implodeActiveSubFilters($subFiltersArray), time() + 86400 * 365 * 4); // 4years!
+                        $_COOKIE[$subFiltersCookieName] = $implodeActiveSubFilters($subFiltersArray);
                     }
                     $subFilters = isset($_REQUEST['subfilters']) && !empty($_REQUEST['subfilters']) ? $_REQUEST['subfilters'] : $_COOKIE[$subFiltersCookieName];
                     $subFilters = explode(",", $subFilters);
@@ -170,8 +160,8 @@ class RallyPointCntrl extends AnyCtrl
                             }
                         }
                     }
-                    setcookie($subFiltersCookieName, implodeActiveSubFilters($subFiltersArray), time() + 86400 * 365 * 4); // 4years!
-                    $_COOKIE[$subFiltersCookieName] = implodeActiveSubFilters($subFiltersArray);
+                    setcookie($subFiltersCookieName, $implodeActiveSubFilters($subFiltersArray), time() + 86400 * 365 * 4); // 4years!
+                    $_COOKIE[$subFiltersCookieName] = $implodeActiveSubFilters($subFiltersArray);
                 }
                 $l = ["filter" => $filter, "subFilters" => $subFiltersArray, "content" => '',];
                 $rallyPoint->procContent($l);
@@ -203,4 +193,4 @@ class RallyPointCntrl extends AnyCtrl
         $this->view = new PHPBatchView('rallypoint/main');
         $this->view->vars = $x;
     }
-} 
+}

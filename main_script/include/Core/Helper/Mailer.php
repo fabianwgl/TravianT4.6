@@ -23,7 +23,7 @@ class Mailer
         $string = [];
         $basic = "('%s', '%s', '%s')";
         foreach ($to as $v) {
-            $string[] = sprintf($basic, $v, $subject, $html, 99999);
+            $string[] = sprintf($basic, $v, $subject, $html);
         }
         $db->query("INSERT INTO mailServer (toEmail, subject, html) VALUES " . implode(",", $string));
         return $db->affectedRows();
