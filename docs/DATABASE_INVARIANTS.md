@@ -60,7 +60,7 @@ invariant is:
 4. Retrying or redelivering the same event cannot duplicate its effect.
 
 `research`, normal `building_upgrade`, `demolition`, `movement`, `send`, `training`,
-`alliance_bonus_upgrade_queue`, and referral rewards satisfy this invariant:
+`alliance_bonus_upgrade_queue`, referral rewards, and oasis deletion satisfy this invariant:
 `TransactionalTask`
 locks the row and commits its game effect and queue mutation in one MariaDB
 transaction. Master Builder and partial training rows use the same lock and

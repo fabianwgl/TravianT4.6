@@ -230,6 +230,9 @@ $messageAutoIncrement = (int)$db->fetchScalar(
 $playerReferenceAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='player_references'"
 );
+$oasisDeletionAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='odelete'"
+);
 
 $nestedTransactionKid = 2000000019;
 $db->begin_transaction();
@@ -682,6 +685,89 @@ try {
     $db->rollback();
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
     $db->query("ALTER TABLE player_references AUTO_INCREMENT=$playerReferenceAutoIncrement");
+}
+
+$oasisOwner = 2000000014;
+$oasisVillage = 2000000027;
+$oasisTarget = 2000000028;
+$oasisTask = 2000000001;
+$oasisCrashTask = 2000000002;
+$db->begin_transaction();
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id=$oasisOwner"),
+        'oasis-deletion fixture user available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM odelete WHERE id IN ($oasisTask, $oasisCrashTask)"),
+        'oasis-deletion fixture tasks available'
+    );
+    $db->query("INSERT INTO users (id, uuid, name, password, email, race, kid, total_villages, desc1, desc2, note)
+        VALUES ($oasisOwner, 'ov-regression-oasis', 'OVOasis', 'x', '', 1, $oasisVillage, 1, '', '', '')");
+    $lastUpdate = miliseconds();
+    $db->query("INSERT INTO vdata
+        (kid, owner, fieldtype, name, capital, pop, cp, wood, clay, iron, woodp, clayp, ironp, maxstore,
+         crop, cropp, maxcrop, upkeep, lastmupdate, created, expandedfrom)
+        VALUES
+        ($oasisVillage, $oasisOwner, 3, 'OV Oasis Village', 1, 0, 0,
+         0, 0, 0, 0, 0, 0, 1000000, 1000, 0, 1000000, 0, $lastUpdate, " . time() . ", 0)");
+    $db->query("INSERT INTO fdata (kid) VALUES ($oasisVillage)");
+    $db->query("INSERT INTO odata
+        (kid, type, did, wood, iron, clay, crop, lastmupdate, owner, loyalty)
+        VALUES ($oasisTarget, 1, $oasisVillage, 0, 0, 0, 0, $lastUpdate, $oasisOwner, 100)");
+    $db->query("INSERT INTO wdata (id, x, y, fieldtype, oasistype, landscape, occupied)
+        VALUES ($oasisTarget, 10, 10, 3, 1, 1, 1)");
+    $movementTarget = 2000000007;
+    $db->query("INSERT INTO movement
+        (id, kid, to_kid, race, u1, mode, attack_type, start_time, end_time, data)
+        VALUES ($movementTarget, 2000000006, $oasisTarget, 1, 5, 0, 0, 0, 0, '')");
+    $db->query("INSERT INTO odelete (id, kid, oid, end_time) VALUES
+        ($oasisTask, $oasisVillage, $oasisTarget, 0),
+        ($oasisCrashTask, $oasisVillage, $oasisTarget, 0)");
+
+    $automation = Automation::getInstance();
+    expect_true($automation->processOasisDeletionTask($oasisTask), 'oasis deletion processed');
+    expect_same(
+        '0|0|0|1',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM odelete WHERE id=$oasisTask), '|', owner, '|', did, '|',
+                (SELECT mode FROM movement WHERE id=$movementTarget)
+             ) FROM odata WHERE kid=$oasisTarget"
+        ),
+        'oasis release and incoming movement cancellation commit with queue consumption'
+    );
+    expect_same(false, $automation->processOasisDeletionTask($oasisTask), 'duplicate oasis deletion ignored');
+
+    try {
+        TransactionalTask::consume('odelete', $oasisCrashTask, function (array $row) use ($db, $oasisTarget): void {
+            $db->query("UPDATE odata SET owner=99 WHERE kid=$oasisTarget");
+            throw new RuntimeException('Simulated oasis worker crash.');
+        });
+        throw new RuntimeException('Simulated oasis worker crash was not propagated.');
+    } catch (RuntimeException $e) {
+        expect_same('Simulated oasis worker crash.', $e->getMessage(), 'oasis crash propagated');
+    }
+    expect_same(
+        '0|1',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(owner, '|', (SELECT attempts FROM scheduled_task_failures
+                WHERE task_table='odelete' AND task_id=$oasisCrashTask))
+             FROM odata WHERE kid=$oasisTarget"
+        ),
+        'oasis crash rolls back effects and preserves task'
+    );
+    expect_true($automation->processOasisDeletionTask($oasisCrashTask), 'oasis deletion retry processed');
+    expect_same(0, (int)$db->fetchScalar("SELECT owner FROM odata WHERE kid=$oasisTarget"), 'oasis retry releases oasis once');
+} finally {
+    $db->query("DELETE FROM scheduled_task_failures WHERE task_table='odelete' AND task_id IN ($oasisTask, $oasisCrashTask)");
+    $db->rollback();
+    $db->query("DELETE FROM movement WHERE id=2000000007");
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE movement AUTO_INCREMENT=$movementAutoIncrement");
+    $db->query("ALTER TABLE odelete AUTO_INCREMENT=$oasisDeletionAutoIncrement");
 }
 
 $db->begin_transaction();

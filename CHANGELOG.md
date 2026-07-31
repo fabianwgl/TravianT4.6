@@ -29,6 +29,7 @@
 - Added savepoint-backed nested database transactions for atomic worker effects
   that invoke existing transactional services.
 - Added locked, idempotent referral reward processing with crash/retry coverage.
+- Added transactional oasis deletion with recoverable failures and replay tests.
 
 ### Fixed
 
@@ -65,6 +66,8 @@
   player-facing state atomically and suppress duplicate delivery.
 - Referral rewards now commit referral state and gift gold atomically, with
   replay-safe processing and recoverable failures.
+- Oasis deletion now commits release, enforcement returns, and movement
+  cancellation together with queue consumption.
 - Login JavaScript failures and external tracking requests.
 
 ### Removed

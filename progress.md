@@ -83,6 +83,8 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   transactional; covered messages, access, infoboxes, and replay in MariaDB.
 - Made referral rewards row-locked and idempotent, including crash rollback,
   bounded retry, and duplicate-delivery regression coverage.
+- Made oasis deletion transactional with oasis release, enforcement returns,
+  movement cancellation, crash rollback, and duplicate-delivery coverage.
 
 ## Current work
 

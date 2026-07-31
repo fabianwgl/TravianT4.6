@@ -412,20 +412,27 @@ class Automation
     public function deleteOasisComplete()
     {
         $db = DB::getInstance();
-        $result = $db->query("SELECT * FROM odelete WHERE end_time <= " . (time()) . " ORDER BY end_time ASC, id ASC LIMIT 10");
-        $m = new AccountDeleter();
+        $result = $db->query("SELECT id FROM odelete WHERE end_time <= " . (time()) . " ORDER BY end_time ASC, id ASC LIMIT 10");
         while ($row = $result->fetch_assoc()) {
-            $db->query("DELETE FROM odelete WHERE id={$row['id']}");
+            $this->processOasisDeletionTask((int)$row['id']);
+        }
+    }
+
+    public function processOasisDeletionTask(int $taskId): bool
+    {
+        return TransactionalTask::consume('odelete', $taskId, function (array $row): void {
+            $db = DB::getInstance();
+            $accountDeleter = new AccountDeleter();
             OasesModel::releaseOasis($row['oid'], $row['kid']);
             $enforces = $db->query("SELECT * FROM enforcement WHERE to_kid={$row['oid']}");
             while ($enforce = $enforces->fetch_assoc()) {
-                $m->returnTrappedOrEnforcementRow($enforce, true);
+                $accountDeleter->returnTrappedOrEnforcementRow($enforce, true);
             }
             $find = $db->query("SELECT * FROM movement WHERE to_kid={$row['oid']} AND mode=0");
-            while ($row = $find->fetch_assoc()) {
-                $m->cancelMovement($row['id'], $row['to_kid'], $row['kid']);
+            while ($movement = $find->fetch_assoc()) {
+                $accountDeleter->cancelMovement($movement['id'], $movement['to_kid'], $movement['kid']);
             }
-        }
+        });
     }
 
     public function tradeRoutes()
