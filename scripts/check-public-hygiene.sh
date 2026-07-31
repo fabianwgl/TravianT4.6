@@ -14,8 +14,6 @@ fi
 if rg -n --hidden \
     --glob '!.git/**' \
     --glob '!scripts/check-public-hygiene.sh' \
-    --glob '!*.min.js' \
-    --glob '!*.map' \
     '[[:alnum:]._%+-]+@(gmail|yahoo|hotmail|outlook|icloud)\.[[:alpha:]]{2,}' .; then
     echo 'Consumer email address found.' >&2
     exit 1

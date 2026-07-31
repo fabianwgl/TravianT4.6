@@ -35,6 +35,8 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   timers and dialog positioning compatible with the runtime CSP.
 - Verified the rebuilt authenticated quest/building flow with zero browser
   errors, then passed the full verifier and a disposable empty-volume install.
+- Extended public-history hygiene to remove consumer email addresses from
+  legacy commits, vendored asset headers, and commit metadata.
 
 ## Current work
 
