@@ -254,6 +254,66 @@ try {
 
     // Conquer: a second attack with chiefs captures the non-capital village.
     $roundStage = 'conquer';
+    $staleCaptureVillageState = (string)$db->fetchScalar(
+        "SELECT CONCAT_WS('|', owner, pop, cp, loyalty, maxstore, maxcrop) FROM vdata WHERE kid=$defenderKid"
+    );
+    $staleCaptureTroopState = (string)$db->fetchScalar(
+        "SELECT CONCAT_WS('|', u1, u9, u10, u11) FROM units WHERE kid=$defenderKid"
+    );
+    $staleCaptureUserState = (string)$db->fetchScalar(
+        "SELECT GROUP_CONCAT(CONCAT_WS('|', id, total_pop, cp_prod, total_villages) ORDER BY id SEPARATOR ':') " .
+        "FROM users WHERE id IN ($actorUid, $defenderUid)"
+    );
+    $surroundingBeforeStaleCapture = (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE kid=$defenderKid");
+    round_expect_same(
+        false,
+        (new VillageModel())->captureVillage($actorUid, $defenderKid, 100, 1, 0, 5, $baseKid),
+        'stale-source-owner capture is rejected'
+    );
+    round_expect_same(
+        $staleCaptureVillageState,
+        (string)$db->fetchScalar(
+            "SELECT CONCAT_WS('|', owner, pop, cp, loyalty, maxstore, maxcrop) FROM vdata WHERE kid=$defenderKid"
+        ),
+        'stale-source-owner capture preserves village state'
+    );
+    round_expect_same(
+        $staleCaptureTroopState,
+        (string)$db->fetchScalar("SELECT CONCAT_WS('|', u1, u9, u10, u11) FROM units WHERE kid=$defenderKid"),
+        'stale-source-owner capture preserves troops'
+    );
+    round_expect_same(
+        $staleCaptureUserState,
+        (string)$db->fetchScalar(
+            "SELECT GROUP_CONCAT(CONCAT_WS('|', id, total_pop, cp_prod, total_villages) ORDER BY id SEPARATOR ':') " .
+            "FROM users WHERE id IN ($actorUid, $defenderUid)"
+        ),
+        'stale-source-owner capture preserves user totals'
+    );
+    round_expect_same(
+        $surroundingBeforeStaleCapture,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE kid=$defenderKid"),
+        'stale-source-owner capture records no surrounding event'
+    );
+    $surroundingBeforeNoOpCapture = (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE kid=$defenderKid");
+    round_expect_same(
+        false,
+        (new VillageModel())->captureVillage($defenderUid, $defenderKid, 100, $defenderUid, 100, 3, $defenderKid),
+        'same-owner capture is rejected'
+    );
+    round_expect_same(
+        $surroundingBeforeNoOpCapture,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE kid=$defenderKid"),
+        'same-owner capture records no surrounding event'
+    );
+    round_expect_same(
+        $defenderUid,
+        (int)$db->fetchScalar("SELECT owner FROM vdata WHERE kid=$defenderKid"),
+        'same-owner capture preserves village ownership'
+    );
+    $surroundingBeforeConquest = $surroundingBeforeNoOpCapture;
+    $surroundingBeforeConquestId = (int)$db->fetchScalar("SELECT COALESCE(MAX(id), 0) FROM surrounding");
+    $defenderVillageName = (string)$db->fetchScalar("SELECT name FROM vdata WHERE kid=$defenderKid");
     $conquestUnits = array_fill(1, 11, 0);
     $conquestUnits[1] = 5000;
     $conquestUnits[9] = 5;
@@ -261,6 +321,33 @@ try {
     round_expect_true($conquestId > 0, 'conquest movement queued');
     round_expect_true($automation->processMovementTask($conquestId), 'conquest movement resolved');
     round_expect_same($actorUid, (int)$db->fetchScalar("SELECT owner FROM vdata WHERE kid=$defenderKid"), 'conquest transferred village ownership');
+    round_expect_same(
+        $surroundingBeforeConquest + 2,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE kid=$defenderKid"),
+        'conquest records conquer and loss surrounding events'
+    );
+    $conquestSurroundingResult = $db->query(
+        "SELECT x, y, type, params, time FROM surrounding " .
+        "WHERE kid=$defenderKid AND id>$surroundingBeforeConquestId ORDER BY id"
+    );
+    round_expect_same(2, $conquestSurroundingResult->num_rows, 'conquest surrounding event count');
+    $conquerSurrounding = $conquestSurroundingResult->fetch_assoc();
+    $lossSurrounding = $conquestSurroundingResult->fetch_assoc();
+    $defenderCoordinates = Formulas::kid2xy($defenderKid);
+    round_expect_same((int)$defenderCoordinates['x'], (int)$conquerSurrounding['x'], 'conquest surrounding x coordinate');
+    round_expect_same((int)$defenderCoordinates['y'], (int)$conquerSurrounding['y'], 'conquest surrounding y coordinate');
+    round_expect_same(NoticeHelper::SURROUNDING_VILLAGE_CONQUER, (int)$conquerSurrounding['type'], 'conquest surrounding event type');
+    round_expect_same("$actorUid:OVRoundActor:$defenderKid", $conquerSurrounding['params'], 'conquest surrounding payload');
+    round_expect_same((int)$defenderCoordinates['x'], (int)$lossSurrounding['x'], 'loss surrounding x coordinate');
+    round_expect_same((int)$defenderCoordinates['y'], (int)$lossSurrounding['y'], 'loss surrounding y coordinate');
+    round_expect_same(NoticeHelper::SURROUNDING_VILLAGE_LOST, (int)$lossSurrounding['type'], 'loss surrounding event type');
+    round_expect_same(
+        "$defenderUid:OVRoundDefender:$defenderKid:$defenderVillageName",
+        $lossSurrounding['params'],
+        'loss surrounding payload'
+    );
+    round_expect_true((int)$conquerSurrounding['time'] > 0, 'conquest surrounding timestamp');
+    round_expect_same((int)$conquerSurrounding['time'], (int)$lossSurrounding['time'], 'conquest surrounding events share a timestamp');
 
     // Artifacts: capture and activate a deterministic artifact on the conquered village.
     $roundStage = 'artifacts';

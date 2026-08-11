@@ -8,6 +8,7 @@ use Core\ErrorHandler;
 use Game\Buildings\BuildingAction;
 use Game\Formulas;
 use Game\Map\Map;
+use Game\NoticeHelper;
 use Game\ResourcesHelper;
 use Game\Starvation;
 use function is_numeric;
@@ -280,6 +281,28 @@ class VillageModel
     public function captureVillage($uid, $kid, $pop, $newUid, $newUidPop, $newRace, $expandedFrom)
     {
         $db = DB::getInstance();
+        if (!$db->begin_transaction()) {
+            throw new \RuntimeException('Unable to begin village capture transaction.');
+        }
+        try {
+        $captureContextResult = $db->query("SELECT owner, name FROM vdata WHERE kid=$kid LIMIT 1 FOR UPDATE");
+        if (!$captureContextResult || !$captureContextResult->num_rows) {
+            $db->rollback();
+            return FALSE;
+        }
+        $captureContext = $captureContextResult->fetch_assoc();
+        if ((int)$captureContext['owner'] !== (int)$uid || (int)$uid === (int)$newUid) {
+            $db->rollback();
+            return FALSE;
+        }
+        $oldOwnerName = $db->fetchScalar("SELECT name FROM users WHERE id=$uid");
+        $newOwnerName = $db->fetchScalar("SELECT name FROM users WHERE id=$newUid");
+        if ($oldOwnerName === false || $newOwnerName === false) {
+            $db->rollback();
+            return FALSE;
+        }
+        $captureTime = time();
+        $captureCoordinates = Formulas::kid2xy($kid);
         if(getCustom('removeVillageFromFarmListOnCapture')){
             $db->query("DELETE FROM raidlist WHERE kid=$kid");
         }
@@ -348,8 +371,10 @@ class VillageModel
         if ($village['extraMaxcrop']) $maxcrop -= $village['extraMaxcrop'] * Formulas::storeCAP(20);
         $db->query("UPDATE users SET total_pop=total_pop-{$village['pop']}, cp_prod=cp_prod-{$village['cp']}, total_villages=total_villages-1 WHERE id=$uid");
         $db->query("UPDATE users SET total_pop=total_pop+{$village['pop']}, cp_prod=cp_prod+{$village['cp']}, total_villages=total_villages+1 WHERE id=$newUid");
-        $db->query("UPDATE vdata SET isFarm=0, extraMaxstore=0, extraMaxcrop=0, maxstore=$maxstore, maxcrop=$maxcrop, owner=$newUid, expandedfrom=$expandedFrom WHERE kid=$kid");
-
+        $db->query("UPDATE vdata SET isFarm=0, extraMaxstore=0, extraMaxcrop=0, maxstore=$maxstore, maxcrop=$maxcrop, owner=$newUid, expandedfrom=$expandedFrom WHERE kid=$kid AND owner=$uid");
+        if ((int)$db->fetchScalar("SELECT owner FROM vdata WHERE kid=$kid") !== (int)$newUid) {
+            throw new \RuntimeException('Village ownership changed before capture could be finalized.');
+        }
 
         $aid = $db->fetchScalar("SELECT aid FROM users WHERE id=$uid");
         if ($aid) {
@@ -385,7 +410,28 @@ class VillageModel
         (new AccountDeleter())->rematchExpands($kid);
         $db->query("UPDATE users SET profileCacheVersion=profileCacheVersion+1 WHERE id=$uid");
         $db->query("UPDATE users SET profileCacheVersion=profileCacheVersion+1 WHERE id=$newUid");
+        NoticeHelper::addSurrounding(
+            $captureCoordinates['x'],
+            $captureCoordinates['y'],
+            NoticeHelper::SURROUNDING_VILLAGE_CONQUER,
+            [$newUid, $newOwnerName, $kid],
+            $captureTime
+        );
+        NoticeHelper::addSurrounding(
+            $captureCoordinates['x'],
+            $captureCoordinates['y'],
+            NoticeHelper::SURROUNDING_VILLAGE_LOST,
+            [$uid, $oldOwnerName, $kid, $captureContext['name']],
+            $captureTime
+        );
+        if (!$db->commit()) {
+            throw new \RuntimeException('Unable to commit village capture transaction.');
+        }
         return TRUE;
+        } catch (\Throwable $e) {
+            $db->rollback();
+            throw $e;
+        }
     }
 
     public function removeUnavailableCapitalBuildings($owner, $kid)
