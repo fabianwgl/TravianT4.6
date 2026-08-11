@@ -3902,6 +3902,8 @@ $Definition['Reports'] = ["reportTypes" => [1 => 'لقد فزت بالهجوم �
         'disabledCapitalOnZeroPop' => 'Village did not destroy because capital does not destroy on zero pop',
         'OnlyOneVillage' => 'Village did not destroy because player has only one village',
         'ArtifactExists' => 'Village did not destroy because the villge contains an artifact',
+        'OnePlusWW' => 'Village did not destroy because every remaining village is a World Wonder village',
+        'NoCapitalSuccessor' => 'Village did not destroy because no ordinary village can become the new capital',
     ],
 ];
 $Definition['Reports']['There was no village at target destination'] = 'There was no village at target destination.';

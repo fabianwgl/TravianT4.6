@@ -170,6 +170,37 @@ class Automation
                     new SettlersProcessor($row);
                     break;
             }
+        }, function () use ($taskId): void {
+            $db = DB::getInstance();
+            $taskResult = $db->query(
+                "SELECT mode, attack_type, u7, u8, to_kid FROM movement WHERE id=$taskId"
+            );
+            if (!$taskResult) {
+                throw new \RuntimeException("Unable to inspect movement $taskId before locking it.");
+            }
+            if (!$taskResult->num_rows) {
+                return;
+            }
+            $task = $taskResult->fetch_assoc();
+            if (
+                (int)$task['mode'] !== 0
+                || (int)$task['attack_type'] !== MovementsModel::ATTACKTYPE_NORMAL
+                || (empty($task['u7']) && empty($task['u8']))
+            ) {
+                return;
+            }
+
+            $targetKid = (int)$task['to_kid'];
+            $owner = (int)$db->fetchScalar("SELECT owner FROM vdata WHERE kid=$targetKid");
+            if ($owner <= 0) {
+                return;
+            }
+            $ownerResult = $db->query("SELECT id FROM users WHERE id=$owner FOR UPDATE");
+            if (!$ownerResult) {
+                throw new \RuntimeException(
+                    "Unable to lock player $owner before destructive movement $taskId."
+                );
+            }
         });
     }
 

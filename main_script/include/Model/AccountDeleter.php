@@ -31,9 +31,11 @@ class AccountDeleter
          * When the account only has one other village, and that village is a World Wonder village (an account cannot have a World Wonder as its only village)
          */
         $db = DB::getInstance();
+        $isCapital = false;
         $find = $db->query("SELECT isWW, capital, isFarm FROM vdata WHERE kid={$kid}");
         if ($find->num_rows) {
             $find = $find->fetch_assoc();
+            $isCapital = !empty($find['capital']);
             if ($find['isWW'] || $find['isFarm']) {
                 return $find['isWW'] ? 'isWW' : 'isFarm';
             }
@@ -55,6 +57,15 @@ class AccountDeleter
         if ($find) {
             return 'ArtifactExists';
         }
+        if (
+            $isCapital
+            && (int)$db->fetchScalar(
+                "SELECT COUNT(kid) FROM vdata
+                 WHERE owner=" . (int)$uid . " AND kid<>" . (int)$kid . " AND isWW=0 AND isFarm=0 AND isArtifact=0"
+            ) === 0
+        ) {
+            return 'NoCapitalSuccessor';
+        }
         return true;
     }
 
@@ -64,6 +75,26 @@ class AccountDeleter
      */
     public function deleteVillage($kid, $full = false, $reSpawn = true)
     {
+        $db = DB::getInstance();
+        if (!$db->begin_transaction()) {
+            throw new \RuntimeException("Unable to begin village $kid deletion transaction.");
+        }
+
+        try {
+            $deleted = $this->deleteVillageInTransaction((int)$kid, (bool)$full, (bool)$reSpawn);
+            if (!$db->commit()) {
+                throw new \RuntimeException("Unable to commit village $kid deletion transaction.");
+            }
+
+            return $deleted;
+        } catch (\Throwable $e) {
+            $db->rollback();
+            throw $e;
+        }
+    }
+
+    private function deleteVillageInTransaction(int $kid, bool $full, bool $reSpawn)
+    {
         $profile = [];
         $addProfile = function ($name) use (&$profile) {
             $profile[$name] = microtime(true);
@@ -72,7 +103,7 @@ class AccountDeleter
             $profile[$name] = microtime(true) - $profile[$name];
         };
         $db = DB::getInstance();
-        $vdata = $db->query("SELECT owner, capital, isWW, expandedfrom, pop, fieldtype FROM vdata WHERE kid=$kid");
+        $vdata = $db->query("SELECT owner FROM vdata WHERE kid=$kid");
         if (!$vdata->num_rows) {
             $fieldType = $db->fetchScalar("SELECT fieldtype FROM wdata WHERE id={$kid}");
             if ($fieldType > 0) {
@@ -81,7 +112,32 @@ class AccountDeleter
             }
             return false;
         }
+        $owner = (int)$vdata->fetch_assoc()['owner'];
+        $ownerResult = $db->query("SELECT id FROM users WHERE id=$owner FOR UPDATE");
+        if (!$ownerResult) {
+            throw new \RuntimeException("Unable to lock player $owner before deleting village $kid.");
+        }
+        $vdata = $db->query(
+            "SELECT owner, capital, isWW, expandedfrom, pop, fieldtype
+             FROM vdata WHERE kid=$kid AND owner=$owner FOR UPDATE"
+        );
+        if (!$vdata) {
+            throw new \RuntimeException("Unable to lock village $kid before deletion.");
+        }
+        if (!$vdata->num_rows) {
+            return false;
+        }
         $vdata = $vdata->fetch_assoc();
+        $capital = (int)$vdata['capital'];
+        $capitalKid = 0;
+        if (!$full) {
+            if ($capital) {
+                $capitalKid = $this->findCapitalSuccessor($owner, (int)$kid);
+                if (!$capitalKid) {
+                    return false;
+                }
+            }
+        }
         if($full && $vdata['capital'] == 1){
             (new VillageModel())->captureVillage($vdata['owner'], $kid, 100, 1, 0, 5, Formulas::xy2kid(0,0));
             $buildings = (new VillageModel())->getBuildingsAssoc($kid);
@@ -116,9 +172,9 @@ class AccountDeleter
             $db->query("UPDATE send SET mode=1, kid={$row['to_kid']}, to_kid={$row['kid']} WHERE id={$row['id']}");
             //return merchants.
         }
-        $capital = $vdata['capital'];
-        $owner = $vdata['owner'];
-        $db->query("UPDATE users SET kid=0 WHERE id=$owner");
+        if ($full) {
+            $db->query("UPDATE users SET kid=0 WHERE id=$owner");
+        }
         $addProfile('deleteVillage:deleteFarmlist');
         $farmLists = $db->query("SELECT id FROM farmlist WHERE kid=$kid");
         while ($list = $farmLists->fetch_assoc()) {
@@ -166,32 +222,26 @@ class AccountDeleter
             $m = new VillageModel();
             if ($capital) {
                 $addProfile('deleteVillage:removeUnavailableCapitalBuildings');
-                $cap = $db->query("SELECT kid FROM vdata WHERE capital=0 AND isWW=0 AND owner={$owner} ORDER BY pop LIMIT 1");
-                if ($cap->num_rows) {
-                    $cap = $cap->fetch_assoc();
-                    $db->query("UPDATE vdata SET capital=1 WHERE kid={$cap['kid']}");
-                    $m->removeUnavailableCapitalBuildings($owner, $cap['kid']);
+                $db->query("UPDATE vdata SET capital=0 WHERE owner=$owner");
+                $db->query("UPDATE vdata SET capital=1 WHERE kid=$capitalKid AND owner=$owner");
+                if ($db->affectedRows() !== 1) {
+                    throw new \RuntimeException("Unable to promote village $capitalKid as the capital of player $owner.");
                 }
+                $m->removeUnavailableCapitalBuildings($owner, $capitalKid);
                 $endProfile('deleteVillage:removeUnavailableCapitalBuildings');
+            } else {
+                $capitalKid = (int)$db->fetchScalar(
+                    "SELECT kid FROM vdata WHERE capital=1 AND owner=$owner ORDER BY kid LIMIT 1 FOR UPDATE"
+                );
             }
             $db->query("UPDATE users SET profileCacheVersion=profileCacheVersion+1, total_pop=total_pop-{$vdata['pop']}, total_villages=total_villages-1 WHERE id={$owner}");
-            $user = $db->query("SELECT id FROM users WHERE kid=$kid");
-            if ($user->num_rows) {
-                $user = $user->fetch_assoc();
-                $capital = $db->query("SELECT kid FROM vdata WHERE capital=1 AND owner={$user['id']}");
-                if ($capital->num_rows) {
-                    $capital = $capital->fetch_assoc();
-                    $db->query("UPDATE users SET kid={$capital['kid']} WHERE id={$user['id']}");
-                }
+            if ($capitalKid > 0) {
+                $db->query("UPDATE users SET kid=$capitalKid WHERE id=$owner AND kid=" . (int)$kid);
             }
             $hero = $db->query("SELECT uid, kid FROM hero WHERE kid=$kid");
-            if ($hero->num_rows) {
+            if ($hero->num_rows && $capitalKid > 0) {
                 $hero = $hero->fetch_assoc();
-                $capital = $db->query("SELECT kid FROM vdata WHERE capital=1 AND owner={$hero['uid']}");
-                if ($capital->num_rows) {
-                    $capital = $capital->fetch_assoc();
-                    $db->query("UPDATE hero SET kid={$capital['kid']}, health=0 WHERE uid={$hero['uid']}");
-                }
+                $db->query("UPDATE hero SET kid=$capitalKid, health=0 WHERE uid=" . (int)$hero['uid']);
             }
         }
         $this->rematchExpands($kid);
@@ -213,6 +263,34 @@ class AccountDeleter
             logError(print_r($profile, true));
         }
         return true;
+    }
+
+    private function findCapitalSuccessor(int $owner, int $excludedKid): int
+    {
+        $db = DB::getInstance();
+        $candidates = $db->query(
+            "SELECT kid FROM vdata
+             WHERE owner=$owner AND kid<>$excludedKid AND isWW=0 AND isFarm=0 AND isArtifact=0
+             ORDER BY pop DESC, kid ASC FOR UPDATE"
+        );
+        $fallbackKid = 0;
+        while ($candidate = $candidates->fetch_assoc()) {
+            $candidateKid = (int)$candidate['kid'];
+            if (!$fallbackKid) {
+                $fallbackKid = $candidateKid;
+            }
+            $fields = $db->query("SELECT * FROM fdata WHERE kid=$candidateKid FOR UPDATE");
+            if (!$fields->num_rows) {
+                continue;
+            }
+            $fields = $fields->fetch_assoc();
+            for ($field = 19; $field <= 40; ++$field) {
+                if ((int)$fields["f{$field}"] > 0 && in_array((int)$fields["f{$field}t"], [25, 26, 44], true)) {
+                    return $candidateKid;
+                }
+            }
+        }
+        return $fallbackKid;
     }
 
     public function rematchExpands($kid)

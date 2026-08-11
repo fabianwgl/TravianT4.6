@@ -164,6 +164,27 @@ class BattleModel
         $this->profile[$name] = (microtime(true) - $this->profile[$name]) * 1000;
     }
 
+    private function lockVillageOwnerForDestructiveBattle(): void
+    {
+        if (
+            (int)$this->row['attack_type'] !== MovementsModel::ATTACKTYPE_NORMAL
+            || (empty($this->row['u7']) && empty($this->row['u8']))
+        ) {
+            return;
+        }
+
+        $db = DB::getInstance();
+        $kid = (int)$this->row['to_kid'];
+        $owner = (int)$db->fetchScalar("SELECT owner FROM vdata WHERE kid=$kid");
+        if ($owner <= 0) {
+            return;
+        }
+        $ownerResult = $db->query("SELECT id FROM users WHERE id=$owner FOR UPDATE");
+        if (!$ownerResult) {
+            throw new \RuntimeException("Unable to lock player $owner before destructive battle at village $kid.");
+        }
+    }
+
     private function profileOutput()
     {
         if (!$this->profilingEnabled)
@@ -191,6 +212,7 @@ class BattleModel
             $this->cataWorks = true;
         }
         $this->model = new BattleSetter();
+        $this->lockVillageOwnerForDestructiveBattle();
         $this->startProfile("assocAttacker");
         $this->assocAttacker();
         $this->endProfile("assocAttacker");
@@ -2264,6 +2286,15 @@ class BattleModel
 
         $db = DB::getInstance();
         $kid = (int)$this->row['to_kid'];
+        $owner = (int)$this->defender['uid'];
+        $ownerResult = $db->query("SELECT id FROM users WHERE id=$owner FOR UPDATE");
+        if (!$ownerResult) {
+            throw new \RuntimeException("Unable to lock player $owner before village destruction.");
+        }
+        if (!$ownerResult->num_rows) {
+            return;
+        }
+
         $villageResult = $db->query("SELECT owner, name, pop FROM vdata WHERE kid=$kid FOR UPDATE");
         if (!$villageResult) {
             throw new \RuntimeException("Unable to lock village $kid before destruction.");
@@ -2273,7 +2304,7 @@ class BattleModel
         }
 
         $village = $villageResult->fetch_assoc();
-        if ((int)$village['pop'] > 0 || (int)$village['owner'] !== (int)$this->defender['uid']) {
+        if ((int)$village['pop'] > 0 || (int)$village['owner'] !== $owner) {
             return;
         }
 

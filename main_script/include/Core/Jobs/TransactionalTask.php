@@ -24,17 +24,23 @@ final class TransactionalTask
         'notificationQueue',
     ];
 
-    public static function consume(string $table, int $id, callable $effect): bool
+    public static function consume(string $table, int $id, callable $effect, ?callable $beforeTaskLock = null): bool
     {
-        return self::execute($table, $id, $effect, true);
+        return self::execute($table, $id, $effect, true, $beforeTaskLock);
     }
 
     public static function mutate(string $table, int $id, callable $effect): bool
     {
-        return self::execute($table, $id, $effect, false);
+        return self::execute($table, $id, $effect, false, null);
     }
 
-    private static function execute(string $table, int $id, callable $effect, bool $consume): bool
+    private static function execute(
+        string $table,
+        int $id,
+        callable $effect,
+        bool $consume,
+        ?callable $beforeTaskLock
+    ): bool
     {
         if (!in_array($table, self::TABLES, true)) {
             throw new \InvalidArgumentException('Unsupported transactional task table.');
@@ -46,6 +52,9 @@ final class TransactionalTask
         }
 
         try {
+            if ($beforeTaskLock !== null) {
+                $beforeTaskLock();
+            }
             $result = $db->query("SELECT * FROM `$table` WHERE id=$id FOR UPDATE");
             if (!$result || !$result->num_rows) {
                 $db->rollback();
