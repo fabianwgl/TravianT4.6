@@ -107,6 +107,9 @@ $autoIncrementTables = [
     'movement',
     'odelete',
     'ndata',
+    'casualties',
+    'multiaccount_log',
+    'farmlist_last_reports',
     'surrounding',
     'artefacts',
     'artlog',
@@ -238,10 +241,31 @@ try {
     $attackUnits[1] = 1000;
     $movement = new MovementsModel();
     $past = ($roundNow - 10) * 1000;
+    $surroundingBeforeAttackId = (int)$db->fetchScalar("SELECT COALESCE(MAX(id), 0) FROM surrounding");
     $attackId = (int)$movement->addMovement($baseKid, $defenderKid, 1, $attackUnits, 0, 0, 0, 0, 0, MovementsModel::ATTACKTYPE_NORMAL, $past, $past);
     round_expect_true($attackId > 0, 'attack movement queued');
     round_expect_true($automation->processMovementTask($attackId), 'attack movement resolved');
     round_expect_same($defenderUid, (int)$db->fetchScalar("SELECT owner FROM vdata WHERE kid=$defenderKid"), 'conventional attack preserves village owner');
+    $attackSurroundingResult = $db->query(
+        "SELECT x, y, type, params, time FROM surrounding " .
+        "WHERE id>$surroundingBeforeAttackId AND type=" . NoticeHelper::SURROUNDING_FIGHT . " ORDER BY id"
+    );
+    round_expect_same(1, $attackSurroundingResult->num_rows, 'conventional attack surrounding event count');
+    $attackSurrounding = $attackSurroundingResult->fetch_assoc();
+    $defenderCoordinates = Formulas::kid2xy($defenderKid);
+    round_expect_same((int)$defenderCoordinates['x'], (int)$attackSurrounding['x'], 'conventional attack surrounding x coordinate');
+    round_expect_same((int)$defenderCoordinates['y'], (int)$attackSurrounding['y'], 'conventional attack surrounding y coordinate');
+    round_expect_same(NoticeHelper::SURROUNDING_FIGHT, (int)$attackSurrounding['type'], 'conventional attack surrounding event type');
+    round_expect_same("$defenderUid:OVRoundDefender:$defenderKid", $attackSurrounding['params'], 'conventional attack surrounding payload');
+    round_expect_same($roundNow - 10, (int)$attackSurrounding['time'], 'conventional attack surrounding timestamp');
+    round_expect_same(false, $automation->processMovementTask($attackId), 'conventional attack replay ignored');
+    round_expect_same(
+        1,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding WHERE id>$surroundingBeforeAttackId AND type=" . NoticeHelper::SURROUNDING_FIGHT
+        ),
+        'conventional attack replay records no duplicate surrounding event'
+    );
 
     // Settle: use the real settlers processor to found a second village.
     $roundStage = 'settle';
@@ -362,18 +386,18 @@ try {
         'cancelled pre-conquest abandonment preserves new owner oasis'
     );
     round_expect_same(
-        $surroundingBeforeConquest + 2,
+        $surroundingBeforeConquest + 3,
         (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE kid=$defenderKid"),
-        'conquest records conquer and loss surrounding events'
+        'conquest records fight, conquer, and loss surrounding events'
     );
     $conquestSurroundingResult = $db->query(
         "SELECT x, y, type, params, time FROM surrounding " .
         "WHERE kid=$defenderKid AND id>$surroundingBeforeConquestId ORDER BY id"
     );
-    round_expect_same(2, $conquestSurroundingResult->num_rows, 'conquest surrounding event count');
+    round_expect_same(3, $conquestSurroundingResult->num_rows, 'conquest surrounding event count');
     $conquerSurrounding = $conquestSurroundingResult->fetch_assoc();
     $lossSurrounding = $conquestSurroundingResult->fetch_assoc();
-    $defenderCoordinates = Formulas::kid2xy($defenderKid);
+    $fightSurrounding = $conquestSurroundingResult->fetch_assoc();
     round_expect_same((int)$defenderCoordinates['x'], (int)$conquerSurrounding['x'], 'conquest surrounding x coordinate');
     round_expect_same((int)$defenderCoordinates['y'], (int)$conquerSurrounding['y'], 'conquest surrounding y coordinate');
     round_expect_same(NoticeHelper::SURROUNDING_VILLAGE_CONQUER, (int)$conquerSurrounding['type'], 'conquest surrounding event type');
@@ -388,6 +412,21 @@ try {
     );
     round_expect_true((int)$conquerSurrounding['time'] > 0, 'conquest surrounding timestamp');
     round_expect_same((int)$conquerSurrounding['time'], (int)$lossSurrounding['time'], 'conquest surrounding events share a timestamp');
+    round_expect_same((int)$defenderCoordinates['x'], (int)$fightSurrounding['x'], 'conquest fight surrounding x coordinate');
+    round_expect_same((int)$defenderCoordinates['y'], (int)$fightSurrounding['y'], 'conquest fight surrounding y coordinate');
+    round_expect_same(NoticeHelper::SURROUNDING_FIGHT, (int)$fightSurrounding['type'], 'conquest fight surrounding event type');
+    round_expect_same(
+        "$defenderUid:OVRoundDefender:$defenderKid",
+        $fightSurrounding['params'],
+        'conquest fight surrounding preserves old defender payload'
+    );
+    round_expect_same($roundNow - 10, (int)$fightSurrounding['time'], 'conquest fight surrounding timestamp');
+    round_expect_same(false, $automation->processMovementTask($conquestId), 'conquest movement replay ignored');
+    round_expect_same(
+        $surroundingBeforeConquest + 3,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE kid=$defenderKid"),
+        'conquest movement replay records no duplicate surrounding event'
+    );
 
     // Artifacts: capture and activate a deterministic artifact on the conquered village.
     $roundStage = 'artifacts';

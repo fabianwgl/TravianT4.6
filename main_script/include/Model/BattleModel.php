@@ -1319,6 +1319,7 @@ class BattleModel
             NoticeHelper::addSurrounding($xy['x'], $xy['y'], NoticeHelper::SURROUNDING_OASIS_RAID, null, $this->row['end_time_seconds']);
             $this->endProfile('finalize_attack:addSurrounding');
         }
+        $this->recordVillageFightSurrounding();
         if ($this->defender['isOasis']) {
             $db->query("UPDATE odata SET lastfarmed=$now WHERE kid={$this->row['to_kid']}");
         }
@@ -1330,6 +1331,28 @@ class BattleModel
             (new AccountDeleter())->deleteVillage($this->row['to_kid']);
             $this->endProfile('finalize_attack:deleteVillage');
         }
+    }
+
+    private function recordVillageFightSurrounding()
+    {
+        if ($this->defender['isOasis'] || !in_array(
+            (int)$this->row['attack_type'],
+            [MovementsModel::ATTACKTYPE_NORMAL, MovementsModel::ATTACKTYPE_RAID],
+            true
+        )) {
+            return;
+        }
+
+        $this->startProfile('finalize_attack:recordVillageFightSurrounding');
+        $xy = Formulas::kid2xy((int)$this->row['to_kid']);
+        NoticeHelper::addSurrounding(
+            $xy['x'],
+            $xy['y'],
+            NoticeHelper::SURROUNDING_FIGHT,
+            [$this->defender['uid'], $this->defender['player']['name'], $this->row['to_kid']],
+            $this->row['end_time_seconds']
+        );
+        $this->endProfile('finalize_attack:recordVillageFightSurrounding');
     }
 
     private function finalize_attacker_states($off_losses)

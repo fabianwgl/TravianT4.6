@@ -19,8 +19,10 @@ use Game\Starvation;
 use Game\TruceDay;
 use Model\AuctionModel;
 use Model\AllianceModel;
+use Model\BattleModel;
 use Model\MasterBuilder;
 use Model\MarketPlaceProcessor;
+use Model\MovementsModel;
 use Model\NatarsModel;
 use Model\OasesModel;
 use Model\OptionModel;
@@ -224,6 +226,18 @@ $aliLogAutoIncrement = (int)$db->fetchScalar(
 );
 $surroundingAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='surrounding'"
+);
+$noticeAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='ndata'"
+);
+$casualtiesAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='casualties'"
+);
+$multiAccountLogAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='multiaccount_log'"
+);
+$farmListLastReportsAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='farmlist_last_reports'"
 );
 $aliInviteAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='ali_invite'"
@@ -719,6 +733,303 @@ try {
     $db->rollback();
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
     $db->query("ALTER TABLE movement AUTO_INCREMENT=$movementAutoIncrement");
+}
+
+$battleAttacker = 2000000046;
+$battleDefender = 2000000047;
+$battleMovementIds = [];
+$originalTruceFrom = $config->dynamic->truceFrom;
+$originalTruceTo = $config->dynamic->truceTo;
+$originalTruceReasonId = $config->dynamic->truceReasonId;
+$db->begin_transaction();
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id IN ($battleAttacker, $battleDefender)"),
+        'village-battle surrounding fixture user IDs available'
+    );
+    $battleFields = $db->query(
+        "SELECT w.id, w.x, w.y, w.fieldtype
+         FROM wdata w LEFT JOIN vdata v ON v.kid=w.id
+         WHERE w.id>0 AND w.occupied=0 AND w.oasistype=0 AND v.kid IS NULL
+         ORDER BY w.id DESC LIMIT 2"
+    );
+    expect_same(2, $battleFields->num_rows, 'village-battle surrounding fixture fields available');
+    $battleSourceField = $battleFields->fetch_assoc();
+    $battleTargetField = $battleFields->fetch_assoc();
+    $battleSource = (int)$battleSourceField['id'];
+    $battleTarget = (int)$battleTargetField['id'];
+
+    $db->query("INSERT INTO users
+        (id, uuid, name, password, email, race, kid, total_pop, total_villages, desc1, desc2, note)
+        VALUES
+        ($battleAttacker, 'ov-regression-battle-attacker', 'OVBattleAttacker', 'x', '', 1, $battleSource, 100, 1, '', '', ''),
+        ($battleDefender, 'ov-regression-battle-defender', 'OVBattleDefender', 'x', '', 3, $battleTarget, 100, 1, '', '', '')");
+    $lastUpdate = miliseconds();
+    $db->query("INSERT INTO vdata
+        (kid, owner, fieldtype, name, capital, pop, cp, wood, clay, iron, woodp, clayp, ironp, maxstore,
+         crop, cropp, maxcrop, upkeep, lastmupdate, created, expandedfrom)
+        VALUES
+        ($battleSource, $battleAttacker, " . (int)$battleSourceField['fieldtype'] . ", 'OV Battle Source', 1, 100, 0,
+         1000000, 1000000, 1000000, 0, 0, 0, 1000000, 1000000, 0, 1000000, 0, $lastUpdate, " . time() . ", 0),
+        ($battleTarget, $battleDefender, " . (int)$battleTargetField['fieldtype'] . ", 'OV Battle Target', 1, 100, 0,
+         1000000, 1000000, 1000000, 0, 0, 0, 1000000, 1000000, 0, 1000000, 20, $lastUpdate, " . time() . ", 0)");
+    $db->query("INSERT INTO fdata (kid) VALUES ($battleSource), ($battleTarget)");
+    $db->query("INSERT INTO units (kid, race, u1) VALUES ($battleSource, 1, 0), ($battleTarget, 3, 20)");
+    $db->query("UPDATE wdata SET occupied=1 WHERE id IN ($battleSource, $battleTarget) AND occupied=0");
+    expect_same(2, $db->affectedRows(), 'village-battle surrounding fixture fields occupied');
+
+    $movement = new MovementsModel();
+    $automation = Automation::getInstance();
+    $battleEventTime = time() - 600;
+    $battleTimeMs = $battleEventTime * 1000;
+    $normalUnits = array_fill(1, 11, 0);
+    $normalUnits[1] = 1000;
+    $surroundingBeforeCrashId = (int)$db->fetchScalar("SELECT COALESCE(MAX(id), 0) FROM surrounding");
+    $battleStateBeforeCrash = (string)$db->fetchScalar(
+        "SELECT CONCAT_WS('|', v.owner, v.wood, v.clay, v.iron, v.crop, v.upkeep, u.u1)
+         FROM vdata v JOIN units u ON u.kid=v.kid WHERE v.kid=$battleTarget"
+    );
+    $battleNoticesBeforeCrash = (int)$db->fetchScalar(
+        "SELECT COUNT(*) FROM ndata WHERE uid IN ($battleAttacker, $battleDefender)"
+    );
+    $battleCrashTask = (int)$movement->addMovement(
+        $battleSource,
+        $battleTarget,
+        1,
+        $normalUnits,
+        0,
+        0,
+        0,
+        0,
+        0,
+        MovementsModel::ATTACKTYPE_NORMAL,
+        $battleTimeMs,
+        $battleTimeMs
+    );
+    $battleMovementIds[] = $battleCrashTask;
+    expect_true($battleCrashTask > 0, 'village-battle crash movement queued');
+    $battleMovementsBeforeCrash = (int)$db->fetchScalar(
+        "SELECT COUNT(*) FROM movement WHERE kid=$battleSource OR to_kid=$battleSource"
+    );
+    try {
+        TransactionalTask::consume('movement', $battleCrashTask, function (array $row): void {
+            new BattleModel($row);
+            throw new RuntimeException('Simulated village battle worker crash.');
+        });
+        throw new RuntimeException('Simulated village battle worker crash was not propagated.');
+    } catch (RuntimeException $e) {
+        expect_same('Simulated village battle worker crash.', $e->getMessage(), 'village-battle crash propagated');
+    }
+    expect_same(
+        $battleStateBeforeCrash,
+        (string)$db->fetchScalar(
+            "SELECT CONCAT_WS('|', v.owner, v.wood, v.clay, v.iron, v.crop, v.upkeep, u.u1)
+             FROM vdata v JOIN units u ON u.kid=v.kid WHERE v.kid=$battleTarget"
+        ),
+        'village-battle crash rolls back combat state'
+    );
+    expect_same(
+        $battleNoticesBeforeCrash,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM ndata WHERE uid IN ($battleAttacker, $battleDefender)"),
+        'village-battle crash rolls back reports'
+    );
+    expect_same(
+        $battleMovementsBeforeCrash,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM movement WHERE kid=$battleSource OR to_kid=$battleSource"),
+        'village-battle crash rolls back movement effects and preserves task'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding WHERE id>$surroundingBeforeCrashId AND type=" . NoticeHelper::SURROUNDING_FIGHT
+        ),
+        'village-battle crash rolls back fight surrounding event'
+    );
+    expect_same(
+        1,
+        (int)$db->fetchScalar(
+            "SELECT attempts FROM scheduled_task_failures WHERE task_table='movement' AND task_id=$battleCrashTask"
+        ),
+        'village-battle crash records retry attempt'
+    );
+
+    expect_true($automation->processMovementTask($battleCrashTask), 'village-battle retry processed');
+    $fightAfterRetry = $db->query(
+        "SELECT x, y, type, params, time FROM surrounding
+         WHERE id>$surroundingBeforeCrashId AND type=" . NoticeHelper::SURROUNDING_FIGHT . " ORDER BY id"
+    );
+    expect_same(1, $fightAfterRetry->num_rows, 'village-battle retry records one fight event');
+    $fightAfterRetry = $fightAfterRetry->fetch_assoc();
+    expect_same((int)$battleTargetField['x'], (int)$fightAfterRetry['x'], 'village-battle fight x coordinate');
+    expect_same((int)$battleTargetField['y'], (int)$fightAfterRetry['y'], 'village-battle fight y coordinate');
+    expect_same(NoticeHelper::SURROUNDING_FIGHT, (int)$fightAfterRetry['type'], 'village-battle fight event type');
+    expect_same("$battleDefender:OVBattleDefender:$battleTarget", $fightAfterRetry['params'], 'village-battle fight payload');
+    expect_same($battleEventTime, (int)$fightAfterRetry['time'], 'village-battle fight occurrence time');
+    expect_same(
+        0,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM scheduled_task_failures WHERE task_table='movement' AND task_id=$battleCrashTask"
+        ),
+        'village-battle retry clears failure ledger'
+    );
+    expect_same(false, $automation->processMovementTask($battleCrashTask), 'village-battle replay ignored');
+    expect_same(
+        1,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding WHERE id>$surroundingBeforeCrashId AND type=" . NoticeHelper::SURROUNDING_FIGHT
+        ),
+        'village-battle replay records no duplicate fight event'
+    );
+
+    $db->query("UPDATE units SET u1=0 WHERE kid=$battleTarget");
+    $raidUnits = array_fill(1, 11, 0);
+    $raidUnits[1] = 20;
+    $sameSecondEventTime = $battleEventTime + 10;
+    $sameSecondTimeMs = $sameSecondEventTime * 1000;
+    $surroundingBeforeRaidsId = (int)$db->fetchScalar("SELECT COALESCE(MAX(id), 0) FROM surrounding");
+    $firstRaidTask = (int)$movement->addMovement(
+        $battleSource, $battleTarget, 1, $raidUnits, 0, 0, 0, 0, 0,
+        MovementsModel::ATTACKTYPE_RAID, $sameSecondTimeMs, $sameSecondTimeMs
+    );
+    $secondRaidTask = (int)$movement->addMovement(
+        $battleSource, $battleTarget, 1, $raidUnits, 0, 0, 0, 0, 0,
+        MovementsModel::ATTACKTYPE_RAID, $sameSecondTimeMs, $sameSecondTimeMs
+    );
+    $battleMovementIds[] = $firstRaidTask;
+    $battleMovementIds[] = $secondRaidTask;
+    expect_true($automation->processMovementTask($firstRaidTask), 'first same-second village raid processed');
+    expect_true($automation->processMovementTask($secondRaidTask), 'second same-second village raid processed');
+    expect_same(
+        2,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding
+             WHERE id>$surroundingBeforeRaidsId AND type=" . NoticeHelper::SURROUNDING_FIGHT . " AND time=$sameSecondEventTime"
+        ),
+        'distinct same-second village raids each record a fight event'
+    );
+
+    $db->query("UPDATE units SET u1=10000 WHERE kid=$battleTarget");
+    $annihilatedUnits = array_fill(1, 11, 0);
+    $annihilatedUnits[1] = 1;
+    $surroundingBeforeAnnihilationId = (int)$db->fetchScalar("SELECT COALESCE(MAX(id), 0) FROM surrounding");
+    $noticesBeforeAnnihilationId = (int)$db->fetchScalar("SELECT COALESCE(MAX(id), 0) FROM ndata");
+    $annihilatedTask = (int)$movement->addMovement(
+        $battleSource, $battleTarget, 1, $annihilatedUnits, 0, 0, 0, 0, 0,
+        MovementsModel::ATTACKTYPE_NORMAL, $battleTimeMs, $battleTimeMs
+    );
+    $battleMovementIds[] = $annihilatedTask;
+    expect_true($automation->processMovementTask($annihilatedTask), 'annihilated village attack processed');
+    expect_same(
+        1,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding WHERE id>$surroundingBeforeAnnihilationId AND type=" . NoticeHelper::SURROUNDING_FIGHT
+        ),
+        'annihilated village attack records a fight event'
+    );
+    $annihilatedAttackerReport = $db->query(
+        "SELECT type FROM ndata
+         WHERE id>$noticesBeforeAnnihilationId AND uid=$battleAttacker AND to_kid=$battleTarget
+         ORDER BY id LIMIT 1"
+    );
+    expect_same(1, $annihilatedAttackerReport->num_rows, 'annihilated village attack records attacker report');
+    expect_same(
+        NoticeHelper::TYPE_LOST_AS_ATTACKER,
+        (int)$annihilatedAttackerReport->fetch_assoc()['type'],
+        'annihilated village attack proves total attacker loss'
+    );
+
+    $scoutUnits = array_fill(1, 11, 0);
+    $scoutUnits[4] = 10;
+    $surroundingBeforeScoutId = (int)$db->fetchScalar("SELECT COALESCE(MAX(id), 0) FROM surrounding");
+    $scoutTask = (int)$movement->addMovement(
+        $battleSource, $battleTarget, 1, $scoutUnits, 0, 0, 1, 0, 0,
+        MovementsModel::ATTACKTYPE_SPY, $battleTimeMs, $battleTimeMs
+    );
+    $battleMovementIds[] = $scoutTask;
+    expect_true($automation->processMovementTask($scoutTask), 'village scout movement processed');
+    expect_same(
+        0,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding WHERE id>$surroundingBeforeScoutId AND type=" . NoticeHelper::SURROUNDING_FIGHT
+        ),
+        'village scout movement records no fight event'
+    );
+
+    $freeOasis = $db->query(
+        "SELECT w.id
+         FROM wdata w JOIN odata o ON o.kid=w.id
+         WHERE w.oasistype>0 AND w.occupied=0 AND o.owner=0 AND o.did=0
+         ORDER BY w.id LIMIT 1"
+    );
+    expect_same(1, $freeOasis->num_rows, 'village-battle exclusion oasis available');
+    $freeOasisKid = (int)$freeOasis->fetch_assoc()['id'];
+    $surroundingBeforeOasisId = (int)$db->fetchScalar("SELECT COALESCE(MAX(id), 0) FROM surrounding");
+    $oasisRaidTask = (int)$movement->addMovement(
+        $battleSource, $freeOasisKid, 1, $raidUnits, 0, 0, 0, 0, 0,
+        MovementsModel::ATTACKTYPE_RAID, $battleTimeMs, $battleTimeMs
+    );
+    $battleMovementIds[] = $oasisRaidTask;
+    expect_true($automation->processMovementTask($oasisRaidTask), 'free-oasis raid processed');
+    expect_same(
+        0,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding WHERE id>$surroundingBeforeOasisId AND type=" . NoticeHelper::SURROUNDING_FIGHT
+        ),
+        'oasis raid records no village fight event'
+    );
+
+    $missingTarget = (int)$db->fetchScalar("SELECT MAX(id) FROM wdata") + 1000;
+    $surroundingBeforeMissingId = (int)$db->fetchScalar("SELECT COALESCE(MAX(id), 0) FROM surrounding");
+    $missingTargetTask = (int)$movement->addMovement(
+        $battleSource, $missingTarget, 1, $raidUnits, 0, 0, 0, 0, 0,
+        MovementsModel::ATTACKTYPE_NORMAL, $battleTimeMs, $battleTimeMs
+    );
+    $battleMovementIds[] = $missingTargetTask;
+    expect_true($automation->processMovementTask($missingTargetTask), 'missing-target attack processed');
+    expect_same(
+        0,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding WHERE id>$surroundingBeforeMissingId AND type=" . NoticeHelper::SURROUNDING_FIGHT
+        ),
+        'missing-target attack records no fight event'
+    );
+
+    $config->dynamic->truceFrom = time() - 60;
+    $config->dynamic->truceTo = time() + 60;
+    $config->dynamic->truceReasonId = 1;
+    $surroundingBeforeTruceId = (int)$db->fetchScalar("SELECT COALESCE(MAX(id), 0) FROM surrounding");
+    $truceTask = (int)$movement->addMovement(
+        $battleSource, $battleTarget, 1, $raidUnits, 0, 0, 0, 0, 0,
+        MovementsModel::ATTACKTYPE_NORMAL, $battleTimeMs, $battleTimeMs
+    );
+    $battleMovementIds[] = $truceTask;
+    expect_true($automation->processMovementTask($truceTask), 'truce-deflected attack processed');
+    expect_same(
+        0,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding WHERE id>$surroundingBeforeTruceId AND type=" . NoticeHelper::SURROUNDING_FIGHT
+        ),
+        'truce-deflected attack records no fight event'
+    );
+} finally {
+    $config->dynamic->truceFrom = $originalTruceFrom;
+    $config->dynamic->truceTo = $originalTruceTo;
+    $config->dynamic->truceReasonId = $originalTruceReasonId;
+    $db->rollback();
+    if ($battleMovementIds !== []) {
+        $db->query(
+            "DELETE FROM scheduled_task_failures
+             WHERE task_table='movement' AND task_id IN (" . implode(',', array_map('intval', $battleMovementIds)) . ")"
+        );
+    }
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE movement AUTO_INCREMENT=$movementAutoIncrement");
+    $db->query("ALTER TABLE ndata AUTO_INCREMENT=$noticeAutoIncrement");
+    $db->query("ALTER TABLE surrounding AUTO_INCREMENT=$surroundingAutoIncrement");
+    $db->query("ALTER TABLE casualties AUTO_INCREMENT=$casualtiesAutoIncrement");
+    $db->query("ALTER TABLE multiaccount_log AUTO_INCREMENT=$multiAccountLogAutoIncrement");
+    $db->query("ALTER TABLE farmlist_last_reports AUTO_INCREMENT=$farmListLastReportsAutoIncrement");
 }
 
 $queuedMessageOwner = 2000000011;

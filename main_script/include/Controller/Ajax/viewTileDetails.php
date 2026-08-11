@@ -551,8 +551,8 @@ JSON;
                 $icon = 'fight';
                 $data = explode(":", $row['params']);
                 $title = sprintf(T("Reports", "A fight took at village name of player name"),
-                    '<a href="spieler.php?uid=' . $data[0] . '">' . $data[1] . '</a>',
-                    '<a href="karte.php?d=' . $data[2] . '">' . $this->getVillageName($data[2]) . '</a>');
+                    '<a href="karte.php?d=' . $data[2] . '">' . $this->getVillageName($data[2]) . '</a>',
+                    '<a href="spieler.php?uid=' . $data[0] . '">' . $data[1] . '</a>');
                 break;
             case NoticeHelper::SURROUNDING_VILLAGE_FOUND:
                 $icon = 'villageFound';
@@ -660,4 +660,4 @@ JSON;
         }
         return $other . $view->output();
     }
-} 
+}
