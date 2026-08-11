@@ -1741,8 +1741,14 @@ class BattleModel
                 $slots = max(0, floor(($heroMansion - 5) / 5)) - $oasesCount;
                 if ($this->row['attack_type'] == MovementsModel::ATTACKTYPE_RAID) {
                     if ($slots > 0 && !$this->defender['isOccupied']) {
-                        $this->info['oasisCapture'] = 0;
-                        OasesModel::captureOasis($this->row['to_kid'], $this->attacker['uid'], $this->row['kid']);
+                        if (OasesModel::captureOasis(
+                            $this->row['to_kid'],
+                            $this->attacker['uid'],
+                            $this->row['kid'],
+                            $this->row['end_time_seconds']
+                        )) {
+                            $this->info['oasisCapture'] = 0;
+                        }
                     } else if ($slots <= 0 && !$this->defender['isOccupied']) {
                         $this->info['oasisCapture'] = -1;
                     }
@@ -1755,8 +1761,19 @@ class BattleModel
                         } else {
                             $loyaltyChange = max(0, min(floor(100 / max(1, min(3, (4 - $oasesCount)))), $oasis['loyalty']));
                             if ($loyaltyChange >= $oasis['loyalty']) {
-                                OasesModel::releaseOasis($this->row['to_kid'], $oasis['did']);
-                                OasesModel::captureOasis($this->row['to_kid'], $this->attacker['uid'], $this->row['kid']);
+                                if (!OasesModel::releaseOasis(
+                                    $this->row['to_kid'],
+                                    $oasis['did'],
+                                    $this->row['end_time_seconds'],
+                                    false
+                                ) || !OasesModel::captureOasis(
+                                    $this->row['to_kid'],
+                                    $this->attacker['uid'],
+                                    $this->row['kid'],
+                                    $this->row['end_time_seconds']
+                                )) {
+                                    throw new \RuntimeException('Unable to complete oasis ownership transfer.');
+                                }
                                 $this->info['oasisCapture'] = 0;
                             } else {
                                 $this->info['oasisCapture'] = [

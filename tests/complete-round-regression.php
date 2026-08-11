@@ -105,6 +105,7 @@ $autoIncrementTables = [
     'training',
     'send',
     'movement',
+    'odelete',
     'ndata',
     'surrounding',
     'artefacts',
@@ -254,6 +255,24 @@ try {
 
     // Conquer: a second attack with chiefs captures the non-capital village.
     $roundStage = 'conquer';
+    $pendingOasisKid = 2000000060;
+    $pendingOasisTask = 2000000060;
+    round_expect_same(
+        0,
+        (int)$db->fetchScalar(
+            "SELECT (SELECT COUNT(*) FROM odata WHERE kid=$pendingOasisKid) +
+                    (SELECT COUNT(*) FROM wdata WHERE id=$pendingOasisKid) +
+                    (SELECT COUNT(*) FROM odelete WHERE id=$pendingOasisTask)"
+        ),
+        'pending oasis abandonment fixture IDs available'
+    );
+    $db->query("INSERT INTO odata
+        (kid, type, did, wood, iron, clay, crop, lastmupdate, owner, loyalty)
+        VALUES ($pendingOasisKid, 1, $defenderKid, 0, 0, 0, 0, " . miliseconds() . ", $defenderUid, 100)");
+    $db->query("INSERT INTO wdata (id, x, y, fieldtype, oasistype, landscape, occupied)
+        VALUES ($pendingOasisKid, 11, 11, 3, 1, 1, 1)");
+    $db->query("INSERT INTO odelete (id, kid, oid, end_time)
+        VALUES ($pendingOasisTask, $defenderKid, $pendingOasisKid, " . ($roundNow + 60) . ")");
     $staleCaptureVillageState = (string)$db->fetchScalar(
         "SELECT CONCAT_WS('|', owner, pop, cp, loyalty, maxstore, maxcrop) FROM vdata WHERE kid=$defenderKid"
     );
@@ -321,6 +340,27 @@ try {
     round_expect_true($conquestId > 0, 'conquest movement queued');
     round_expect_true($automation->processMovementTask($conquestId), 'conquest movement resolved');
     round_expect_same($actorUid, (int)$db->fetchScalar("SELECT owner FROM vdata WHERE kid=$defenderKid"), 'conquest transferred village ownership');
+    round_expect_same(
+        "$actorUid|0",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(owner, '|', (SELECT COUNT(*) FROM odelete WHERE id=$pendingOasisTask))
+             FROM odata WHERE kid=$pendingOasisKid"
+        ),
+        'village conquest transfers oasis and cancels pending abandonment'
+    );
+    round_expect_same(
+        false,
+        $automation->processOasisDeletionTask($pendingOasisTask),
+        'cancelled pre-conquest oasis abandonment cannot run'
+    );
+    round_expect_same(
+        "$actorUid|$defenderKid|1",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(o.owner, '|', o.did, '|', w.occupied)
+             FROM odata o JOIN wdata w ON w.id=o.kid WHERE o.kid=$pendingOasisKid"
+        ),
+        'cancelled pre-conquest abandonment preserves new owner oasis'
+    );
     round_expect_same(
         $surroundingBeforeConquest + 2,
         (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE kid=$defenderKid"),

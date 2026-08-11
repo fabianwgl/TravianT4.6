@@ -309,6 +309,7 @@ class VillageModel
         $helper = new AccountDeleter();
         $db->query("UPDATE vdata SET evasion=0, loyalty=0, last_loyalty_update=" . time() . " WHERE kid=$kid");
         $db->query("DELETE FROM training WHERE kid=$kid");
+        $db->query("DELETE FROM odelete WHERE kid=$kid");
         $db->query("DELETE FROM traderoutes WHERE (kid=$kid OR to_kid=$kid)");
         $db->query("DELETE FROM movement WHERE ((kid=$kid AND mode=0) OR (to_kid=$kid AND mode=1)) OR (race=4 AND to_kid={$kid})");
         $db->query("DELETE FROM enforcement WHERE kid=$kid");

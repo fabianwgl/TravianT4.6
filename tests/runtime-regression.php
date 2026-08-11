@@ -22,6 +22,7 @@ use Model\AllianceModel;
 use Model\MasterBuilder;
 use Model\MarketPlaceProcessor;
 use Model\NatarsModel;
+use Model\OasesModel;
 use Model\OptionModel;
 use Model\VillageModel;
 use Model\WonderOfTheWorldModel;
@@ -862,60 +863,252 @@ try {
 $oasisOwner = 2000000014;
 $oasisVillage = 2000000027;
 $oasisTarget = 2000000028;
+$oasisConqueror = 2000000045;
+$oasisConquerorVillage = 2000000045;
 $oasisTask = 2000000001;
 $oasisCrashTask = 2000000002;
+$oasisStaleTask = 2000000003;
+$oasisCaptureTime = time() - 500;
+$oasisTransferTime = time() - 400;
+$oasisAbandonTime = time() - 300;
+$oasisRecaptureTime = time() - 200;
+$oasisCrashTime = time() - 100;
 $db->begin_transaction();
 try {
     expect_same(
         0,
-        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id=$oasisOwner"),
-        'oasis-deletion fixture user available'
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id IN ($oasisOwner, $oasisConqueror)"),
+        'oasis lifecycle fixture users available'
     );
     expect_same(
         0,
-        (int)$db->fetchScalar("SELECT COUNT(*) FROM odelete WHERE id IN ($oasisTask, $oasisCrashTask)"),
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM odelete WHERE id IN ($oasisTask, $oasisCrashTask, $oasisStaleTask)"),
         'oasis-deletion fixture tasks available'
     );
     $db->query("INSERT INTO users (id, uuid, name, password, email, race, kid, total_villages, desc1, desc2, note)
-        VALUES ($oasisOwner, 'ov-regression-oasis', 'OVOasis', 'x', '', 1, $oasisVillage, 1, '', '', '')");
+        VALUES
+        ($oasisOwner, 'ov-regression-oasis', 'OVOasis', 'x', '', 1, $oasisVillage, 1, '', '', ''),
+        ($oasisConqueror, 'ov-regression-oasis-conqueror', 'OVOasisConqueror', 'x', '', 3, $oasisConquerorVillage, 1, '', '', '')");
     $lastUpdate = miliseconds();
     $db->query("INSERT INTO vdata
         (kid, owner, fieldtype, name, capital, pop, cp, wood, clay, iron, woodp, clayp, ironp, maxstore,
          crop, cropp, maxcrop, upkeep, lastmupdate, created, expandedfrom)
         VALUES
         ($oasisVillage, $oasisOwner, 3, 'OV Oasis Village', 1, 0, 0,
+         0, 0, 0, 0, 0, 0, 1000000, 1000, 0, 1000000, 0, $lastUpdate, " . time() . ", 0),
+        ($oasisConquerorVillage, $oasisConqueror, 3, 'OV Oasis Conqueror Village', 1, 0, 0,
          0, 0, 0, 0, 0, 0, 1000000, 1000, 0, 1000000, 0, $lastUpdate, " . time() . ", 0)");
-    $db->query("INSERT INTO fdata (kid) VALUES ($oasisVillage)");
+    $db->query("INSERT INTO fdata (kid) VALUES ($oasisVillage), ($oasisConquerorVillage)");
     $db->query("INSERT INTO odata
         (kid, type, did, wood, iron, clay, crop, lastmupdate, owner, loyalty)
-        VALUES ($oasisTarget, 1, $oasisVillage, 0, 0, 0, 0, $lastUpdate, $oasisOwner, 100)");
+        VALUES ($oasisTarget, 1, 0, 0, 0, 0, 0, $lastUpdate, 0, 100)");
     $db->query("INSERT INTO wdata (id, x, y, fieldtype, oasistype, landscape, occupied)
-        VALUES ($oasisTarget, 10, 10, 3, 1, 1, 1)");
+        VALUES ($oasisTarget, 10, 10, 3, 1, 1, 0)");
+
+    $surroundingBeforeOccupationId = (int)$db->fetchScalar("SELECT COALESCE(MAX(id), 0) FROM surrounding");
+    expect_true(
+        OasesModel::captureOasis($oasisTarget, $oasisOwner, $oasisVillage, $oasisCaptureTime),
+        'unoccupied oasis captured'
+    );
+    expect_same(
+        "$oasisOwner|$oasisVillage|1|$oasisCaptureTime|$oasisCaptureTime",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(o.owner, '|', o.did, '|', w.occupied, '|', o.conquered_time, '|', o.last_loyalty_update)
+             FROM odata o JOIN wdata w ON w.id=o.kid WHERE o.kid=$oasisTarget"
+        ),
+        'oasis occupation persists ownership and occurrence time'
+    );
+    $occupationSurrounding = $db->query(
+        "SELECT x, y, type, params, time FROM surrounding
+         WHERE id>$surroundingBeforeOccupationId AND x=10 AND y=10 ORDER BY id"
+    );
+    expect_same(1, $occupationSurrounding->num_rows, 'oasis occupation surrounding event count');
+    $occupationSurrounding = $occupationSurrounding->fetch_assoc();
+    expect_same(10, (int)$occupationSurrounding['x'], 'oasis occupation surrounding x coordinate');
+    expect_same(10, (int)$occupationSurrounding['y'], 'oasis occupation surrounding y coordinate');
+    expect_same(NoticeHelper::SURROUNDING_OASIS_OCCUPY, (int)$occupationSurrounding['type'], 'oasis occupation surrounding type');
+    expect_same("$oasisOwner:OVOasis", $occupationSurrounding['params'], 'oasis occupation surrounding payload');
+    expect_same($oasisCaptureTime, (int)$occupationSurrounding['time'], 'oasis occupation surrounding timestamp');
+
+    $surroundingAfterOccupation = (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE x=10 AND y=10");
+    expect_same(
+        false,
+        OasesModel::captureOasis($oasisTarget, $oasisOwner, $oasisVillage, $oasisCaptureTime),
+        'duplicate oasis occupation ignored'
+    );
+    expect_same(
+        $surroundingAfterOccupation,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE x=10 AND y=10"),
+        'duplicate oasis occupation records no surrounding event'
+    );
+
+    $wrongReleaseState = (string)$db->fetchScalar(
+        "SELECT CONCAT(o.owner, '|', o.did, '|', w.occupied) FROM odata o JOIN wdata w ON w.id=o.kid WHERE o.kid=$oasisTarget"
+    );
+    $wrongReleaseResources = (string)$db->fetchScalar(
+        "SELECT GROUP_CONCAT(CONCAT_WS('|', kid, wood, clay, iron, crop, lastmupdate) ORDER BY kid SEPARATOR ':')
+         FROM vdata WHERE kid IN ($oasisVillage, $oasisConquerorVillage)"
+    );
+    expect_same(
+        false,
+        OasesModel::releaseOasis($oasisTarget, $oasisConquerorVillage, $oasisTransferTime, true),
+        'wrong-source oasis release ignored'
+    );
+    expect_same(
+        $wrongReleaseState,
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(o.owner, '|', o.did, '|', w.occupied) FROM odata o JOIN wdata w ON w.id=o.kid WHERE o.kid=$oasisTarget"
+        ),
+        'wrong-source oasis release preserves ownership'
+    );
+    expect_same(
+        $wrongReleaseResources,
+        (string)$db->fetchScalar(
+            "SELECT GROUP_CONCAT(CONCAT_WS('|', kid, wood, clay, iron, crop, lastmupdate) ORDER BY kid SEPARATOR ':')
+             FROM vdata WHERE kid IN ($oasisVillage, $oasisConquerorVillage)"
+        ),
+        'wrong-source oasis release preserves village resources'
+    );
+    expect_same(
+        $surroundingAfterOccupation,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE x=10 AND y=10"),
+        'wrong-source oasis release records no surrounding event'
+    );
+    $db->query("INSERT INTO odelete (id, kid, oid, end_time)
+        VALUES ($oasisStaleTask, $oasisConquerorVillage, $oasisTarget, $oasisTransferTime)");
+    $automation = Automation::getInstance();
+    expect_true($automation->processOasisDeletionTask($oasisStaleTask), 'stale oasis deletion consumed as no-op');
+    expect_same(
+        "0|$wrongReleaseState",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT((SELECT COUNT(*) FROM odelete WHERE id=$oasisStaleTask), '|', o.owner, '|', o.did, '|', w.occupied)
+             FROM odata o JOIN wdata w ON w.id=o.kid WHERE o.kid=$oasisTarget"
+        ),
+        'stale oasis deletion preserves current ownership'
+    );
+    expect_same(
+        $surroundingAfterOccupation,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE x=10 AND y=10"),
+        'stale oasis deletion records no surrounding event'
+    );
+
+    $failedTransferState = (string)$db->fetchScalar(
+        "SELECT CONCAT(o.owner, '|', o.did, '|', w.occupied) FROM odata o JOIN wdata w ON w.id=o.kid WHERE o.kid=$oasisTarget"
+    );
+    $failedTransferResources = (string)$db->fetchScalar(
+        "SELECT GROUP_CONCAT(CONCAT_WS('|', kid, wood, clay, iron, crop, lastmupdate) ORDER BY kid SEPARATOR ':')
+         FROM vdata WHERE kid IN ($oasisVillage, $oasisConquerorVillage)"
+    );
+    $failedTransferSurrounding = (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE x=10 AND y=10");
+    expect_true($db->begin_transaction(), 'failed hostile oasis transfer transaction started');
+    try {
+        if (!OasesModel::releaseOasis($oasisTarget, $oasisVillage, $oasisTransferTime, false)
+            || !OasesModel::captureOasis($oasisTarget, 2999999999, $oasisConquerorVillage, $oasisTransferTime)) {
+            throw new RuntimeException('Simulated hostile oasis capture failure.');
+        }
+        throw new RuntimeException('Simulated hostile oasis capture failure was not triggered.');
+    } catch (RuntimeException $e) {
+        expect_same('Simulated hostile oasis capture failure.', $e->getMessage(), 'hostile oasis capture failure propagated');
+        expect_true($db->rollback(), 'failed hostile oasis transfer rolled back');
+    }
+    expect_same(
+        $failedTransferState,
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(o.owner, '|', o.did, '|', w.occupied) FROM odata o JOIN wdata w ON w.id=o.kid WHERE o.kid=$oasisTarget"
+        ),
+        'failed hostile oasis transfer preserves ownership'
+    );
+    expect_same(
+        $failedTransferResources,
+        (string)$db->fetchScalar(
+            "SELECT GROUP_CONCAT(CONCAT_WS('|', kid, wood, clay, iron, crop, lastmupdate) ORDER BY kid SEPARATOR ':')
+             FROM vdata WHERE kid IN ($oasisVillage, $oasisConquerorVillage)"
+        ),
+        'failed hostile oasis transfer rolls back village resources'
+    );
+    expect_same(
+        $failedTransferSurrounding,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE x=10 AND y=10"),
+        'failed hostile oasis transfer records no surrounding event'
+    );
+
+    $surroundingBeforeTransferId = (int)$db->fetchScalar("SELECT COALESCE(MAX(id), 0) FROM surrounding");
+    expect_true(
+        OasesModel::releaseOasis($oasisTarget, $oasisVillage, $oasisTransferTime, false),
+        'hostile oasis transfer releases previous owner without abandonment news'
+    );
+    expect_true(
+        OasesModel::captureOasis($oasisTarget, $oasisConqueror, $oasisConquerorVillage, $oasisTransferTime),
+        'hostile oasis transfer assigns conqueror'
+    );
+    expect_same(
+        "$oasisConqueror|$oasisConquerorVillage|1",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(o.owner, '|', o.did, '|', w.occupied) FROM odata o JOIN wdata w ON w.id=o.kid WHERE o.kid=$oasisTarget"
+        ),
+        'hostile oasis transfer persists new ownership'
+    );
+    $transferSurrounding = $db->query(
+        "SELECT type, params, time FROM surrounding
+         WHERE id>$surroundingBeforeTransferId AND x=10 AND y=10 ORDER BY id"
+    );
+    expect_same(1, $transferSurrounding->num_rows, 'hostile oasis transfer records one surrounding event');
+    $transferSurrounding = $transferSurrounding->fetch_assoc();
+    expect_same(NoticeHelper::SURROUNDING_OASIS_OCCUPY, (int)$transferSurrounding['type'], 'hostile oasis transfer surrounding type');
+    expect_same("$oasisConqueror:OVOasisConqueror", $transferSurrounding['params'], 'hostile oasis transfer payload');
+    expect_same($oasisTransferTime, (int)$transferSurrounding['time'], 'hostile oasis transfer timestamp');
+
     $movementTarget = 2000000007;
     $db->query("INSERT INTO movement
         (id, kid, to_kid, race, u1, mode, attack_type, start_time, end_time, data)
         VALUES ($movementTarget, 2000000006, $oasisTarget, 1, 5, 0, 0, 0, 0, '')");
-    $db->query("INSERT INTO odelete (id, kid, oid, end_time) VALUES
-        ($oasisTask, $oasisVillage, $oasisTarget, 0),
-        ($oasisCrashTask, $oasisVillage, $oasisTarget, 0)");
+    $db->query("INSERT INTO odelete (id, kid, oid, end_time)
+        VALUES ($oasisTask, $oasisConquerorVillage, $oasisTarget, $oasisAbandonTime)");
 
-    $automation = Automation::getInstance();
+    $surroundingBeforeAbandonId = (int)$db->fetchScalar("SELECT COALESCE(MAX(id), 0) FROM surrounding");
     expect_true($automation->processOasisDeletionTask($oasisTask), 'oasis deletion processed');
     expect_same(
-        '0|0|0|1',
+        '0|0|0|0|1',
         (string)$db->fetchScalar(
             "SELECT CONCAT(
-                (SELECT COUNT(*) FROM odelete WHERE id=$oasisTask), '|', owner, '|', did, '|',
+                (SELECT COUNT(*) FROM odelete WHERE id=$oasisTask), '|', o.owner, '|', o.did, '|', w.occupied, '|',
                 (SELECT mode FROM movement WHERE id=$movementTarget)
-             ) FROM odata WHERE kid=$oasisTarget"
+             ) FROM odata o JOIN wdata w ON w.id=o.kid WHERE o.kid=$oasisTarget"
         ),
         'oasis release and incoming movement cancellation commit with queue consumption'
     );
+    $abandonSurrounding = $db->query(
+        "SELECT type, params, time FROM surrounding
+         WHERE id>$surroundingBeforeAbandonId AND x=10 AND y=10 ORDER BY id"
+    );
+    expect_same(1, $abandonSurrounding->num_rows, 'voluntary oasis abandonment surrounding event count');
+    $abandonSurrounding = $abandonSurrounding->fetch_assoc();
+    expect_same(NoticeHelper::SURROUNDING_OASIS_ABANDON, (int)$abandonSurrounding['type'], 'voluntary oasis abandonment surrounding type');
+    expect_same('', $abandonSurrounding['params'], 'voluntary oasis abandonment surrounding payload');
+    expect_same($oasisAbandonTime, (int)$abandonSurrounding['time'], 'voluntary oasis abandonment timestamp');
     expect_same(false, $automation->processOasisDeletionTask($oasisTask), 'duplicate oasis deletion ignored');
+    expect_same(
+        1,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding WHERE id>$surroundingBeforeAbandonId AND x=10 AND y=10"
+        ),
+        'duplicate oasis deletion records no surrounding event'
+    );
+
+    expect_true(
+        OasesModel::captureOasis($oasisTarget, $oasisOwner, $oasisVillage, $oasisRecaptureTime),
+        'oasis recaptured for rollback fixture'
+    );
+    $db->query("INSERT INTO odelete (id, kid, oid, end_time)
+        VALUES ($oasisCrashTask, $oasisVillage, $oasisTarget, $oasisCrashTime)");
+    $surroundingBeforeCrashId = (int)$db->fetchScalar("SELECT COALESCE(MAX(id), 0) FROM surrounding");
 
     try {
-        TransactionalTask::consume('odelete', $oasisCrashTask, function (array $row) use ($db, $oasisTarget): void {
-            $db->query("UPDATE odata SET owner=99 WHERE kid=$oasisTarget");
+        TransactionalTask::consume('odelete', $oasisCrashTask, function (array $row): void {
+            expect_true(
+                OasesModel::releaseOasis($row['oid'], $row['kid'], $row['end_time'], true),
+                'oasis released before simulated worker crash'
+            );
             throw new RuntimeException('Simulated oasis worker crash.');
         });
         throw new RuntimeException('Simulated oasis worker crash was not propagated.');
@@ -923,23 +1116,57 @@ try {
         expect_same('Simulated oasis worker crash.', $e->getMessage(), 'oasis crash propagated');
     }
     expect_same(
-        '0|1',
+        "$oasisOwner|$oasisVillage|1|1|1",
         (string)$db->fetchScalar(
-            "SELECT CONCAT(owner, '|', (SELECT attempts FROM scheduled_task_failures
-                WHERE task_table='odelete' AND task_id=$oasisCrashTask))
-             FROM odata WHERE kid=$oasisTarget"
+            "SELECT CONCAT(o.owner, '|', o.did, '|', w.occupied, '|',
+                (SELECT COUNT(*) FROM odelete WHERE id=$oasisCrashTask), '|',
+                (SELECT attempts FROM scheduled_task_failures WHERE task_table='odelete' AND task_id=$oasisCrashTask))
+             FROM odata o JOIN wdata w ON w.id=o.kid WHERE o.kid=$oasisTarget"
         ),
-        'oasis crash rolls back effects and preserves task'
+        'oasis crash rolls back release and preserves task'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding WHERE id>$surroundingBeforeCrashId AND x=10 AND y=10"
+        ),
+        'oasis crash rolls back surrounding event'
     );
     expect_true($automation->processOasisDeletionTask($oasisCrashTask), 'oasis deletion retry processed');
-    expect_same(0, (int)$db->fetchScalar("SELECT owner FROM odata WHERE kid=$oasisTarget"), 'oasis retry releases oasis once');
+    expect_same(
+        '0|0|0|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(o.owner, '|', o.did, '|', w.occupied, '|',
+                (SELECT COUNT(*) FROM odelete WHERE id=$oasisCrashTask))
+             FROM odata o JOIN wdata w ON w.id=o.kid WHERE o.kid=$oasisTarget"
+        ),
+        'oasis retry releases oasis once'
+    );
+    $retryAbandonSurrounding = $db->query(
+        "SELECT type, params, time FROM surrounding
+         WHERE id>$surroundingBeforeCrashId AND x=10 AND y=10 ORDER BY id"
+    );
+    expect_same(1, $retryAbandonSurrounding->num_rows, 'oasis retry records one abandonment event');
+    $retryAbandonSurrounding = $retryAbandonSurrounding->fetch_assoc();
+    expect_same(NoticeHelper::SURROUNDING_OASIS_ABANDON, (int)$retryAbandonSurrounding['type'], 'oasis retry surrounding type');
+    expect_same('', $retryAbandonSurrounding['params'], 'oasis retry surrounding payload');
+    expect_same($oasisCrashTime, (int)$retryAbandonSurrounding['time'], 'oasis retry surrounding timestamp');
+    expect_same(false, $automation->processOasisDeletionTask($oasisCrashTask), 'replayed oasis retry ignored');
+    expect_same(
+        1,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding WHERE id>$surroundingBeforeCrashId AND x=10 AND y=10"
+        ),
+        'replayed oasis retry cannot duplicate abandonment event'
+    );
 } finally {
-    $db->query("DELETE FROM scheduled_task_failures WHERE task_table='odelete' AND task_id IN ($oasisTask, $oasisCrashTask)");
+    $db->query("DELETE FROM scheduled_task_failures WHERE task_table='odelete' AND task_id IN ($oasisTask, $oasisCrashTask, $oasisStaleTask)");
     $db->rollback();
     $db->query("DELETE FROM movement WHERE id=2000000007");
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
     $db->query("ALTER TABLE movement AUTO_INCREMENT=$movementAutoIncrement");
     $db->query("ALTER TABLE odelete AUTO_INCREMENT=$oasisDeletionAutoIncrement");
+    $db->query("ALTER TABLE surrounding AUTO_INCREMENT=$surroundingAutoIncrement");
 }
 
 $tradeOwner = 2000000015;

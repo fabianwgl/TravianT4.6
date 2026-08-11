@@ -423,7 +423,9 @@ class Automation
         return TransactionalTask::consume('odelete', $taskId, function (array $row): void {
             $db = DB::getInstance();
             $accountDeleter = new AccountDeleter();
-            OasesModel::releaseOasis($row['oid'], $row['kid']);
+            if (!OasesModel::releaseOasis($row['oid'], $row['kid'], $row['end_time'], true)) {
+                return;
+            }
             $enforces = $db->query("SELECT * FROM enforcement WHERE to_kid={$row['oid']}");
             while ($enforce = $enforces->fetch_assoc()) {
                 $accountDeleter->returnTrappedOrEnforcementRow($enforce, true);
