@@ -29,9 +29,9 @@ final class TransactionalTask
         return self::execute($table, $id, $effect, true, $beforeTaskLock);
     }
 
-    public static function mutate(string $table, int $id, callable $effect): bool
+    public static function mutate(string $table, int $id, callable $effect, ?callable $beforeTaskLock = null): bool
     {
-        return self::execute($table, $id, $effect, false, null);
+        return self::execute($table, $id, $effect, false, $beforeTaskLock);
     }
 
     private static function execute(

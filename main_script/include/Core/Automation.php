@@ -94,7 +94,12 @@ class Automation
     public function processBuildingTask(int $taskId): bool
     {
         return TransactionalTask::consume('building_upgrade', $taskId, function (array $row): void {
+            if (!$this->isBuildingTaskAllowed($row)) {
+                return;
+            }
             BuildingAction::upgrade((int)$row['kid'], (int)$row['building_field']);
+        }, function () use ($taskId): void {
+            $this->lockVillageOwnerBeforeTask('building_upgrade', $taskId);
         });
     }
 
@@ -104,6 +109,8 @@ class Automation
 
         return TransactionalTask::mutate('building_upgrade', $taskId, function (array $row) use ($masterBuilder): void {
             $masterBuilder->process($row);
+        }, function () use ($taskId): void {
+            $this->lockVillageOwnerBeforeTask('building_upgrade', $taskId);
         });
     }
 
@@ -117,7 +124,77 @@ class Automation
                 (bool)$row['complete'],
                 false
             );
+        }, function () use ($taskId): void {
+            $this->lockVillageOwnerBeforeTask('demolition', $taskId);
         });
+    }
+
+    private function lockVillageOwnerBeforeTask(string $table, int $taskId): void
+    {
+        if (!in_array($table, ['building_upgrade', 'demolition'], true)) {
+            throw new \InvalidArgumentException("Unsupported village task table $table.");
+        }
+        $db = DB::getInstance();
+        $ownerResult = $db->query(
+            "SELECT v.owner FROM `$table` task
+             JOIN vdata v ON v.kid=task.kid WHERE task.id=$taskId"
+        );
+        if (!$ownerResult) {
+            throw new \RuntimeException("Unable to inspect $table task $taskId before locking it.");
+        }
+        if (!$ownerResult->num_rows) {
+            return;
+        }
+        $owner = (int)$ownerResult->fetch_assoc()['owner'];
+        $lockedOwner = $db->query("SELECT id FROM users WHERE id=$owner FOR UPDATE");
+        if (!$lockedOwner) {
+            throw new \RuntimeException("Unable to lock player $owner before $table task $taskId.");
+        }
+    }
+
+    private function isBuildingTaskAllowed(array $row): bool
+    {
+        $db = DB::getInstance();
+        $kid = (int)$row['kid'];
+        $field = (int)$row['building_field'];
+        $taskId = (int)$row['id'];
+        if ($field < 1 || ($field > 40 && $field !== 99)) {
+            return false;
+        }
+        $levelColumn = "f{$field}";
+        $typeColumn = "f{$field}t";
+        $stateResult = $db->query(
+            "SELECT v.capital, f.$levelColumn AS level, f.$typeColumn AS item_id
+             FROM vdata v JOIN fdata f ON f.kid=v.kid
+             WHERE v.kid=$kid FOR UPDATE"
+        );
+        if (!$stateResult) {
+            throw new \RuntimeException("Unable to lock building state for task $taskId.");
+        }
+        if (!$stateResult->num_rows) {
+            return false;
+        }
+        $state = $stateResult->fetch_assoc();
+        $itemId = (int)$state['item_id'];
+        $level = (int)$state['level'];
+        $capital = (int)$state['capital'] === 1;
+        $allowed = $itemId > 0
+            && VillageModel::isBuildingAllowedInCapitalState($itemId, $capital)
+            && $level < Formulas::buildingMaxLvl($itemId, $capital);
+        if ($allowed) {
+            return true;
+        }
+
+        $db->query(
+            "DELETE FROM building_upgrade
+             WHERE kid=$kid AND building_field=$field AND id<>$taskId"
+        );
+        $db->query("DELETE FROM demolition WHERE kid=$kid AND building_field=$field");
+        if ($field > 18 && $field < 99 && $level <= 0) {
+            $db->query("UPDATE fdata SET $typeColumn=0 WHERE kid=$kid");
+        }
+
+        return false;
     }
 
 

@@ -231,36 +231,233 @@ class VillageModel
     public function changeCapital($uid, $new_capital_kid)
     {
         $db = DB::getInstance();
-        $capital_kid = $db->fetchScalar("SELECT kid FROM vdata WHERE owner=$uid AND capital=1");
-        if(!$capital_kid){
+        $uid = (int)$uid;
+        $newCapitalKid = (int)$new_capital_kid;
+        if (!$db->begin_transaction()) {
+            throw new \RuntimeException('Unable to begin capital change transaction.');
+        }
+
+        try {
+            if (!$this->changeCapitalInTransaction($uid, $newCapitalKid)) {
+                if (!$db->rollback()) {
+                    throw new \RuntimeException('Unable to roll back rejected capital change.');
+                }
+
+                return false;
+            }
+            if (!$db->commit()) {
+                throw new \RuntimeException('Unable to commit capital change transaction.');
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            $db->rollback();
+            throw $e;
+        }
+    }
+
+    public static function isBuildingAllowedInCapitalState(int $itemId, bool $capital): bool
+    {
+        return $capital
+            ? !in_array($itemId, [29, 30], true)
+            : !in_array($itemId, [34, 35], true);
+    }
+
+    private function changeCapitalInTransaction(int $uid, int $newCapitalKid): bool
+    {
+        if ($uid <= 0 || $newCapitalKid <= 0) {
             return false;
         }
-        $buildings = $this->getBuildingsAssoc($new_capital_kid);
-        for ($i = 19; $i <= 40; ++$i) {
-            if (in_array($buildings[$i]['item_id'], [29, 30])) {
-                BuildingAction::downgrade($new_capital_kid, $i, 0, true);
+
+        $db = DB::getInstance();
+        $ownerResult = $db->query("SELECT id FROM users WHERE id=$uid FOR UPDATE");
+        if (!$ownerResult) {
+            throw new \RuntimeException("Unable to lock player $uid before changing capital.");
+        }
+        if (!$ownerResult->num_rows) {
+            return false;
+        }
+
+        $villageResult = $db->query(
+            "SELECT kid, capital, isWW FROM vdata WHERE owner=$uid ORDER BY kid FOR UPDATE"
+        );
+        if (!$villageResult) {
+            throw new \RuntimeException("Unable to lock villages for player $uid before changing capital.");
+        }
+        $villages = [];
+        $capitalKids = [];
+        while ($village = $villageResult->fetch_assoc()) {
+            $kid = (int)$village['kid'];
+            $villages[$kid] = $village;
+            if ((int)$village['capital'] === 1) {
+                $capitalKids[] = $kid;
             }
         }
-        ResourcesHelper::updateVillageResources($new_capital_kid, FALSE);
-        $buildings = $this->getBuildingsAssoc($capital_kid);
-        for ($i = 19; $i <= 40; ++$i) {
-            if (in_array($buildings[$i]['item_id'], [34, 35])) {
-                BuildingAction::downgrade($capital_kid, $i, 0, true);
+        if (
+            count($capitalKids) !== 1
+            || !isset($villages[$newCapitalKid])
+            || (int)$villages[$newCapitalKid]['capital'] === 1
+            || (int)$villages[$newCapitalKid]['isWW'] === 1
+        ) {
+            return false;
+        }
+        $oldCapitalKid = $capitalKids[0];
+
+        $lockedKids = [$oldCapitalKid, $newCapitalKid];
+        sort($lockedKids, SORT_NUMERIC);
+        $kidList = implode(',', $lockedKids);
+        $fieldsResult = $db->query("SELECT * FROM fdata WHERE kid IN ($kidList) ORDER BY kid FOR UPDATE");
+        if (!$fieldsResult) {
+            throw new \RuntimeException('Unable to lock capital building state.');
+        }
+        $fieldRows = [];
+        while ($fields = $fieldsResult->fetch_assoc()) {
+            $fieldRows[(int)$fields['kid']] = $fields;
+        }
+        if (count($fieldRows) !== 2 || !$this->hasPalace($fieldRows[$newCapitalKid])) {
+            return false;
+        }
+
+        $queueResult = $db->query(
+            "SELECT id, kid, building_field, isMaster, commence
+             FROM building_upgrade WHERE kid IN ($kidList) ORDER BY id FOR UPDATE"
+        );
+        if (!$queueResult) {
+            throw new \RuntimeException('Unable to lock capital construction queues.');
+        }
+        $queueRows = [];
+        while ($queue = $queueResult->fetch_assoc()) {
+            $queueRows[] = $queue;
+        }
+        $demolitionResult = $db->query(
+            "SELECT id FROM demolition WHERE kid IN ($kidList) ORDER BY id FOR UPDATE"
+        );
+        if (!$demolitionResult) {
+            throw new \RuntimeException('Unable to lock capital demolition queues.');
+        }
+
+        ResourcesHelper::updateVillageResources($oldCapitalKid, false);
+        ResourcesHelper::updateVillageResources($newCapitalKid, false);
+
+        $oldForbiddenFields = $this->findBuildingFields($fieldRows[$oldCapitalKid], [34, 35]);
+        $newForbiddenFields = $this->findBuildingFields($fieldRows[$newCapitalKid], [29, 30]);
+        $this->removeQueuedWork($oldCapitalKid, $oldForbiddenFields);
+        $this->removeQueuedWork($newCapitalKid, $newForbiddenFields);
+        $this->trimOldCapitalResourceQueues($oldCapitalKid, $fieldRows[$oldCapitalKid], $queueRows);
+        $this->removeBuildings($oldCapitalKid, $fieldRows[$oldCapitalKid], $oldForbiddenFields);
+        $this->removeBuildings($newCapitalKid, $fieldRows[$newCapitalKid], $newForbiddenFields);
+
+        for ($field = 1; $field <= 18; ++$field) {
+            $level = (int)$fieldRows[$oldCapitalKid]["f{$field}"];
+            if ($level > 10) {
+                BuildingAction::downgrade($oldCapitalKid, $field, $level - 10);
             }
         }
-        for ($i = 1; $i <= 18; ++$i) {
-            if ($buildings[$i]['level'] > 10) {
-                BuildingAction::downgrade($capital_kid, $i, $buildings[$i]['level'] - 10);
-            }
+
+        $db->query(
+            "UPDATE vdata
+             SET capital=IF(kid=$newCapitalKid, 1, 0)
+             WHERE owner=$uid
+               AND ((kid=$oldCapitalKid AND capital=1) OR (kid=$newCapitalKid AND capital=0))"
+        );
+        if ($db->affectedRows() !== 2) {
+            throw new \RuntimeException("Unable to atomically change the capital for player $uid.");
         }
-        $db->query("UPDATE vdata SET capital=0 WHERE kid=$capital_kid");
-        $db->query("UPDATE vdata SET capital=1 WHERE kid=$new_capital_kid");
-        ResourcesHelper::updateVillageResources($capital_kid, FALSE);
-        ResourcesHelper::updateVillageResources($new_capital_kid, FALSE);
-        Map::villageDestroyOrCaptureOrNewVillageUpdate($capital_kid);
-        Map::villageDestroyOrCaptureOrNewVillageUpdate($new_capital_kid);
+
+        $masterBuilder = new MasterBuilder();
+        $masterBuilder->updateCommence($oldCapitalKid, false);
+        $masterBuilder->updateCommence($newCapitalKid, false);
+        ResourcesHelper::updateVillageResources($oldCapitalKid, false);
+        ResourcesHelper::updateVillageResources($newCapitalKid, false);
+        Map::villageDestroyOrCaptureOrNewVillageUpdate($oldCapitalKid);
+        Map::villageDestroyOrCaptureOrNewVillageUpdate($newCapitalKid);
         $db->query("UPDATE users SET profileCacheVersion=profileCacheVersion+1 WHERE id=$uid");
-        return TRUE;
+
+        return true;
+    }
+
+    private function hasPalace(array $fields): bool
+    {
+        for ($field = 19; $field <= 40; ++$field) {
+            if ((int)$fields["f{$field}t"] === 26 && (int)$fields["f{$field}"] >= 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function findBuildingFields(array $fields, array $itemIds): array
+    {
+        $result = [];
+        for ($field = 19; $field <= 40; ++$field) {
+            if (in_array((int)$fields["f{$field}t"], $itemIds, true)) {
+                $result[] = $field;
+            }
+        }
+
+        return $result;
+    }
+
+    private function removeQueuedWork(int $kid, array $fields): void
+    {
+        if ($fields === []) {
+            return;
+        }
+        $db = DB::getInstance();
+        $fieldList = implode(',', array_map('intval', $fields));
+        $db->query("DELETE FROM building_upgrade WHERE kid=$kid AND building_field IN ($fieldList)");
+        $db->query("DELETE FROM demolition WHERE kid=$kid AND building_field IN ($fieldList)");
+    }
+
+    private function trimOldCapitalResourceQueues(int $kid, array $fields, array $queueRows): void
+    {
+        $rowsByField = [];
+        foreach ($queueRows as $row) {
+            if ((int)$row['kid'] !== $kid || (int)$row['building_field'] > 18) {
+                continue;
+            }
+            $rowsByField[(int)$row['building_field']][] = $row;
+        }
+
+        $deleteIds = [];
+        for ($field = 1; $field <= 18; ++$field) {
+            if (empty($rowsByField[$field])) {
+                continue;
+            }
+            usort($rowsByField[$field], static function (array $left, array $right): int {
+                $masterOrder = (int)$left['isMaster'] <=> (int)$right['isMaster'];
+                if ($masterOrder !== 0) {
+                    return $masterOrder;
+                }
+                $commenceOrder = (int)$left['commence'] <=> (int)$right['commence'];
+
+                return $commenceOrder !== 0
+                    ? $commenceOrder
+                    : (int)$left['id'] <=> (int)$right['id'];
+            });
+            $keep = max(0, 10 - min(10, (int)$fields["f{$field}"]));
+            foreach (array_slice($rowsByField[$field], $keep) as $row) {
+                $deleteIds[] = (int)$row['id'];
+            }
+        }
+        if ($deleteIds !== []) {
+            DB::getInstance()->query(
+                "DELETE FROM building_upgrade WHERE id IN (" . implode(',', $deleteIds) . ")"
+            );
+        }
+    }
+
+    private function removeBuildings(int $kid, array $fields, array $buildingFields): void
+    {
+        $db = DB::getInstance();
+        foreach ($buildingFields as $field) {
+            if ((int)$fields["f{$field}"] > 0) {
+                BuildingAction::downgrade($kid, $field, 0, true);
+            } else {
+                $db->query("UPDATE fdata SET f{$field}t=0 WHERE kid=$kid");
+            }
+        }
     }
 
     public function removeTribeSpecificBuildings($kid)

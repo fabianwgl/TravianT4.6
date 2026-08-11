@@ -4262,6 +4262,7 @@ $Definition['ResidencePalace']['ChangeCapital'] = 'Κάνε αυτό το χωρ
 $Definition['ResidencePalace']['Cant set ww as capital'] = 'Δεν μπορείτε να επιλέξετε ένα χωριό Παγκοσμίου Θαύματος για πρωτεύουσα σας.';
 $Definition['ResidencePalace']['Password'] = 'Κωδικός';
 $Definition['ResidencePalace']['wrongPass'] = 'Λάθος κωδικός.';
+$Definition['ResidencePalace']['capitalChangeFailed'] = 'Η πρωτεύουσα δεν άλλαξε επειδή η κατάσταση του χωριού άλλαξε ή δεν είναι πλέον έγκυρη.';
 $Definition['ResidencePalace']['ConfirmChangeCapital'] = 'Είσαι σίγουρος;';
 $Definition['ResidencePalace']['This is your capital'] = 'Το χωριό αυτό είναι η πρωτεύουσα σας.';
 $Definition['ResidencePalace']['Date'] = 'Ημερομηνία';

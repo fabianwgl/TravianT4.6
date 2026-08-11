@@ -4096,6 +4096,7 @@ $Definition['ResidencePalace']['ChangeCapital'] = 'جعل هذه القرية ع
 $Definition['ResidencePalace']['Cant set ww as capital'] = 'لا يمكنك إختيار قرية المعجزة كـ عاصمة';
 $Definition['ResidencePalace']['Password'] = 'كلمة السر';
 $Definition['ResidencePalace']['wrongPass'] = 'كلمة السر خاطئة';
+$Definition['ResidencePalace']['capitalChangeFailed'] = 'تعذر تغيير العاصمة لأن حالة القرية تغيرت أو لم تعد مؤهلة.';
 $Definition['ResidencePalace']['ConfirmChangeCapital'] = 'هل أنت متأكد ؟';
 $Definition['ResidencePalace']['This is your capital'] = 'هذه هي عاصمتك';
 $Definition['ResidencePalace']['Date'] = 'التاريخ';

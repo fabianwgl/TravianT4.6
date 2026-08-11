@@ -38,6 +38,15 @@ class MasterBuilder
             $normalQueueLength,
             0
         );
+        if (
+            $item_id <= 0
+            || !VillageModel::isBuildingAllowedInCapitalState($item_id, (int)$village['capital'] === 1)
+            || $level > Formulas::buildingMaxLvl($item_id, (int)$village['capital'] === 1)
+        ) {
+            $this->deleteProcess((int)$row['id'], (int)$row['kid'], (int)$row['building_field'], $level);
+
+            return;
+        }
         $costs = Formulas::buildingUpgradeCosts($item_id, $level);
         $workers = $this->isWorkersBusy($player['race'],
             $player['plus'] >= time(),
@@ -273,7 +282,10 @@ class MasterBuilder
                 $masterQueueLengths[$field] ?? 0
             );
             $commence = max($now, $previousCommence);
-            if ($level > Formulas::buildingMaxLvl($item_id, $village['capital'])) {
+            if (
+                !VillageModel::isBuildingAllowedInCapitalState($item_id, (int)$village['capital'] === 1)
+                || $level > Formulas::buildingMaxLvl($item_id, $village['capital'])
+            ) {
                 $this->deleteProcess($row['id'], $kid, $field, $level);
                 continue;
             }

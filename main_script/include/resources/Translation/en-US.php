@@ -4466,6 +4466,7 @@ $Definition['ResidencePalace']['ChangeCapital'] = 'Choose this village as capita
 $Definition['ResidencePalace']['Cant set ww as capital'] = 'You can\'t choose a WW village as capital.';
 $Definition['ResidencePalace']['Password'] = 'Password';
 $Definition['ResidencePalace']['wrongPass'] = 'Incorrect password.';
+$Definition['ResidencePalace']['capitalChangeFailed'] = 'The capital was not changed because the village state changed or is no longer eligible.';
 $Definition['ResidencePalace']['ConfirmChangeCapital'] = 'Are you sure?';
 $Definition['ResidencePalace']['This is your capital'] = 'This is your capital.';
 $Definition['ResidencePalace']['Date'] = 'Date';

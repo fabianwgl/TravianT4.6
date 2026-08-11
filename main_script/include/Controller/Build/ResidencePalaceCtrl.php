@@ -50,8 +50,15 @@ class ResidencePalaceCtrl extends AnyCtrl
                         if (Password::verify($_POST['pw'], $_SESSION[Session::getInstance()->fixSessionPrefix('pw')])) {
                             $view->vars['showForm'] = FALSE;
                             $villageModel = new VillageModel();
-                            $villageModel->changeCapital(Session::getInstance()->getPlayerId(), Session::getInstance()->getKid());
-                            Village::getInstance()->setCapital(1);
+                            if ($villageModel->changeCapital(
+                                Session::getInstance()->getPlayerId(),
+                                Session::getInstance()->getKid()
+                            )) {
+                                Village::getInstance()->setCapital(1);
+                            } else {
+                                $view->vars['showForm'] = TRUE;
+                                $view->vars['error'] = T("ResidencePalace", "capitalChangeFailed");
+                            }
                         } else {
                             $view->vars['showForm'] = TRUE;
                             $view->vars['error'] = T("ResidencePalace", "wrongPass");

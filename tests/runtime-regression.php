@@ -736,6 +736,530 @@ try {
     $db->query("ALTER TABLE movement AUTO_INCREMENT=$movementAutoIncrement");
 }
 
+$capitalOwner = 2000000050;
+$capitalForeignOwner = 2000000051;
+$db->begin_transaction();
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id IN ($capitalOwner, $capitalForeignOwner)"),
+        'manual-capital fixture user IDs available'
+    );
+    $capitalFields = $db->query(
+        "SELECT w.id, w.fieldtype
+         FROM wdata w LEFT JOIN vdata v ON v.kid=w.id
+         WHERE w.id>0 AND w.occupied=0 AND w.oasistype=0 AND v.kid IS NULL
+         ORDER BY w.id DESC LIMIT 5"
+    );
+    expect_same(5, $capitalFields->num_rows, 'manual-capital fixture fields available');
+    $oldCapitalField = $capitalFields->fetch_assoc();
+    $newCapitalField = $capitalFields->fetch_assoc();
+    $noPalaceField = $capitalFields->fetch_assoc();
+    $wwCapitalField = $capitalFields->fetch_assoc();
+    $foreignCapitalField = $capitalFields->fetch_assoc();
+    $oldCapitalKid = (int)$oldCapitalField['id'];
+    $newCapitalKid = (int)$newCapitalField['id'];
+    $noPalaceKid = (int)$noPalaceField['id'];
+    $wwCapitalKid = (int)$wwCapitalField['id'];
+    $foreignCapitalKid = (int)$foreignCapitalField['id'];
+    $capitalKidList = implode(',', [
+        $oldCapitalKid,
+        $newCapitalKid,
+        $noPalaceKid,
+        $wwCapitalKid,
+        $foreignCapitalKid,
+    ]);
+    $now = time();
+    $lastUpdate = miliseconds();
+
+    $db->query("INSERT INTO users
+        (id, uuid, name, password, email, race, kid, total_pop, total_villages, cp_prod, desc1, desc2, note)
+        VALUES
+        ($capitalOwner, 'ov-regression-capital-owner', 'OVCapitalOwner', 'x', '', 2, $oldCapitalKid, 250, 4, 900, '', '', ''),
+        ($capitalForeignOwner, 'ov-regression-capital-foreign', 'OVCapitalForeign', 'x', '', 1, $foreignCapitalKid, 50, 1, 100, '', '', '')");
+    $db->query("INSERT INTO vdata
+        (kid, owner, fieldtype, name, capital, isWW, pop, cp, loyalty, wood, clay, iron, woodp, clayp, ironp,
+         maxstore, crop, cropp, maxcrop, upkeep, lastmupdate, created, expandedfrom)
+        VALUES
+        ($oldCapitalKid, $capitalOwner, " . (int)$oldCapitalField['fieldtype'] . ", 'OV Old Capital', 1, 0, 100, 500, 93,
+         1000000, 1000000, 1000000, 10000, 10000, 10000, 1000000, 1000000, 10000, 1000000, 0, $lastUpdate, $now, 0),
+        ($newCapitalKid, $capitalOwner, " . (int)$newCapitalField['fieldtype'] . ", 'OV New Capital', 0, 0, 50, 200, 87,
+         1000000, 1000000, 1000000, 10000, 10000, 10000, 1000000, 1000000, 10000, 1000000, 0, $lastUpdate, $now, 0),
+        ($noPalaceKid, $capitalOwner, " . (int)$noPalaceField['fieldtype'] . ", 'OV No Palace', 0, 0, 50, 100, 81,
+         1000000, 1000000, 1000000, 10000, 10000, 10000, 1000000, 1000000, 10000, 1000000, 0, $lastUpdate, $now, 0),
+        ($wwCapitalKid, $capitalOwner, " . (int)$wwCapitalField['fieldtype'] . ", 'OV WW Candidate', 0, 1, 50, 100, 79,
+         1000000, 1000000, 1000000, 10000, 10000, 10000, 1000000, 1000000, 10000, 1000000, 0, $lastUpdate, $now, 0),
+        ($foreignCapitalKid, $capitalForeignOwner, " . (int)$foreignCapitalField['fieldtype'] . ", 'OV Foreign Candidate', 1, 0, 50, 100, 75,
+         1000000, 1000000, 1000000, 10000, 10000, 10000, 1000000, 1000000, 10000, 1000000, 0, $lastUpdate, $now, 0)");
+    $db->query("INSERT INTO fdata
+        (kid, f1, f1t, f2, f2t, f3, f3t, f19, f19t, f20, f20t, f21, f21t, f22, f22t)
+        VALUES
+        ($oldCapitalKid, 12, 1, 8, 2, 10, 3, 1, 34, 1, 35, 5, 15, 0, 0),
+        ($newCapitalKid, 10, 1, 10, 2, 10, 3, 1, 26, 1, 29, 0, 30, 3, 15),
+        ($noPalaceKid, 10, 1, 10, 2, 10, 3, 1, 25, 0, 0, 0, 0, 0, 0),
+        ($wwCapitalKid, 10, 1, 10, 2, 10, 3, 1, 26, 0, 0, 0, 0, 0, 0),
+        ($foreignCapitalKid, 10, 1, 10, 2, 10, 3, 1, 26, 0, 0, 0, 0, 0, 0)");
+    $db->query("INSERT INTO units (kid, race) VALUES
+        ($oldCapitalKid, 2), ($newCapitalKid, 2), ($noPalaceKid, 2), ($wwCapitalKid, 2), ($foreignCapitalKid, 1)");
+    $db->query("INSERT INTO hero (uid, kid, health) VALUES ($capitalOwner, $oldCapitalKid, 73)");
+    $db->query("UPDATE wdata SET occupied=1 WHERE id IN ($capitalKidList) AND occupied=0");
+    expect_same(5, $db->affectedRows(), 'manual-capital fixture fields occupied');
+
+    $queueTime = $now + 3600;
+    $db->query("INSERT INTO building_upgrade (kid, building_field, isMaster, start_time, commence) VALUES
+        ($oldCapitalKid, 1, 0, $now, $queueTime),
+        ($oldCapitalKid, 1, 1, $now, $queueTime),
+        ($oldCapitalKid, 2, 0, $now, $queueTime),
+        ($oldCapitalKid, 2, 1, $now, " . ($queueTime + 1) . "),
+        ($oldCapitalKid, 2, 1, $now, " . ($queueTime + 2) . "),
+        ($oldCapitalKid, 3, 0, $now, $queueTime),
+        ($oldCapitalKid, 19, 0, $now, $queueTime),
+        ($oldCapitalKid, 20, 1, $now, $queueTime),
+        ($oldCapitalKid, 21, 0, $now, $queueTime),
+        ($newCapitalKid, 20, 0, $now, $queueTime),
+        ($newCapitalKid, 21, 1, $now, $queueTime),
+        ($newCapitalKid, 22, 0, $now, $queueTime)");
+    $db->query("INSERT INTO demolition (kid, building_field, end_time, complete) VALUES
+        ($oldCapitalKid, 19, $queueTime, 1),
+        ($newCapitalKid, 20, $queueTime, 1),
+        ($oldCapitalKid, 21, $queueTime, 0)");
+
+    $capitalModel = new VillageModel();
+    $capitalState = static function () use ($db, $capitalOwner, $oldCapitalKid, $newCapitalKid): string {
+        return (string)$db->fetchScalar(
+            "SELECT CONCAT_WS('|',
+                (SELECT GROUP_CONCAT(CONCAT(kid, ':', capital) ORDER BY kid SEPARATOR ',') FROM vdata WHERE owner=$capitalOwner),
+                (SELECT CONCAT(f1, ':', f2, ':', f3, ':', f19, ':', f19t, ':', f20, ':', f20t, ':', f21, ':', f21t) FROM fdata WHERE kid=$oldCapitalKid),
+                (SELECT CONCAT(f19, ':', f19t, ':', f20, ':', f20t, ':', f21, ':', f21t, ':', f22, ':', f22t) FROM fdata WHERE kid=$newCapitalKid),
+                (SELECT GROUP_CONCAT(CONCAT(kid, ':', building_field, ':', isMaster) ORDER BY id SEPARATOR ',') FROM building_upgrade WHERE kid IN ($oldCapitalKid, $newCapitalKid)),
+                (SELECT GROUP_CONCAT(CONCAT(kid, ':', building_field) ORDER BY id SEPARATOR ',') FROM demolition WHERE kid IN ($oldCapitalKid, $newCapitalKid)),
+                (SELECT CONCAT(kid, ':', health) FROM hero WHERE uid=$capitalOwner)
+            )"
+        );
+    };
+    $unchangedCapitalState = $capitalState();
+    expect_same(false, $capitalModel->changeCapital($capitalOwner, $foreignCapitalKid), 'foreign capital candidate rejected');
+    expect_same(false, $capitalModel->changeCapital($capitalOwner, $noPalaceKid), 'capital candidate without Palace rejected');
+    expect_same(false, $capitalModel->changeCapital($capitalOwner, $wwCapitalKid), 'World Wonder capital candidate rejected');
+    expect_same(false, $capitalModel->changeCapital($capitalOwner, $oldCapitalKid), 'current capital replay rejected');
+    $db->query("UPDATE fdata SET f19=0 WHERE kid=$newCapitalKid");
+    expect_same(false, $capitalModel->changeCapital($capitalOwner, $newCapitalKid), 'level-zero Palace candidate rejected');
+    $db->query("UPDATE fdata SET f19=1 WHERE kid=$newCapitalKid");
+    $db->query("UPDATE vdata SET capital=0 WHERE kid=$oldCapitalKid");
+    expect_same(false, $capitalModel->changeCapital($capitalOwner, $newCapitalKid), 'missing current capital rejected');
+    $db->query("UPDATE vdata SET capital=1 WHERE kid=$oldCapitalKid");
+    $db->query("UPDATE vdata SET capital=1 WHERE kid=$noPalaceKid");
+    expect_same(false, $capitalModel->changeCapital($capitalOwner, $newCapitalKid), 'multiple current capitals rejected');
+    $db->query("UPDATE vdata SET capital=0 WHERE kid=$noPalaceKid");
+    expect_same($unchangedCapitalState, $capitalState(), 'rejected capital changes mutate no game state');
+
+    expect_true($db->begin_transaction(), 'manual-capital crash savepoint started');
+    try {
+        expect_true($capitalModel->changeCapital($capitalOwner, $newCapitalKid), 'manual-capital nested transition completed');
+        throw new RuntimeException('Simulated manual-capital caller crash.');
+    } catch (RuntimeException $e) {
+        expect_same('Simulated manual-capital caller crash.', $e->getMessage(), 'manual-capital caller crash propagated');
+        expect_true($db->rollback(), 'manual-capital caller crash rolled back');
+    }
+    expect_same($unchangedCapitalState, $capitalState(), 'manual-capital caller crash restores all state');
+
+    expect_true($capitalModel->changeCapital($capitalOwner, $newCapitalKid), 'manual capital changed successfully');
+    expect_same(
+        "$newCapitalKid|1",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(kid, '|', COUNT(*)) FROM vdata WHERE owner=$capitalOwner AND capital=1"
+        ),
+        'manual capital transition leaves exactly the destination capital'
+    );
+    expect_same('10|8|10', (string)$db->fetchScalar("SELECT CONCAT(f1, '|', f2, '|', f3) FROM fdata WHERE kid=$oldCapitalKid"), 'old capital resource fields capped at level ten');
+    expect_same('0|0|0|0', (string)$db->fetchScalar("SELECT CONCAT(f19, '|', f19t, '|', f20, '|', f20t) FROM fdata WHERE kid=$oldCapitalKid"), 'old capital Stonemason and Brewery removed');
+    expect_same('1|26|0|0|0|0', (string)$db->fetchScalar("SELECT CONCAT(f19, '|', f19t, '|', f20, '|', f20t, '|', f21, '|', f21t) FROM fdata WHERE kid=$newCapitalKid"), 'new capital keeps Palace and removes Great Barracks and Great Stable');
+    expect_same('5|15|3|15', (string)$db->fetchScalar("SELECT CONCAT((SELECT f21 FROM fdata WHERE kid=$oldCapitalKid), '|', (SELECT f21t FROM fdata WHERE kid=$oldCapitalKid), '|', f22, '|', f22t) FROM fdata WHERE kid=$newCapitalKid"), 'manual capital transition preserves unrelated buildings');
+    expect_same(
+        '2:0,1|1|1|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT CONCAT(COUNT(*), ':', GROUP_CONCAT(isMaster ORDER BY id)) FROM building_upgrade WHERE kid=$oldCapitalKid AND building_field=2), '|',
+                (SELECT COUNT(*) FROM building_upgrade WHERE kid=$oldCapitalKid AND building_field=21), '|',
+                (SELECT COUNT(*) FROM building_upgrade WHERE kid=$newCapitalKid AND building_field=22), '|',
+                (SELECT COUNT(*) FROM building_upgrade
+                 WHERE (kid=$oldCapitalKid AND building_field IN (1, 3, 19, 20))
+                    OR (kid=$newCapitalKid AND building_field IN (20, 21)))
+            )"
+        ),
+        'manual capital transition trims only incompatible construction work'
+    );
+    expect_same(1, (int)$db->fetchScalar("SELECT COUNT(*) FROM demolition WHERE kid=$oldCapitalKid AND building_field=21"), 'unrelated demolition remains queued');
+    expect_same(0, (int)$db->fetchScalar("SELECT COUNT(*) FROM demolition WHERE kid IN ($oldCapitalKid, $newCapitalKid) AND building_field IN (19, 20)"), 'incompatible demolitions removed');
+    expect_same("$oldCapitalKid|73.0000000000", (string)$db->fetchScalar("SELECT CONCAT(kid, '|', health) FROM hero WHERE uid=$capitalOwner"), 'manual capital change preserves hero location and health');
+    expect_same($oldCapitalKid, (int)$db->fetchScalar("SELECT kid FROM users WHERE id=$capitalOwner"), 'manual capital change preserves selected village');
+    expect_same('93.0000000000|87.0000000000', (string)$db->fetchScalar("SELECT CONCAT((SELECT loyalty FROM vdata WHERE kid=$oldCapitalKid), '|', loyalty) FROM vdata WHERE kid=$newCapitalKid"), 'manual capital change preserves loyalty');
+    expect_same(
+        (string)$db->fetchScalar("SELECT CONCAT(SUM(pop), '|', SUM(cp)) FROM vdata WHERE owner=$capitalOwner"),
+        (string)$db->fetchScalar("SELECT CONCAT(total_pop, '|', cp_prod) FROM users WHERE id=$capitalOwner"),
+        'manual capital change keeps population and culture aggregates consistent'
+    );
+    expect_true((int)$db->fetchScalar("SELECT profileCacheVersion FROM users WHERE id=$capitalOwner") > 0, 'manual capital change invalidates profile cache');
+    $successfulCapitalState = $capitalState();
+    expect_same(false, $capitalModel->changeCapital($capitalOwner, $newCapitalKid), 'manual capital replay is a no-op');
+    expect_same($successfulCapitalState, $capitalState(), 'manual capital replay preserves successful state');
+} finally {
+    $db->rollback();
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE building_upgrade AUTO_INCREMENT=$buildingUpgradeAutoIncrement");
+    $db->query("ALTER TABLE demolition AUTO_INCREMENT=$demolitionAutoIncrement");
+}
+
+$concurrentCapitalOwner = 2000000052;
+$concurrentCapitalKids = [];
+$concurrentCapitalTaskIds = [];
+$concurrentCapitalDemolitionTaskIds = [];
+$concurrentCapitalUnrelatedSendId = 0;
+$concurrentCapitalCommitted = false;
+$concurrentCapitalAvailableOccupancy = [];
+$concurrentCapitalWorkers = [];
+$concurrentCapitalBarrierFiles = [];
+$db->begin_transaction();
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id=$concurrentCapitalOwner"),
+        'concurrent manual-capital fixture user ID available'
+    );
+    $concurrentCapitalFields = $db->query(
+        "SELECT w.id, w.fieldtype
+         FROM wdata w LEFT JOIN vdata v ON v.kid=w.id
+         WHERE w.id>0 AND w.occupied=0 AND w.oasistype=0 AND v.kid IS NULL
+           AND NOT EXISTS (SELECT 1 FROM fdata stale_fdata WHERE stale_fdata.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM research stale_research WHERE stale_research.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM tdata stale_tdata WHERE stale_tdata.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM smithy stale_smithy WHERE stale_smithy.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM training stale_training WHERE stale_training.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM odelete stale_odelete WHERE stale_odelete.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM traderoutes stale_route WHERE stale_route.kid=w.id OR stale_route.to_kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM send stale_send WHERE stale_send.kid=w.id OR stale_send.to_kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM market stale_market WHERE stale_market.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM building_upgrade stale_upgrade WHERE stale_upgrade.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM demolition stale_demolition WHERE stale_demolition.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM farmlist stale_farmlist WHERE stale_farmlist.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM raidlist stale_raidlist WHERE stale_raidlist.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM units stale_units WHERE stale_units.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM hero stale_hero WHERE stale_hero.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM enforcement stale_enforcement WHERE stale_enforcement.kid=w.id OR stale_enforcement.to_kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM trapped stale_trapped WHERE stale_trapped.kid=w.id OR stale_trapped.to_kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM marks m WHERE m.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM vdata child WHERE child.expandedfrom=w.id)
+           AND NOT EXISTS (SELECT 1 FROM movement movement_ref WHERE movement_ref.kid=w.id OR movement_ref.to_kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM odata oasis_ref WHERE oasis_ref.did=w.id)
+         ORDER BY w.id DESC LIMIT 3"
+    );
+    expect_same(3, $concurrentCapitalFields->num_rows, 'concurrent manual-capital fixture fields available');
+    $concurrentOldField = $concurrentCapitalFields->fetch_assoc();
+    $concurrentNewField = $concurrentCapitalFields->fetch_assoc();
+    $concurrentThirdField = $concurrentCapitalFields->fetch_assoc();
+    $concurrentOldKid = (int)$concurrentOldField['id'];
+    $concurrentNewKid = (int)$concurrentNewField['id'];
+    $concurrentThirdKid = (int)$concurrentThirdField['id'];
+    $concurrentCapitalKids = [$concurrentOldKid, $concurrentNewKid, $concurrentThirdKid];
+    $concurrentCapitalKidList = implode(',', $concurrentCapitalKids);
+    $availableRows = $db->query(
+        "SELECT kid, occupied FROM available_villages WHERE kid IN ($concurrentCapitalKidList)"
+    );
+    while ($availableRow = $availableRows->fetch_assoc()) {
+        $concurrentCapitalAvailableOccupancy[(int)$availableRow['kid']] = (int)$availableRow['occupied'];
+    }
+    $now = time();
+    $lastUpdate = miliseconds();
+    $db->query("INSERT INTO users
+        (id, uuid, name, password, email, race, kid, gift_gold, total_pop, total_villages, cp_prod, desc1, desc2, note)
+        VALUES ($concurrentCapitalOwner, 'ov-regression-concurrent-capital', 'OVConcurrentCapital', 'x', '', 1,
+                $concurrentOldKid, 100, 60, 3, 60, '', '', '')");
+    $db->query("INSERT INTO vdata
+        (kid, owner, fieldtype, name, capital, pop, cp, loyalty, wood, clay, iron, woodp, clayp, ironp,
+         maxstore, crop, cropp, maxcrop, upkeep, lastmupdate, created, expandedfrom)
+        VALUES
+        ($concurrentOldKid, $concurrentCapitalOwner, " . (int)$concurrentOldField['fieldtype'] . ", 'OV Concurrent Old Capital', 1, 10, 10, 100,
+         1000000, 1000000, 1000000, 10000, 10000, 10000, 1000000, 1000000, 10000, 1000000, 0, $lastUpdate, $now, 0),
+        ($concurrentNewKid, $concurrentCapitalOwner, " . (int)$concurrentNewField['fieldtype'] . ", 'OV Concurrent New Capital', 0, 30, 30, 100,
+         1000000, 1000000, 1000000, 10000, 10000, 10000, 1000000, 1000000, 10000, 1000000, 0, $lastUpdate, $now, 0),
+        ($concurrentThirdKid, $concurrentCapitalOwner, " . (int)$concurrentThirdField['fieldtype'] . ", 'OV Concurrent Third Capital', 0, 20, 20, 100,
+         1000000, 1000000, 1000000, 10000, 10000, 10000, 1000000, 1000000, 10000, 1000000, 0, $lastUpdate, $now, 0)");
+    $db->query("INSERT INTO fdata (kid, f1, f1t, f19, f19t, f20, f20t) VALUES
+        ($concurrentOldKid, 10, 1, 0, 0, 0, 0),
+        ($concurrentNewKid, 10, 1, 1, 26, 0, 0),
+        ($concurrentThirdKid, 10, 1, 0, 0, 0, 0)");
+    $db->query("INSERT INTO units (kid, race) VALUES
+        ($concurrentOldKid, 1), ($concurrentNewKid, 1), ($concurrentThirdKid, 1)");
+    $db->query("INSERT INTO hero (uid, kid, health) VALUES ($concurrentCapitalOwner, $concurrentThirdKid, 100)");
+    $db->query("INSERT INTO send (kid, to_kid, wood, clay, iron, crop, x, mode, end_time)
+        VALUES ($concurrentOldKid, $concurrentOldKid, 1, 2, 3, 4, 1, 0, " . ($now + 3600) . ")");
+    $concurrentCapitalUnrelatedSendId = (int)$db->lastInsertId();
+    $db->query("UPDATE wdata SET occupied=1 WHERE id IN ($concurrentCapitalKidList) AND occupied=0");
+    expect_same(3, $db->affectedRows(), 'concurrent manual-capital fixture fields occupied');
+    expect_true($db->commit(), 'concurrent manual-capital fixture committed');
+    $concurrentCapitalCommitted = true;
+
+    $runCapitalRace = function (array $commandPrefixes, string $label) use (
+        &$concurrentCapitalWorkers,
+        &$concurrentCapitalBarrierFiles
+    ): array {
+        $descriptorSpec = [
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+        $barrierPath = tempnam(sys_get_temp_dir(), 'ov-capital-start-');
+        expect_true($barrierPath !== false, "$label start barrier created");
+        $concurrentCapitalBarrierFiles[] = $barrierPath;
+        $readyPaths = [];
+        foreach ($commandPrefixes as $i => $prefix) {
+            $readyPath = tempnam(sys_get_temp_dir(), 'ov-capital-ready-');
+            expect_true($readyPath !== false, "$label worker $i ready signal created");
+            $readyPaths[] = $readyPath;
+            $concurrentCapitalBarrierFiles[] = $readyPath;
+            $pipes = [];
+            $process = proc_open(array_merge($prefix, [$barrierPath, $readyPath]), $descriptorSpec, $pipes);
+            expect_true(is_resource($process), "$label worker $i started");
+            $concurrentCapitalWorkers[] = ['process' => $process, 'pipes' => $pipes];
+        }
+
+        $readyDeadline = microtime(true) + 10;
+        do {
+            $ready = true;
+            foreach ($readyPaths as $readyPath) {
+                if (@file_get_contents($readyPath) !== 'ready') {
+                    $ready = false;
+                    break;
+                }
+            }
+            if (!$ready) {
+                usleep(1000);
+            }
+        } while (!$ready && microtime(true) < $readyDeadline);
+        expect_true($ready, "$label workers ready");
+        expect_true(file_put_contents($barrierPath, 'go', LOCK_EX) !== false, "$label workers released");
+
+        $outcomes = [];
+        $workerStart = count($concurrentCapitalWorkers) - count($commandPrefixes);
+        foreach ($commandPrefixes as $i => $_prefix) {
+            $workerIndex = $workerStart + $i;
+            $worker = &$concurrentCapitalWorkers[$workerIndex];
+            $stdout = stream_get_contents($worker['pipes'][1]);
+            $stderr = stream_get_contents($worker['pipes'][2]);
+            fclose($worker['pipes'][1]);
+            fclose($worker['pipes'][2]);
+            $exitCode = proc_close($worker['process']);
+            $worker['process'] = null;
+            $worker['pipes'] = [];
+            expect_same(0, $exitCode, "$label worker $i exit status: $stderr");
+            expect_same('', $stderr, "$label worker $i stderr");
+            $outcomes[] = $stdout;
+            unset($worker);
+        }
+
+        return $outcomes;
+    };
+
+    $stageOnlyPalace = function (int $palaceKid, string $label) use (
+        $db,
+        $concurrentCapitalKidList
+    ): void {
+        $db->query(
+            "UPDATE fdata
+             SET f19=IF(kid=$palaceKid, 1, 0), f19t=IF(kid=$palaceKid, 26, 0)
+             WHERE kid IN ($concurrentCapitalKidList)"
+        );
+        expect_same(
+            "$palaceKid|1",
+            (string)$db->fetchScalar(
+                "SELECT CONCAT(
+                    MAX(IF(f19>=1 AND f19t=26, kid, 0)), '|',
+                    SUM(f19>=1 AND f19t=26)
+                 ) FROM fdata WHERE kid IN ($concurrentCapitalKidList)"
+            ),
+            "$label has exactly one account Palace"
+        );
+    };
+
+    $stageOnlyPalace($concurrentNewKid, 'duplicate manual-capital race');
+    $duplicateOutcomes = $runCapitalRace([
+        ['php', '/app/tests/capital-change-worker.php', (string)$concurrentCapitalOwner, (string)$concurrentNewKid],
+        ['php', '/app/tests/capital-change-worker.php', (string)$concurrentCapitalOwner, (string)$concurrentNewKid],
+    ], 'duplicate manual-capital race');
+    sort($duplicateOutcomes);
+    expect_same(['false', 'true'], $duplicateOutcomes, 'duplicate manual-capital race changes capital once');
+    expect_same(
+        "$concurrentNewKid|1",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(kid, '|', COUNT(*)) FROM vdata WHERE owner=$concurrentCapitalOwner AND capital=1"
+        ),
+        'duplicate manual-capital race leaves one destination capital'
+    );
+
+    $stageOnlyPalace($concurrentThirdKid, 'capital-building race');
+    $db->query("UPDATE fdata SET f20=0, f20t=29 WHERE kid=$concurrentThirdKid");
+    $db->query("INSERT INTO building_upgrade (kid, building_field, isMaster, start_time, commence)
+        VALUES ($concurrentThirdKid, 20, 0, $now, $now)");
+    $concurrentBuildingTask = (int)$db->lastInsertId();
+    $concurrentCapitalTaskIds[] = $concurrentBuildingTask;
+    $buildingRaceOutcomes = $runCapitalRace([
+        ['php', '/app/tests/capital-change-worker.php', (string)$concurrentCapitalOwner, (string)$concurrentThirdKid],
+        ['php', '/app/tests/building-task-worker.php', (string)$concurrentBuildingTask],
+    ], 'capital-building race');
+    expect_same('true', $buildingRaceOutcomes[0], 'capital-building race changes capital');
+    expect_true(in_array($buildingRaceOutcomes[1], ['false', 'true'], true), 'capital-building race returns a valid worker outcome');
+    expect_same(
+        "$concurrentThirdKid|1|0|0|0",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT kid FROM vdata WHERE owner=$concurrentCapitalOwner AND capital=1), '|',
+                (SELECT COUNT(*) FROM vdata WHERE owner=$concurrentCapitalOwner AND capital=1), '|',
+                f20, '|', f20t, '|',
+                (SELECT COUNT(*) FROM building_upgrade WHERE id=$concurrentBuildingTask)
+            ) FROM fdata WHERE kid=$concurrentThirdKid"
+        ),
+        'capital-building race cannot preserve or recreate Great Barracks'
+    );
+
+    $stageOnlyPalace($concurrentNewKid, 'capital-master-builder race');
+    $db->query("UPDATE fdata SET f20=0, f20t=29 WHERE kid=$concurrentNewKid");
+    $db->query("INSERT INTO building_upgrade (kid, building_field, isMaster, start_time, commence)
+        VALUES ($concurrentNewKid, 20, 1, $now, $now)");
+    $concurrentMasterTask = (int)$db->lastInsertId();
+    $concurrentCapitalTaskIds[] = $concurrentMasterTask;
+    $masterRaceOutcomes = $runCapitalRace([
+        ['php', '/app/tests/capital-change-worker.php', (string)$concurrentCapitalOwner, (string)$concurrentNewKid],
+        ['php', '/app/tests/master-builder-task-worker.php', (string)$concurrentMasterTask],
+    ], 'capital-master-builder race');
+    expect_same('true', $masterRaceOutcomes[0], 'capital-master-builder race changes capital');
+    expect_true(in_array($masterRaceOutcomes[1], ['false', 'true'], true), 'capital-master-builder race returns a valid worker outcome');
+    expect_same(
+        "$concurrentNewKid|1|0|0|0",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT kid FROM vdata WHERE owner=$concurrentCapitalOwner AND capital=1), '|',
+                (SELECT COUNT(*) FROM vdata WHERE owner=$concurrentCapitalOwner AND capital=1), '|',
+                f20, '|', f20t, '|',
+                (SELECT COUNT(*) FROM building_upgrade WHERE kid=$concurrentNewKid AND building_field=20)
+            ) FROM fdata WHERE kid=$concurrentNewKid"
+        ),
+        'capital-master-builder race cannot retain queued or active Great Barracks work'
+    );
+
+    $stageOnlyPalace($concurrentThirdKid, 'capital-demolition race');
+    $db->query("UPDATE fdata SET f20=1, f20t=29 WHERE kid=$concurrentThirdKid");
+    $db->query("INSERT INTO demolition (kid, building_field, end_time, complete)
+        VALUES ($concurrentThirdKid, 20, $now, 1)");
+    $concurrentDemolitionTask = (int)$db->lastInsertId();
+    $concurrentCapitalDemolitionTaskIds[] = $concurrentDemolitionTask;
+    $demolitionRaceOutcomes = $runCapitalRace([
+        ['php', '/app/tests/capital-change-worker.php', (string)$concurrentCapitalOwner, (string)$concurrentThirdKid],
+        ['php', '/app/tests/demolition-task-worker.php', (string)$concurrentDemolitionTask],
+    ], 'capital-demolition race');
+    expect_same('true', $demolitionRaceOutcomes[0], 'capital-demolition race changes capital');
+    expect_true(in_array($demolitionRaceOutcomes[1], ['false', 'true'], true), 'capital-demolition race returns a valid worker outcome');
+    expect_same(
+        "$concurrentThirdKid|1|0|0|0",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT kid FROM vdata WHERE owner=$concurrentCapitalOwner AND capital=1), '|',
+                (SELECT COUNT(*) FROM vdata WHERE owner=$concurrentCapitalOwner AND capital=1), '|',
+                f20, '|', f20t, '|',
+                (SELECT COUNT(*) FROM demolition WHERE id=$concurrentDemolitionTask)
+            ) FROM fdata WHERE kid=$concurrentThirdKid"
+        ),
+        'capital-demolition race cannot retain forbidden building or stale demolition work'
+    );
+
+    $stageOnlyPalace($concurrentNewKid, 'capital-destruction race');
+    $destructionRaceOutcomes = $runCapitalRace([
+        ['php', '/app/tests/village-delete-worker.php', (string)$concurrentThirdKid],
+        ['php', '/app/tests/capital-change-worker.php', (string)$concurrentCapitalOwner, (string)$concurrentNewKid],
+    ], 'capital-destruction race');
+    expect_same('true', $destructionRaceOutcomes[0], 'capital-destruction race deletes target');
+    expect_true(in_array($destructionRaceOutcomes[1], ['false', 'true'], true), 'capital-destruction race returns a valid switch outcome');
+    expect_same(0, (int)$db->fetchScalar("SELECT COUNT(*) FROM vdata WHERE kid=$concurrentThirdKid"), 'capital-destruction race removes target village');
+    expect_same(
+        "$concurrentNewKid|1",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(kid, '|', COUNT(*)) FROM vdata WHERE owner=$concurrentCapitalOwner AND capital=1"
+        ),
+        'capital-destruction race leaves one eligible capital'
+    );
+    expect_same(
+        "$concurrentNewKid|0.0000000000",
+        (string)$db->fetchScalar("SELECT CONCAT(kid, '|', health) FROM hero WHERE uid=$concurrentCapitalOwner"),
+        'capital-destruction race relocates hero to surviving capital'
+    );
+    expect_same(
+        "$concurrentOldKid|$concurrentOldKid|1|2|3|4",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(kid, '|', to_kid, '|', wood, '|', clay, '|', iron, '|', crop)
+             FROM send WHERE id=$concurrentCapitalUnrelatedSendId"
+        ),
+        'capital concurrency fixture preserves unrelated data on the top candidate'
+    );
+} finally {
+    foreach ($concurrentCapitalWorkers as &$worker) {
+        if (!isset($worker['process']) || !is_resource($worker['process'])) {
+            continue;
+        }
+        $status = proc_get_status($worker['process']);
+        if (!empty($status['running'])) {
+            proc_terminate($worker['process']);
+        }
+        foreach ($worker['pipes'] as $pipe) {
+            if (is_resource($pipe)) {
+                fclose($pipe);
+            }
+        }
+        proc_close($worker['process']);
+        $worker['process'] = null;
+        $worker['pipes'] = [];
+    }
+    unset($worker);
+    foreach ($concurrentCapitalBarrierFiles as $barrierFile) {
+        if (is_string($barrierFile) && file_exists($barrierFile)) {
+            unlink($barrierFile);
+        }
+    }
+
+    if (!$concurrentCapitalCommitted) {
+        $db->rollback();
+    }
+    if ($concurrentCapitalKids !== []) {
+        $kidList = implode(',', array_map('intval', $concurrentCapitalKids));
+        if ($concurrentCapitalTaskIds !== []) {
+            $taskList = implode(',', array_map('intval', $concurrentCapitalTaskIds));
+            $db->query("DELETE FROM scheduled_task_failures WHERE task_table='building_upgrade' AND task_id IN ($taskList)");
+        }
+        if ($concurrentCapitalDemolitionTaskIds !== []) {
+            $taskList = implode(',', array_map('intval', $concurrentCapitalDemolitionTaskIds));
+            $db->query("DELETE FROM scheduled_task_failures WHERE task_table='demolition' AND task_id IN ($taskList)");
+        }
+        $db->query("DELETE FROM building_upgrade WHERE kid IN ($kidList)");
+        $db->query("DELETE FROM demolition WHERE kid IN ($kidList)");
+        if ($concurrentCapitalUnrelatedSendId > 0) {
+            $db->query("DELETE FROM send WHERE id=$concurrentCapitalUnrelatedSendId");
+        }
+        $db->query("DELETE FROM hero WHERE uid=$concurrentCapitalOwner");
+        $db->query("DELETE FROM units WHERE kid IN ($kidList)");
+        $db->query("DELETE FROM fdata WHERE kid IN ($kidList)");
+        $db->query("DELETE FROM vdata WHERE kid IN ($kidList)");
+        $db->query("DELETE FROM users WHERE id=$concurrentCapitalOwner");
+        $db->query("UPDATE wdata SET occupied=0 WHERE id IN ($kidList)");
+        foreach ($concurrentCapitalAvailableOccupancy as $kid => $occupied) {
+            $db->query(
+                "UPDATE available_villages SET occupied=" . (int)$occupied . " WHERE kid=" . (int)$kid
+            );
+        }
+    }
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE building_upgrade AUTO_INCREMENT=$buildingUpgradeAutoIncrement");
+    $db->query("ALTER TABLE demolition AUTO_INCREMENT=$demolitionAutoIncrement");
+    $db->query("ALTER TABLE send AUTO_INCREMENT=$sendAutoIncrement");
+}
+
 $battleAttacker = 2000000046;
 $battleDefender = 2000000047;
 $battleMovementIds = [];

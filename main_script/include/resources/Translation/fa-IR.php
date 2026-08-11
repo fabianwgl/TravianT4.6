@@ -4099,6 +4099,7 @@ $Definition['ResidencePalace']['ChangeCapital'] = 'انتخاب این دهکد�
 $Definition['ResidencePalace']['Cant set ww as capital'] = 'شما دهکده شگفتی جهان را نمی توانید به عنوان پایتخت خود انتخاب کنید.';
 $Definition['ResidencePalace']['Password'] = 'رمز عبور';
 $Definition['ResidencePalace']['wrongPass'] = 'رمز عبور اشتباه است.';
+$Definition['ResidencePalace']['capitalChangeFailed'] = 'پایتخت تغییر نکرد، زیرا وضعیت دهکده تغییر کرده یا دیگر واجد شرایط نیست.';
 $Definition['ResidencePalace']['ConfirmChangeCapital'] = 'آیا مطمئن هستید؟';
 $Definition['ResidencePalace']['This is your capital'] = 'این دهکده پایتخت شماست.';
 $Definition['ResidencePalace']['Date'] = 'تاریخ';
