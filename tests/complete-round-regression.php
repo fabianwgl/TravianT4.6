@@ -10,6 +10,7 @@ use Core\Database\DB;
 use Core\Random;
 use Game\Buildings\BuildingHelper;
 use Game\Formulas;
+use Game\NoticeHelper;
 use Model\ArtefactsModel;
 use Model\MarketPlaceProcessor;
 use Model\MovementsModel;
@@ -163,11 +164,28 @@ try {
     round_expect_true($actorUid > 2, 'actor registered');
     round_expect_true($defenderUid > 2, 'defender registered');
     $roundStage = 'register-actor-village';
-    $actorVillageCreated = $register->createBaseVillage($actorUid, 'OVRoundActor', 1, $baseKid);
+    $surroundingBeforeRegistration = (int)$db->fetchScalar(
+        "SELECT COUNT(*) FROM surrounding WHERE kid=$baseKid"
+    );
+    $actorVillageCreated = $register->createBaseVillage($actorUid, 'OVRoundActor', 1, $baseKid, true);
     if ($db->mysqli->errno) {
         throw new RuntimeException('actor village SQL error: ' . $db->mysqli->error);
     }
     round_expect_true($actorVillageCreated, 'actor village created');
+    round_expect_same(
+        $surroundingBeforeRegistration + 1,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE kid=$baseKid"),
+        'registration records surrounding village founding'
+    );
+    $registrationSurrounding = $db->query(
+        "SELECT x, y, type, params, time FROM surrounding WHERE kid=$baseKid ORDER BY id DESC LIMIT 1"
+    )->fetch_assoc();
+    $baseCoordinates = Formulas::kid2xy($baseKid);
+    round_expect_same((int)$baseCoordinates['x'], (int)$registrationSurrounding['x'], 'registration surrounding x coordinate');
+    round_expect_same((int)$baseCoordinates['y'], (int)$registrationSurrounding['y'], 'registration surrounding y coordinate');
+    round_expect_same(NoticeHelper::SURROUNDING_VILLAGE_FOUND, (int)$registrationSurrounding['type'], 'registration surrounding event type');
+    round_expect_same("$actorUid:OVRoundActor:$baseKid", $registrationSurrounding['params'], 'registration surrounding payload');
+    round_expect_true((int)$registrationSurrounding['time'] > 0, 'registration surrounding timestamp');
     $roundStage = 'register-defender-village';
     $defenderVillageCreated = $register->createBaseVillage($defenderUid, 'OVRoundDefender', 3, $defenderKid);
     if ($db->mysqli->errno) {

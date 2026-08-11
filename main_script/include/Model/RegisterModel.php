@@ -11,6 +11,7 @@ use Game\Formulas;
 use Game\Helpers\CulturePointsHelper;
 use Game\Hero\HeroFace;
 use Game\Map\Map;
+use Game\NoticeHelper;
 use Game\ResourcesHelper;
 use function getGame;
 use function getGameElapsedSeconds;
@@ -182,7 +183,7 @@ class RegisterModel
         $db->query("INSERT INTO inventory (uid, lastupdate) VALUES ($uid, $time)");
     }
 
-    public function createBaseVillage($uid, $playerName, $race, $kid)
+    public function createBaseVillage($uid, $playerName, $race, $kid, $recordSurrounding = false)
     {
         $village_name = sprintf(T("Global", "playerVillageName"), $playerName);
         $result = $this->_createVillage(
@@ -207,6 +208,16 @@ class RegisterModel
         $this->increaseUserPopCP($uid, $calculatedCPPOP['pop'], $calculatedCPPOP['cp']);
         $this->addAdventures($uid);
         ResourcesHelper::updateVillageResources($kid, false);
+        if ($recordSurrounding) {
+            $xy = Formulas::kid2xy($kid);
+            NoticeHelper::addSurrounding(
+                $xy['x'],
+                $xy['y'],
+                NoticeHelper::SURROUNDING_VILLAGE_FOUND,
+                [$uid, $playerName, $kid],
+                time()
+            );
+        }
         return true;
     }
 

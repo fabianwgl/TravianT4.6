@@ -193,7 +193,7 @@ class ActivateCtrl extends OutOfGameCtrl
             $this->activationRow['email'],
             $this->getTribe(),
             $kid);
-        $result = $register->createBaseVillage($uid, $this->activationRow['name'], $this->getTribe(), $kid);
+        $result = $register->createBaseVillage($uid, $this->activationRow['name'], $this->getTribe(), $kid, true);
         if (!$result) {
             $db->rollback();
             return;
