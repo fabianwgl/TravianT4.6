@@ -317,6 +317,8 @@ class AllianceModel
     public function createAlliance($uid, $name, $tag)
     {
         $db = DB::getInstance();
+        $joiningPlayer = $db->query("SELECT name, kid, aid FROM users WHERE id=$uid LIMIT 1")->fetch_assoc();
+        $oldAid = (int)($joiningPlayer['aid'] ?? 0);
         $name = $db->real_escape_string($name);
         $tag = $db->real_escape_string($tag);
         $db->query("INSERT INTO alidata (name, tag) VALUES ('$name', '$tag')");
@@ -341,6 +343,10 @@ BBCODE;
         $x |= AllianceModel::MANAGE_MARKS;
         $db->query("UPDATE users SET aid=$aid, alliance_role=$x, alliance_join_time=" . time() . ", alliance_role_name='" . T("Buildings",
                 "Alliance Founder") . "' WHERE id=$uid");
+        $membershipChanged = $db->affectedRows() > 0;
+        if ($membershipChanged) {
+            $this->addAllianceSurrounding($uid, $joiningPlayer, $oldAid, $aid);
+        }
         $pop = $db->fetchScalar("SELECT SUM(pop) FROM vdata WHERE owner=$uid");
         $db->query("UPDATE alidata SET oldPop=$pop WHERE id=$aid");
         $this->recalculateMaxUsers($aid);
@@ -362,7 +368,13 @@ BBCODE;
         if ($total >= $max) {
             return -1;//no empty slots.
         }
+        $joiningPlayer = $db->query("SELECT name, kid, aid FROM users WHERE id=$uid LIMIT 1")->fetch_assoc();
+        $oldAid = (int)($joiningPlayer['aid'] ?? 0);
         $db->query("UPDATE users SET aid=$aid, alliance_join_time=" . time() . " WHERE id=$uid");
+        $membershipChanged = $db->affectedRows() > 0;
+        if ($membershipChanged) {
+            $this->addAllianceSurrounding($uid, $joiningPlayer, $oldAid, $aid);
+        }
         $this->recalculateMaxUsers($aid);
         $db->query("DELETE FROM ali_invite WHERE id=$id");
         $name = $db->fetchScalar("SELECT name FROM users WHERE id=$uid");
@@ -372,5 +384,20 @@ BBCODE;
         }
         Map::allianceJoinOrLeaveCacheUpdate($uid, $aid);
         return $aid;
+    }
+
+    private function addAllianceSurrounding($uid, $player, $oldAid, $newAid)
+    {
+        if (!$player) {
+            return;
+        }
+        $xy = Formulas::kid2xy((int)$player['kid']);
+        NoticeHelper::addSurrounding(
+            $xy['x'],
+            $xy['y'],
+            NoticeHelper::SURROUNDING_ALLIANCE,
+            [$uid, $player['name'], $oldAid, $newAid],
+            time()
+        );
     }
 }

@@ -224,6 +224,9 @@ $aliLogAutoIncrement = (int)$db->fetchScalar(
 $surroundingAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='surrounding'"
 );
+$aliInviteAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='ali_invite'"
+);
 $allianceBonusQueueAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='alliance_bonus_upgrade_queue'"
 );
@@ -456,12 +459,14 @@ try {
 $allianceLeaveAid = 2000000040;
 $allianceLeavingUid = 2000000041;
 $allianceRemainingUid = 2000000042;
+$allianceFounderUid = 2000000043;
+$allianceInviteeUid = 2000000044;
 $db->begin_transaction();
 try {
     expect_same(
         0,
         (int)$db->fetchScalar(
-            "SELECT COUNT(*) FROM users WHERE id IN ($allianceLeavingUid, $allianceRemainingUid)"
+            "SELECT COUNT(*) FROM users WHERE id IN ($allianceLeavingUid, $allianceRemainingUid, $allianceFounderUid, $allianceInviteeUid)"
         ),
         'alliance leave fixture user IDs available'
     );
@@ -476,13 +481,31 @@ try {
         'alliance leave fixture log IDs available'
     );
     $surroundingBeforeLeave = (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE kid=1");
+    $surroundingBeforeFounderJoin = (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE kid=3");
+    $surroundingBeforeInviteJoin = (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE kid=4");
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM vdata WHERE kid IN (3, 4)"),
+        'alliance join fixture village IDs available'
+    );
     $db->query("INSERT INTO alidata (id, name, tag) VALUES ($allianceLeaveAid, 'OV Leave Alliance', 'OVL')");
     $db->query("INSERT INTO users (id, uuid, aid, name, password, email, race, kid, desc1, desc2, note)
         VALUES
         ($allianceLeavingUid, 'ov-regression-alliance-leaver', $allianceLeaveAid, 'OVAllianceLeaver', 'x', '', 1, 1, '', '', ''),
-        ($allianceRemainingUid, 'ov-regression-alliance-remaining', $allianceLeaveAid, 'OVAllianceRemaining', 'x', '', 1, 2, '', '', '')");
+        ($allianceRemainingUid, 'ov-regression-alliance-remaining', $allianceLeaveAid, 'OVAllianceRemaining', 'x', '', 1, 2, '', '', ''),
+        ($allianceFounderUid, 'ov-regression-alliance-founder', 0, 'OVAllianceFounder', 'x', '', 1, 3, '', '', ''),
+        ($allianceInviteeUid, 'ov-regression-alliance-invitee', 0, 'OVAllianceInvitee', 'x', '', 1, 4, '', '', '')");
+    $db->query("INSERT INTO vdata
+        (kid, owner, fieldtype, name, capital, pop, cp, wood, clay, iron, woodp, clayp, ironp, maxstore,
+         crop, cropp, maxcrop, upkeep, lastmupdate, created, isWW, isFarm, expandedfrom)
+        VALUES
+        (3, $allianceFounderUid, 3, 'OV Alliance Founder Village', 1, 0, 0, 0, 0, 0, 0, 0, 0, 1000,
+         0, 0, 1000, 0, " . miliseconds() . ", " . time() . ", 0, 0, 0),
+        (4, $allianceInviteeUid, 3, 'OV Alliance Invitee Village', 1, 0, 0, 0, 0, 0, 0, 0, 0, 1000,
+         0, 0, 1000, 0, " . miliseconds() . ", " . time() . ", 0, 0, 0)");
 
-    (new AllianceModel())->leaveAlliance($allianceLeavingUid, $allianceLeaveAid);
+    $allianceModel = new AllianceModel();
+    $allianceModel->leaveAlliance($allianceLeavingUid, $allianceLeaveAid);
     expect_same(
         '0|' . $allianceLeaveAid,
         (string)$db->fetchScalar(
@@ -518,12 +541,67 @@ try {
         'alliance leave surrounding payload'
     );
     expect_true((int)$allianceLeaveSurrounding['time'] > 0, 'alliance leave surrounding timestamp');
+
+    $createdAllianceAid = (int)$allianceModel->createAlliance($allianceFounderUid, 'OV Created Alliance', 'OVC');
+    expect_true($createdAllianceAid > 0, 'alliance founder creates alliance');
+    expect_same(
+        $createdAllianceAid,
+        (int)$db->fetchScalar("SELECT aid FROM users WHERE id=$allianceFounderUid"),
+        'alliance founder joins created alliance'
+    );
+    expect_same(
+        $surroundingBeforeFounderJoin + 1,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE kid=3"),
+        'alliance creation records surrounding event'
+    );
+    $allianceFounderSurrounding = $db->query(
+        "SELECT x, y, type, params, time FROM surrounding WHERE kid=3 ORDER BY id DESC LIMIT 1"
+    )->fetch_assoc();
+    $allianceFounderCoordinates = Formulas::kid2xy(3);
+    expect_same((int)$allianceFounderCoordinates['x'], (int)$allianceFounderSurrounding['x'], 'alliance creation surrounding x coordinate');
+    expect_same((int)$allianceFounderCoordinates['y'], (int)$allianceFounderSurrounding['y'], 'alliance creation surrounding y coordinate');
+    expect_same(NoticeHelper::SURROUNDING_ALLIANCE, (int)$allianceFounderSurrounding['type'], 'alliance creation surrounding event type');
+    expect_same(
+        "$allianceFounderUid:OVAllianceFounder:0:$createdAllianceAid",
+        $allianceFounderSurrounding['params'],
+        'alliance creation surrounding payload'
+    );
+    expect_true((int)$allianceFounderSurrounding['time'] > 0, 'alliance creation surrounding timestamp');
+
+    $db->query("UPDATE alidata SET max=10 WHERE id=$createdAllianceAid");
+    $db->query("INSERT INTO ali_invite (from_uid, aid, uid) VALUES ($allianceFounderUid, $createdAllianceAid, $allianceInviteeUid)");
+    $inviteId = (int)$db->lastInsertId();
+    expect_same($createdAllianceAid, (int)$allianceModel->acceptInvite($allianceInviteeUid, $inviteId), 'alliance invitation accepted');
+    expect_same(
+        $createdAllianceAid,
+        (int)$db->fetchScalar("SELECT aid FROM users WHERE id=$allianceInviteeUid"),
+        'invited player joins alliance'
+    );
+    expect_same(
+        $surroundingBeforeInviteJoin + 1,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE kid=4"),
+        'alliance invitation records surrounding event'
+    );
+    $allianceInviteeSurrounding = $db->query(
+        "SELECT x, y, type, params, time FROM surrounding WHERE kid=4 ORDER BY id DESC LIMIT 1"
+    )->fetch_assoc();
+    $allianceInviteeCoordinates = Formulas::kid2xy(4);
+    expect_same((int)$allianceInviteeCoordinates['x'], (int)$allianceInviteeSurrounding['x'], 'alliance invitation surrounding x coordinate');
+    expect_same((int)$allianceInviteeCoordinates['y'], (int)$allianceInviteeSurrounding['y'], 'alliance invitation surrounding y coordinate');
+    expect_same(NoticeHelper::SURROUNDING_ALLIANCE, (int)$allianceInviteeSurrounding['type'], 'alliance invitation surrounding event type');
+    expect_same(
+        "$allianceInviteeUid:OVAllianceInvitee:0:$createdAllianceAid",
+        $allianceInviteeSurrounding['params'],
+        'alliance invitation surrounding payload'
+    );
+    expect_true((int)$allianceInviteeSurrounding['time'] > 0, 'alliance invitation surrounding timestamp');
 } finally {
     $db->rollback();
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
     $db->query("ALTER TABLE alidata AUTO_INCREMENT=$allianceAutoIncrement");
     $db->query("ALTER TABLE ali_log AUTO_INCREMENT=$aliLogAutoIncrement");
     $db->query("ALTER TABLE surrounding AUTO_INCREMENT=$surroundingAutoIncrement");
+    $db->query("ALTER TABLE ali_invite AUTO_INCREMENT=$aliInviteAutoIncrement");
 }
 
 $merchantOwner = 2000000009;
