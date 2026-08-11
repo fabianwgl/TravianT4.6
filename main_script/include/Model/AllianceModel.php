@@ -6,6 +6,7 @@ use function array_values;
 use Core\Database\DB;
 use Game\Formulas;
 use Game\Map\Map;
+use Game\NoticeHelper;
 
 class AllianceModel
 {
@@ -243,8 +244,20 @@ class AllianceModel
             (new MarketModel())->cancelAllOffersForAlliance($uid);
             return;
         }
-        $leavingPlayerName = $db->fetchScalar("SELECT name FROM users WHERE aid=$aid AND id=$uid");
+        $leavingPlayer = $db->query("SELECT name, kid FROM users WHERE aid=$aid AND id=$uid LIMIT 1")->fetch_assoc();
+        $leavingPlayerName = $leavingPlayer['name'] ?? false;
         $this->nullifyPlayerAllianceInfo($aid, $uid);
+        $membershipCleared = $db->affectedRows() > 0;
+        if (!$clearDeletion && $membershipCleared && $leavingPlayer !== null) {
+            $xy = Formulas::kid2xy((int)$leavingPlayer['kid']);
+            NoticeHelper::addSurrounding(
+                $xy['x'],
+                $xy['y'],
+                NoticeHelper::SURROUNDING_ALLIANCE,
+                [$uid, $leavingPlayer['name'], $aid, 0],
+                time()
+            );
+        }
 
         (new MarketModel())->cancelAllOffersForAlliance($uid);
         $this->recalculateMaxUsers($aid);

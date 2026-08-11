@@ -14,6 +14,7 @@ use Core\Security\Password;
 use Controller\RallyPoint\Simulator;
 use Game\Buildings\BuildingHelper;
 use Game\Formulas;
+use Game\NoticeHelper;
 use Game\Starvation;
 use Game\TruceDay;
 use Model\AuctionModel;
@@ -219,6 +220,9 @@ $allianceAutoIncrement = (int)$db->fetchScalar(
 );
 $aliLogAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='ali_log'"
+);
+$surroundingAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='surrounding'"
 );
 $allianceBonusQueueAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='alliance_bonus_upgrade_queue'"
@@ -471,6 +475,7 @@ try {
         (int)$db->fetchScalar("SELECT COUNT(*) FROM ali_log WHERE aid=$allianceLeaveAid"),
         'alliance leave fixture log IDs available'
     );
+    $surroundingBeforeLeave = (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE kid=1");
     $db->query("INSERT INTO alidata (id, name, tag) VALUES ($allianceLeaveAid, 'OV Leave Alliance', 'OVL')");
     $db->query("INSERT INTO users (id, uuid, aid, name, password, email, race, kid, desc1, desc2, note)
         VALUES
@@ -495,11 +500,30 @@ try {
         ),
         'alliance leave log preserves departing player name'
     );
+    expect_same(
+        $surroundingBeforeLeave + 1,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE kid=1"),
+        'alliance leave records surrounding event'
+    );
+    $allianceLeaveSurrounding = $db->query(
+        "SELECT x, y, type, params, time FROM surrounding WHERE kid=1 ORDER BY id DESC LIMIT 1"
+    )->fetch_assoc();
+    $allianceLeaveCoordinates = Formulas::kid2xy(1);
+    expect_same((int)$allianceLeaveCoordinates['x'], (int)$allianceLeaveSurrounding['x'], 'alliance leave surrounding x coordinate');
+    expect_same((int)$allianceLeaveCoordinates['y'], (int)$allianceLeaveSurrounding['y'], 'alliance leave surrounding y coordinate');
+    expect_same(NoticeHelper::SURROUNDING_ALLIANCE, (int)$allianceLeaveSurrounding['type'], 'alliance leave surrounding event type');
+    expect_same(
+        "$allianceLeavingUid:OVAllianceLeaver:$allianceLeaveAid:0",
+        $allianceLeaveSurrounding['params'],
+        'alliance leave surrounding payload'
+    );
+    expect_true((int)$allianceLeaveSurrounding['time'] > 0, 'alliance leave surrounding timestamp');
 } finally {
     $db->rollback();
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
     $db->query("ALTER TABLE alidata AUTO_INCREMENT=$allianceAutoIncrement");
     $db->query("ALTER TABLE ali_log AUTO_INCREMENT=$aliLogAutoIncrement");
+    $db->query("ALTER TABLE surrounding AUTO_INCREMENT=$surroundingAutoIncrement");
 }
 
 $merchantOwner = 2000000009;
