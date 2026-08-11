@@ -132,12 +132,20 @@ class Starvation
     private function starveRow(array $row, $isEnforcement, $isTrapped, $isVillage, $isMovement)
     {
         $order = $this->getUnitKillOrder($row['race'], $row);
+        $hero = null;
+        $heroLevel = 0;
+        if ((int)$row['u11'] > 0) {
+            $hero = $this->getHeroForArmy($row['kid']);
+            if ($hero !== null) {
+                $heroLevel = Formulas::heroLevel((int)$hero['exp']);
+            }
+        }
         $total_killed = 0;
         foreach ($order as $nr) {
             if ($row['u' . $nr] <= 0) continue;
             if ($this->currentCrop > 0) break;
             if ($nr == 11) {
-                $res = Formulas::heroRegenerateCost(0, $row['race']); //TODO: get hero level
+                $res = Formulas::heroRegenerateCost($heroLevel, $row['race']);
             } else {
                 $res = Formulas::uTrainingCost(nrToUnitId($nr, $row['race']));
             }
@@ -159,7 +167,11 @@ class Starvation
                 }
                 if ($q && $this->db->affectedRows()) {
                     if ($nr == 11) {
-                        $this->db->query("UPDATE hero SET health=0 WHERE kid={$row['kid']}");
+                        if ($hero !== null) {
+                            $this->db->query("UPDATE hero SET health=0 WHERE uid=" . (int)$hero['uid']);
+                        } else {
+                            $this->db->query("UPDATE hero SET health=0 WHERE kid=" . (int)$row['kid']);
+                        }
                     }
                     $this->currentCrop += $res[3] * $killNum;
                     $total_killed += $killNum;
@@ -177,6 +189,16 @@ class Starvation
             }
         }
         return $total_killed;
+    }
+
+    private function getHeroForArmy($kid)
+    {
+        $stmt = $this->db->query("SELECT uid, exp FROM hero WHERE kid=" . (int)$kid . " LIMIT 1");
+        if ($stmt->num_rows) {
+            return $stmt->fetch_assoc();
+        }
+
+        return null;
     }
 
     private function getUnitKillOrder($race, $unitsRow)

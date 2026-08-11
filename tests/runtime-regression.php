@@ -1402,19 +1402,31 @@ try {
 
 $starvationRomanOwner = 2000000016;
 $starvationGaulOwner = 2000000017;
+$starvationHighHeroOwner = 2000000018;
+$starvationZeroHeroOwner = 2000000019;
 $starvationVillages = [
     2000000031 => ['owner' => $starvationRomanOwner, 'race' => 1, 'trough' => 10, 'unit' => 'u4', 'troops' => 2, 'upkeep' => 4, 'expected' => '1|1', 'capital' => 1],
     2000000032 => ['owner' => $starvationRomanOwner, 'race' => 1, 'trough' => 15, 'unit' => 'u5', 'troops' => 2, 'upkeep' => 6, 'expected' => '1|2', 'capital' => 0],
     2000000033 => ['owner' => $starvationRomanOwner, 'race' => 1, 'trough' => 20, 'unit' => 'u6', 'troops' => 2, 'upkeep' => 8, 'expected' => '1|3', 'capital' => 0],
     2000000034 => ['owner' => $starvationRomanOwner, 'race' => 1, 'trough' => null, 'unit' => 'u4', 'troops' => 2, 'upkeep' => 4, 'expected' => '1|2', 'capital' => 0],
     2000000035 => ['owner' => $starvationGaulOwner, 'race' => 3, 'trough' => 20, 'unit' => 'u4', 'troops' => 2, 'upkeep' => 4, 'expected' => '1|2', 'capital' => 1],
+    2000000036 => [
+        'owner' => $starvationHighHeroOwner, 'race' => 1, 'trough' => null, 'unit' => 'u11', 'troops' => 1,
+        'secondaryUnit' => 'u1', 'secondaryTroops' => 1, 'upkeep' => 7, 'crop' => -100, 'maxcrop' => 2000,
+        'expected' => '0|1', 'capital' => 1, 'heroExp' => Formulas::heroExperience(10),
+    ],
+    2000000037 => [
+        'owner' => $starvationZeroHeroOwner, 'race' => 1, 'trough' => null, 'unit' => 'u11', 'troops' => 1,
+        'secondaryUnit' => 'u1', 'secondaryTroops' => 1, 'upkeep' => 7, 'crop' => -100, 'maxcrop' => 2000,
+        'expected' => '0|0', 'capital' => 1, 'heroExp' => 0,
+    ],
 ];
 $starvationTransactionStarted = false;
 try {
     expect_same(
         0,
         (int)$db->fetchScalar(
-            "SELECT COUNT(*) FROM users WHERE id IN ($starvationRomanOwner, $starvationGaulOwner)"
+            "SELECT COUNT(*) FROM users WHERE id IN ($starvationRomanOwner, $starvationGaulOwner, $starvationHighHeroOwner, $starvationZeroHeroOwner)"
         ),
         'starvation fixture user IDs available'
     );
@@ -1440,6 +1452,13 @@ try {
         ),
         'starvation fixture troop IDs available'
     );
+    expect_same(
+        0,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM hero WHERE uid IN ($starvationHighHeroOwner, $starvationZeroHeroOwner)"
+        ),
+        'starvation fixture hero IDs available'
+    );
     expect_true(
         !TruceDay::isActive() && TruceDay::getTo() + 86400 <= time(),
         'starvation fixture is outside truce protection'
@@ -1450,8 +1469,10 @@ try {
     $db->query("INSERT INTO users
         (id, uuid, name, password, email, race, access, kid, total_villages, vacationActiveTil, desc1, desc2, note)
         VALUES
-        ($starvationRomanOwner, 'ov-regression-starvation-roman', 'OVStarveRoman', 'x', '', 1, 1, 2000000031, 4, 0, '', '', ''),
-        ($starvationGaulOwner, 'ov-regression-starvation-gaul', 'OVStarveGaul', 'x', '', 3, 1, 2000000035, 1, 0, '', '', '')");
+        ($starvationRomanOwner, 'ov-regression-starvation-roman', 'OVStarveRoman', 'x', '', 1, 1, 2000000031, 6, 0, '', '', ''),
+        ($starvationGaulOwner, 'ov-regression-starvation-gaul', 'OVStarveGaul', 'x', '', 3, 1, 2000000035, 1, 0, '', '', ''),
+        ($starvationHighHeroOwner, 'ov-regression-starvation-high-hero', 'OVStarveHighHero', 'x', '', 1, 1, 2000000036, 1, 0, '', '', ''),
+        ($starvationZeroHeroOwner, 'ov-regression-starvation-zero-hero', 'OVStarveZeroHero', 'x', '', 1, 1, 2000000037, 1, 0, '', '', '')");
 
     foreach ($starvationVillages as $kid => $fixture) {
         $lastUpdate = miliseconds();
@@ -1460,13 +1481,22 @@ try {
              crop, cropp, maxcrop, upkeep, lastmupdate, created, isWW, isFarm, expandedfrom)
             VALUES
             ($kid, {$fixture['owner']}, 3, 'OV Starvation', {$fixture['capital']}, 0, 0, 0, 0, 0, 0, 0, 0, 1000,
-             -1, {$fixture['upkeep']}, 1000, {$fixture['upkeep']}, $lastUpdate, " . time() . ", 0, 0, 0)");
+             " . ($fixture['crop'] ?? -1) . ", {$fixture['upkeep']}, " . ($fixture['maxcrop'] ?? 1000) . ", {$fixture['upkeep']}, $lastUpdate, " . time() . ", 0, 0, 0)");
         if ($fixture['trough'] === null) {
             $db->query("INSERT INTO fdata (kid) VALUES ($kid)");
         } else {
             $db->query("INSERT INTO fdata (kid, f19, f19t) VALUES ($kid, {$fixture['trough']}, 41)");
         }
-        $db->query("INSERT INTO units (kid, race, {$fixture['unit']}) VALUES ($kid, {$fixture['race']}, {$fixture['troops']})");
+        $unitColumns = "kid, race, {$fixture['unit']}";
+        $unitValues = "$kid, {$fixture['race']}, {$fixture['troops']}";
+        if (isset($fixture['secondaryUnit'])) {
+            $unitColumns .= ", {$fixture['secondaryUnit']}";
+            $unitValues .= ", {$fixture['secondaryTroops']}";
+        }
+        $db->query("INSERT INTO units ($unitColumns) VALUES ($unitValues)");
+        if (array_key_exists('heroExp', $fixture)) {
+            $db->query("INSERT INTO hero (uid, kid, exp, health) VALUES ({$fixture['owner']}, $kid, {$fixture['heroExp']}, 100)");
+        }
     }
 
     foreach ($starvationVillages as $kid => $fixture) {
@@ -1480,6 +1510,29 @@ try {
             "starvation upkeep and troop reduction for village $kid"
         );
     }
+    expect_same(
+        '0|0|1|1100',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                CAST(ROUND((SELECT health FROM hero WHERE uid=$starvationHighHeroOwner), 0) AS UNSIGNED), '|',
+                (SELECT u11 FROM units WHERE kid=2000000036), '|',
+                (SELECT u1 FROM units WHERE kid=2000000036), '|',
+                CAST(ROUND((SELECT crop FROM vdata WHERE kid=2000000036), 0) AS SIGNED)
+            )"
+        ),
+        'high-level hero starvation cost and death'
+    );
+    expect_same(
+        '0|0|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                CAST(ROUND((SELECT health FROM hero WHERE uid=$starvationZeroHeroOwner), 0) AS UNSIGNED), '|',
+                (SELECT u11 FROM units WHERE kid=2000000037), '|',
+                (SELECT u1 FROM units WHERE kid=2000000037)
+            )"
+        ),
+        'level-zero hero starvation control'
+    );
 } finally {
     if ($starvationTransactionStarted) {
         $db->rollback();
