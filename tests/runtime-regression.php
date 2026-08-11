@@ -17,6 +17,7 @@ use Game\Formulas;
 use Game\Starvation;
 use Game\TruceDay;
 use Model\AuctionModel;
+use Model\AllianceModel;
 use Model\MasterBuilder;
 use Model\MarketPlaceProcessor;
 use Model\NatarsModel;
@@ -215,6 +216,9 @@ $trainingAutoIncrement = (int)$db->fetchScalar(
 );
 $allianceAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='alidata'"
+);
+$aliLogAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='ali_log'"
 );
 $allianceBonusQueueAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='alliance_bonus_upgrade_queue'"
@@ -443,6 +447,59 @@ try {
     $db->query("ALTER TABLE training AUTO_INCREMENT=$trainingAutoIncrement");
     $db->query("ALTER TABLE alidata AUTO_INCREMENT=$allianceAutoIncrement");
     $db->query("ALTER TABLE alliance_bonus_upgrade_queue AUTO_INCREMENT=$allianceBonusQueueAutoIncrement");
+}
+
+$allianceLeaveAid = 2000000040;
+$allianceLeavingUid = 2000000041;
+$allianceRemainingUid = 2000000042;
+$db->begin_transaction();
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM users WHERE id IN ($allianceLeavingUid, $allianceRemainingUid)"
+        ),
+        'alliance leave fixture user IDs available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM alidata WHERE id=$allianceLeaveAid"),
+        'alliance leave fixture alliance ID available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM ali_log WHERE aid=$allianceLeaveAid"),
+        'alliance leave fixture log IDs available'
+    );
+    $db->query("INSERT INTO alidata (id, name, tag) VALUES ($allianceLeaveAid, 'OV Leave Alliance', 'OVL')");
+    $db->query("INSERT INTO users (id, uuid, aid, name, password, email, race, kid, desc1, desc2, note)
+        VALUES
+        ($allianceLeavingUid, 'ov-regression-alliance-leaver', $allianceLeaveAid, 'OVAllianceLeaver', 'x', '', 1, 1, '', '', ''),
+        ($allianceRemainingUid, 'ov-regression-alliance-remaining', $allianceLeaveAid, 'OVAllianceRemaining', 'x', '', 1, 2, '', '', '')");
+
+    (new AllianceModel())->leaveAlliance($allianceLeavingUid, $allianceLeaveAid);
+    expect_same(
+        '0|' . $allianceLeaveAid,
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT aid FROM users WHERE id=$allianceLeavingUid), '|',
+                (SELECT aid FROM users WHERE id=$allianceRemainingUid)
+            )"
+        ),
+        'alliance leave updates membership'
+    );
+    expect_same(
+        "2|2:$allianceLeavingUid:OVAllianceLeaver",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(type, '|', data) FROM ali_log WHERE aid=$allianceLeaveAid ORDER BY id DESC LIMIT 1"
+        ),
+        'alliance leave log preserves departing player name'
+    );
+} finally {
+    $db->rollback();
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE alidata AUTO_INCREMENT=$allianceAutoIncrement");
+    $db->query("ALTER TABLE ali_log AUTO_INCREMENT=$aliLogAutoIncrement");
 }
 
 $merchantOwner = 2000000009;

@@ -243,6 +243,7 @@ class AllianceModel
             (new MarketModel())->cancelAllOffersForAlliance($uid);
             return;
         }
+        $leavingPlayerName = $db->fetchScalar("SELECT name FROM users WHERE aid=$aid AND id=$uid");
         $this->nullifyPlayerAllianceInfo($aid, $uid);
 
         (new MarketModel())->cancelAllOffersForAlliance($uid);
@@ -251,7 +252,7 @@ class AllianceModel
             [
                 self::LOG_LEFT,
                 $uid,
-                $db->fetchScalar("SELECT name FROM users WHERE aid=$aid AND id=$uid"),
+                $leavingPlayerName,
             ],
             time());
         Map::allianceJoinOrLeaveCacheUpdate($uid, $aid);
