@@ -18,6 +18,7 @@ use Game\NoticeHelper;
 use Game\Starvation;
 use Game\TruceDay;
 use Model\AuctionModel;
+use Model\AccountDeleter;
 use Model\AllianceModel;
 use Model\BattleModel;
 use Model\MasterBuilder;
@@ -741,6 +742,8 @@ $battleMovementIds = [];
 $originalTruceFrom = $config->dynamic->truceFrom;
 $originalTruceTo = $config->dynamic->truceTo;
 $originalTruceReasonId = $config->dynamic->truceReasonId;
+$originalDestroyVillageOnZeroPop = $config->custom->destroyVillageOnZeroPop;
+$originalChangeCapitalOnZeroPop = $config->game->changeCapitalOnZeroPop;
 $db->begin_transaction();
 try {
     expect_same(
@@ -752,19 +755,25 @@ try {
         "SELECT w.id, w.x, w.y, w.fieldtype
          FROM wdata w LEFT JOIN vdata v ON v.kid=w.id
          WHERE w.id>0 AND w.occupied=0 AND w.oasistype=0 AND v.kid IS NULL
-         ORDER BY w.id DESC LIMIT 2"
+         ORDER BY w.id DESC LIMIT 5"
     );
-    expect_same(2, $battleFields->num_rows, 'village-battle surrounding fixture fields available');
+    expect_same(5, $battleFields->num_rows, 'village-battle surrounding fixture fields available');
     $battleSourceField = $battleFields->fetch_assoc();
     $battleTargetField = $battleFields->fetch_assoc();
+    $battleReserveField = $battleFields->fetch_assoc();
+    $battleSecondTargetField = $battleFields->fetch_assoc();
+    $battleRamTargetField = $battleFields->fetch_assoc();
     $battleSource = (int)$battleSourceField['id'];
     $battleTarget = (int)$battleTargetField['id'];
+    $battleReserve = (int)$battleReserveField['id'];
+    $battleSecondTarget = (int)$battleSecondTargetField['id'];
+    $battleRamTarget = (int)$battleRamTargetField['id'];
 
     $db->query("INSERT INTO users
         (id, uuid, name, password, email, race, kid, total_pop, total_villages, desc1, desc2, note)
         VALUES
         ($battleAttacker, 'ov-regression-battle-attacker', 'OVBattleAttacker', 'x', '', 1, $battleSource, 100, 1, '', '', ''),
-        ($battleDefender, 'ov-regression-battle-defender', 'OVBattleDefender', 'x', '', 3, $battleTarget, 100, 1, '', '', '')");
+        ($battleDefender, 'ov-regression-battle-defender', 'OVBattleDefender', 'x', '', 3, $battleReserve, 103, 4, '', '', '')");
     $lastUpdate = miliseconds();
     $db->query("INSERT INTO vdata
         (kid, owner, fieldtype, name, capital, pop, cp, wood, clay, iron, woodp, clayp, ironp, maxstore,
@@ -772,12 +781,28 @@ try {
         VALUES
         ($battleSource, $battleAttacker, " . (int)$battleSourceField['fieldtype'] . ", 'OV Battle Source', 1, 100, 0,
          1000000, 1000000, 1000000, 0, 0, 0, 1000000, 1000000, 0, 1000000, 0, $lastUpdate, " . time() . ", 0),
-        ($battleTarget, $battleDefender, " . (int)$battleTargetField['fieldtype'] . ", 'OV Battle Target', 1, 100, 0,
-         1000000, 1000000, 1000000, 0, 0, 0, 1000000, 1000000, 0, 1000000, 20, $lastUpdate, " . time() . ", 0)");
-    $db->query("INSERT INTO fdata (kid) VALUES ($battleSource), ($battleTarget)");
-    $db->query("INSERT INTO units (kid, race, u1) VALUES ($battleSource, 1, 0), ($battleTarget, 3, 20)");
-    $db->query("UPDATE wdata SET occupied=1 WHERE id IN ($battleSource, $battleTarget) AND occupied=0");
-    expect_same(2, $db->affectedRows(), 'village-battle surrounding fixture fields occupied');
+        ($battleTarget, $battleDefender, " . (int)$battleTargetField['fieldtype'] . ", 'OV Battle Target', 0, 100, 0,
+         1000000, 1000000, 1000000, 0, 0, 0, 1000000, 1000000, 0, 1000000, 20, $lastUpdate, " . time() . ", 0),
+        ($battleReserve, $battleDefender, " . (int)$battleReserveField['fieldtype'] . ", 'OV Battle Reserve', 1, 1, 0,
+         1000000, 1000000, 1000000, 0, 0, 0, 1000000, 1000000, 0, 1000000, 0, $lastUpdate, " . time() . ", 0),
+        ($battleSecondTarget, $battleDefender, " . (int)$battleSecondTargetField['fieldtype'] . ", 'OV Battle Target Two', 0, 2, 2,
+         1000000, 1000000, 1000000, 0, 0, 0, 1000000, 1000000, 0, 1000000, 0, $lastUpdate, " . time() . ", 0),
+        ($battleRamTarget, $battleDefender, " . (int)$battleRamTargetField['fieldtype'] . ", 'OV Battle Ram Target', 0, 0, 1,
+         1000000, 1000000, 1000000, 0, 0, 0, 1000000, 1000000, 0, 1000000, 0, $lastUpdate, " . time() . ", 0)");
+    $db->query("INSERT INTO fdata (kid, f19, f19t, f40, f40t) VALUES
+        ($battleSource, 0, 0, 0, 0),
+        ($battleTarget, 0, 0, 0, 0),
+        ($battleReserve, 0, 0, 0, 0),
+        ($battleSecondTarget, 1, 15, 0, 0),
+        ($battleRamTarget, 0, 0, 1, 31)");
+    $db->query("INSERT INTO units (kid, race, u1) VALUES
+        ($battleSource, 1, 0),
+        ($battleTarget, 3, 20),
+        ($battleReserve, 3, 0),
+        ($battleSecondTarget, 3, 0),
+        ($battleRamTarget, 3, 0)");
+    $db->query("UPDATE wdata SET occupied=1 WHERE id IN ($battleSource, $battleTarget, $battleReserve, $battleSecondTarget, $battleRamTarget) AND occupied=0");
+    expect_same(5, $db->affectedRows(), 'village-battle surrounding fixture fields occupied');
 
     $movement = new MovementsModel();
     $automation = Automation::getInstance();
@@ -1012,16 +1037,495 @@ try {
         ),
         'truce-deflected attack records no fight event'
     );
+
+    $config->dynamic->truceFrom = $originalTruceFrom;
+    $config->dynamic->truceTo = $originalTruceTo;
+    $config->dynamic->truceReasonId = $originalTruceReasonId;
+    $config->custom->destroyVillageOnZeroPop = $originalDestroyVillageOnZeroPop;
+    $destructionTime = $battleEventTime + 20;
+    $destructionTimeMs = $destructionTime * 1000;
+    $ramUnits = array_fill(1, 11, 0);
+    $ramUnits[7] = 1000;
+    $catapultUnits = array_fill(1, 11, 0);
+    $catapultUnits[8] = 1000;
+
+    $processProtectedZeroPop = function (int $kid, string $expectedReason, string $label) use (
+        $battleAttacker,
+        $battleDefender,
+        $battleSource,
+        $destructionTimeMs,
+        $ramUnits,
+        $movement,
+        $automation,
+        $db,
+        &$battleMovementIds
+    ): void {
+        expect_same(
+            $expectedReason,
+            (new AccountDeleter())->isVillageDestroyAble($battleAttacker, $kid, $battleDefender),
+            "$label destruction reason"
+        );
+        $beforeId = (int)$db->fetchScalar("SELECT COALESCE(MAX(id), 0) FROM surrounding");
+        $taskId = (int)$movement->addMovement(
+            $battleSource, $kid, 1, $ramUnits, 0, 0, 0, 0, 0,
+            MovementsModel::ATTACKTYPE_NORMAL, $destructionTimeMs, $destructionTimeMs
+        );
+        $battleMovementIds[] = $taskId;
+        expect_true($automation->processMovementTask($taskId), "$label attack processed");
+        expect_same(1, (int)$db->fetchScalar("SELECT COUNT(*) FROM vdata WHERE kid=$kid"), "$label village preserved");
+        expect_same(
+            0,
+            (int)$db->fetchScalar(
+                "SELECT COUNT(*) FROM surrounding WHERE id>$beforeId AND type=" . NoticeHelper::SURROUNDING_VILLAGE_DESTROYED
+            ),
+            "$label records no destruction event"
+        );
+    };
+
+    $db->query("UPDATE units SET u1=0 WHERE kid=$battleTarget");
+    $db->query("UPDATE vdata SET pop=0, cp=1, capital=0, isWW=0, isFarm=0 WHERE kid=$battleTarget");
+    $db->query("UPDATE fdata SET f19=0, f19t=0, f40=1, f40t=31 WHERE kid=$battleTarget");
+    $config->custom->destroyVillageOnZeroPop = false;
+    $processProtectedZeroPop($battleTarget, 'disabled', 'disabled zero-pop destruction');
+    $config->custom->destroyVillageOnZeroPop = $originalDestroyVillageOnZeroPop;
+
+    $db->query("UPDATE fdata SET f40=1, f40t=31 WHERE kid=$battleTarget");
+    $db->query("UPDATE vdata SET isWW=1 WHERE kid=$battleTarget");
+    $processProtectedZeroPop($battleTarget, 'isWW', 'World Wonder zero-pop destruction');
+    $db->query("UPDATE vdata SET isWW=0, isFarm=1 WHERE kid=$battleTarget");
+    $db->query("UPDATE fdata SET f40=1, f40t=31 WHERE kid=$battleTarget");
+    $processProtectedZeroPop($battleTarget, 'isFarm', 'farm zero-pop destruction');
+
+    $db->query("UPDATE vdata SET isFarm=0, capital=1 WHERE kid=$battleTarget");
+    $db->query("UPDATE vdata SET capital=0 WHERE kid=$battleReserve");
+    $db->query("UPDATE fdata SET f40=1, f40t=31 WHERE kid=$battleTarget");
+    $config->game->changeCapitalOnZeroPop = false;
+    expect_same(false, (bool)Config::getProperty('game', 'changeCapitalOnZeroPop'), 'capital zero-pop protection configured');
+    $processProtectedZeroPop($battleTarget, 'disabledCapitalOnZeroPop', 'capital zero-pop destruction');
+    $config->game->changeCapitalOnZeroPop = $originalChangeCapitalOnZeroPop;
+    $db->query("UPDATE vdata SET capital=0 WHERE kid=$battleTarget");
+    $db->query("UPDATE vdata SET capital=1 WHERE kid=$battleReserve");
+
+    $db->query("UPDATE vdata SET isWW=1 WHERE kid IN ($battleReserve, $battleSecondTarget, $battleRamTarget)");
+    $db->query("UPDATE fdata SET f40=1, f40t=31 WHERE kid=$battleTarget");
+    $processProtectedZeroPop($battleTarget, 'OnePlusWW', 'one-plus-Wonder zero-pop destruction');
+    $db->query("UPDATE vdata SET isWW=0 WHERE kid IN ($battleReserve, $battleSecondTarget, $battleRamTarget)");
+
+    $db->query("INSERT INTO artefacts (uid, kid, type, size, conquered, num, effecttype, effect, aoe)
+        VALUES ($battleDefender, $battleTarget, 1, 1, " . time() . ", 1, 1, 1, 1)");
+    $db->query("UPDATE fdata SET f40=1, f40t=31 WHERE kid=$battleTarget");
+    $processProtectedZeroPop($battleTarget, 'ArtifactExists', 'artifact zero-pop destruction');
+    $db->query("DELETE FROM artefacts WHERE uid=$battleDefender AND kid=$battleTarget");
+
+    $db->query("UPDATE fdata SET f19=1, f19t=15, f40=0, f40t=0 WHERE kid=$battleTarget");
+    $db->query("UPDATE vdata SET pop=2, cp=2, capital=0, isWW=0, isFarm=0 WHERE kid=$battleTarget");
+    $db->query("UPDATE users SET total_pop=5, total_villages=4 WHERE id=$battleDefender");
+    $surroundingBeforeDestructionId = (int)$db->fetchScalar("SELECT COALESCE(MAX(id), 0) FROM surrounding");
+    $noticesBeforeDestructionId = (int)$db->fetchScalar("SELECT COALESCE(MAX(id), 0) FROM ndata");
+    $destructionTask = (int)$movement->addMovement(
+        $battleSource, $battleTarget, 1, $catapultUnits, 15, 0, 0, 0, 0,
+        MovementsModel::ATTACKTYPE_NORMAL, $destructionTimeMs, $destructionTimeMs
+    );
+    $battleMovementIds[] = $destructionTask;
+    expect_true($destructionTask > 0, 'village-destruction movement queued');
+
+    try {
+        TransactionalTask::consume('movement', $destructionTask, function (array $row): void {
+            new BattleModel($row);
+            throw new RuntimeException('Simulated village destruction worker crash.');
+        });
+        throw new RuntimeException('Simulated village destruction worker crash was not propagated.');
+    } catch (RuntimeException $e) {
+        expect_same('Simulated village destruction worker crash.', $e->getMessage(), 'village-destruction crash propagated');
+    }
+    expect_same(1, (int)$db->fetchScalar("SELECT COUNT(*) FROM vdata WHERE kid=$battleTarget"), 'village-destruction crash restores village');
+    expect_same(1, (int)$db->fetchScalar("SELECT COUNT(*) FROM fdata WHERE kid=$battleTarget AND f19=1 AND f19t=15"), 'village-destruction crash restores building');
+    expect_same(1, (int)$db->fetchScalar("SELECT COUNT(*) FROM units WHERE kid=$battleTarget"), 'village-destruction crash restores units');
+    expect_same(1, (int)$db->fetchScalar("SELECT occupied FROM wdata WHERE id=$battleTarget"), 'village-destruction crash restores occupied tile');
+    expect_same(
+        0,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding WHERE id>$surroundingBeforeDestructionId AND type IN (" .
+            NoticeHelper::SURROUNDING_FIGHT . ", " . NoticeHelper::SURROUNDING_VILLAGE_DESTROYED . ")"
+        ),
+        'village-destruction crash rolls back surrounding events'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM ndata WHERE id>$noticesBeforeDestructionId"),
+        'village-destruction crash rolls back battle reports'
+    );
+    expect_same(1, (int)$db->fetchScalar("SELECT COUNT(*) FROM movement WHERE id=$destructionTask"), 'village-destruction crash preserves movement');
+
+    expect_true($automation->processMovementTask($destructionTask), 'village-destruction retry processed');
+    expect_same(0, (int)$db->fetchScalar("SELECT COUNT(*) FROM vdata WHERE kid=$battleTarget"), 'village-destruction removes village');
+    expect_same(0, (int)$db->fetchScalar("SELECT COUNT(*) FROM fdata WHERE kid=$battleTarget"), 'village-destruction removes fields');
+    expect_same(0, (int)$db->fetchScalar("SELECT COUNT(*) FROM units WHERE kid=$battleTarget"), 'village-destruction removes units');
+    expect_same(0, (int)$db->fetchScalar("SELECT occupied FROM wdata WHERE id=$battleTarget"), 'village-destruction frees tile');
+    expect_same(
+        '3|3',
+        (string)$db->fetchScalar("SELECT CONCAT(total_pop, '|', total_villages) FROM users WHERE id=$battleDefender"),
+        'village-destruction updates owner aggregates'
+    );
+    expect_same(0, (int)$db->fetchScalar("SELECT COUNT(*) FROM movement WHERE id=$destructionTask"), 'village-destruction consumes movement');
+    expect_true(
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM ndata WHERE id>$noticesBeforeDestructionId") >= 2,
+        'village-destruction records battle reports'
+    );
+    expect_same(
+        1,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding WHERE id>$surroundingBeforeDestructionId AND type=" . NoticeHelper::SURROUNDING_FIGHT
+        ),
+        'village-destruction records ordinary fight event'
+    );
+    $destructionEvent = $db->query(
+        "SELECT x, y, params, time FROM surrounding
+         WHERE id>$surroundingBeforeDestructionId AND type=" . NoticeHelper::SURROUNDING_VILLAGE_DESTROYED
+    );
+    expect_same(1, $destructionEvent->num_rows, 'village-destruction records one destruction event');
+    $destructionEvent = $destructionEvent->fetch_assoc();
+    expect_same((int)$battleTargetField['x'], (int)$destructionEvent['x'], 'village-destruction event x coordinate');
+    expect_same((int)$battleTargetField['y'], (int)$destructionEvent['y'], 'village-destruction event y coordinate');
+    expect_same("$battleDefender:OVBattleDefender:$battleTarget:OV Battle Target", $destructionEvent['params'], 'village-destruction immutable payload');
+    expect_same($destructionTime, (int)$destructionEvent['time'], 'village-destruction event occurrence time');
+
+    expect_same(false, $automation->processMovementTask($destructionTask), 'village-destruction replay ignored');
+    expect_same(
+        1,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding WHERE id>$surroundingBeforeDestructionId AND type=" . NoticeHelper::SURROUNDING_VILLAGE_DESTROYED
+        ),
+        'village-destruction replay records no duplicate event'
+    );
+
+    $secondDestructionTask = (int)$movement->addMovement(
+        $battleSource, $battleSecondTarget, 1, $catapultUnits, 15, 0, 0, 0, 0,
+        MovementsModel::ATTACKTYPE_NORMAL, $destructionTimeMs, $destructionTimeMs
+    );
+    $battleMovementIds[] = $secondDestructionTask;
+    expect_true($automation->processMovementTask($secondDestructionTask), 'second same-second village destruction processed');
+    expect_same(0, (int)$db->fetchScalar("SELECT COUNT(*) FROM vdata WHERE kid=$battleSecondTarget"), 'second same-second village removed');
+    expect_same(
+        '1|2',
+        (string)$db->fetchScalar("SELECT CONCAT(total_pop, '|', total_villages) FROM users WHERE id=$battleDefender"),
+        'second same-second destruction updates owner aggregates'
+    );
+    expect_same(
+        2,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding
+             WHERE id>$surroundingBeforeDestructionId
+               AND type=" . NoticeHelper::SURROUNDING_VILLAGE_DESTROYED . " AND time=$destructionTime"
+        ),
+        'distinct same-second village destructions each record an event'
+    );
+    expect_same(
+        1,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding
+             WHERE id>$surroundingBeforeDestructionId
+               AND type=" . NoticeHelper::SURROUNDING_VILLAGE_DESTROYED . "
+               AND params='$battleDefender:OVBattleDefender:$battleSecondTarget:OV Battle Target Two'"
+        ),
+        'second same-second destruction records immutable payload'
+    );
+
+    $ramAndCatapultUnits = $catapultUnits;
+    $ramAndCatapultUnits[7] = 1000;
+    $ramDestructionTask = (int)$movement->addMovement(
+        $battleSource, $battleRamTarget, 1, $ramAndCatapultUnits, 15, 0, 0, 0, 0,
+        MovementsModel::ATTACKTYPE_NORMAL, $destructionTimeMs, $destructionTimeMs
+    );
+    $battleMovementIds[] = $ramDestructionTask;
+    expect_true($automation->processMovementTask($ramDestructionTask), 'ram-first village destruction processed');
+    expect_same(0, (int)$db->fetchScalar("SELECT COUNT(*) FROM vdata WHERE kid=$battleRamTarget"), 'ram-first village destruction removes village');
+    expect_same(
+        '1|1',
+        (string)$db->fetchScalar("SELECT CONCAT(total_pop, '|', total_villages) FROM users WHERE id=$battleDefender"),
+        'ram-first village destruction updates owner aggregates once'
+    );
+    expect_same(
+        1,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding
+             WHERE id>$surroundingBeforeDestructionId
+               AND type=" . NoticeHelper::SURROUNDING_VILLAGE_DESTROYED . "
+               AND params='$battleDefender:OVBattleDefender:$battleRamTarget:OV Battle Ram Target'"
+        ),
+        'ram-first village destruction records one event and skips catapult processing'
+    );
+
+    $db->query("UPDATE vdata SET pop=0, cp=1, capital=0 WHERE kid=$battleReserve");
+    $db->query("UPDATE fdata SET f40=1, f40t=31 WHERE kid=$battleReserve");
+    $db->query("UPDATE users SET total_pop=0 WHERE id=$battleDefender");
+    $processProtectedZeroPop($battleReserve, 'OnlyOneVillage', 'last-village zero-pop destruction');
+
+    $staleDestructionTask = (int)$movement->addMovement(
+        $battleSource, $battleTarget, 1, $catapultUnits, 15, 0, 0, 0, 0,
+        MovementsModel::ATTACKTYPE_NORMAL, $destructionTimeMs, $destructionTimeMs
+    );
+    $battleMovementIds[] = $staleDestructionTask;
+    expect_true($automation->processMovementTask($staleDestructionTask), 'stale post-destruction attack processed');
+    expect_same(
+        3,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding WHERE id>$surroundingBeforeDestructionId AND type=" . NoticeHelper::SURROUNDING_VILLAGE_DESTROYED
+        ),
+        'stale post-destruction attack records no second event'
+    );
 } finally {
     $config->dynamic->truceFrom = $originalTruceFrom;
     $config->dynamic->truceTo = $originalTruceTo;
     $config->dynamic->truceReasonId = $originalTruceReasonId;
+    $config->custom->destroyVillageOnZeroPop = $originalDestroyVillageOnZeroPop;
+    $config->game->changeCapitalOnZeroPop = $originalChangeCapitalOnZeroPop;
     $db->rollback();
     if ($battleMovementIds !== []) {
         $db->query(
             "DELETE FROM scheduled_task_failures
              WHERE task_table='movement' AND task_id IN (" . implode(',', array_map('intval', $battleMovementIds)) . ")"
         );
+    }
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE movement AUTO_INCREMENT=$movementAutoIncrement");
+    $db->query("ALTER TABLE ndata AUTO_INCREMENT=$noticeAutoIncrement");
+    $db->query("ALTER TABLE surrounding AUTO_INCREMENT=$surroundingAutoIncrement");
+    $db->query("ALTER TABLE casualties AUTO_INCREMENT=$casualtiesAutoIncrement");
+    $db->query("ALTER TABLE multiaccount_log AUTO_INCREMENT=$multiAccountLogAutoIncrement");
+    $db->query("ALTER TABLE farmlist_last_reports AUTO_INCREMENT=$farmListLastReportsAutoIncrement");
+}
+
+$concurrentAttacker = 2000000048;
+$concurrentDefender = 2000000049;
+$concurrentKids = [];
+$concurrentTaskId = 0;
+$concurrentFixtureCommitted = false;
+$concurrentAvailableOccupancy = [];
+$concurrentWorkers = [];
+$concurrentBarrierFiles = [];
+$concurrentCasualtyTime = strtotime('today 00:00');
+$concurrentCasualtyResult = $db->query("SELECT id FROM casualties WHERE time=$concurrentCasualtyTime");
+$concurrentCasualtyExisted = $concurrentCasualtyResult->num_rows === 1;
+$db->begin_transaction();
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id IN ($concurrentAttacker, $concurrentDefender)"),
+        'concurrent village-destruction fixture user IDs available'
+    );
+    $concurrentFields = $db->query(
+        "SELECT w.id, w.x, w.y, w.fieldtype
+         FROM wdata w LEFT JOIN vdata v ON v.kid=w.id
+         WHERE w.id>0 AND w.occupied=0 AND w.oasistype=0 AND v.kid IS NULL
+           AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM marks m WHERE m.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM vdata child WHERE child.expandedfrom=w.id)
+           AND NOT EXISTS (SELECT 1 FROM movement movement_ref WHERE movement_ref.kid=w.id OR movement_ref.to_kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM odata oasis_ref WHERE oasis_ref.did=w.id)
+         ORDER BY w.id DESC LIMIT 3"
+    );
+    expect_same(3, $concurrentFields->num_rows, 'concurrent village-destruction fixture fields available');
+    $concurrentSourceField = $concurrentFields->fetch_assoc();
+    $concurrentTargetField = $concurrentFields->fetch_assoc();
+    $concurrentReserveField = $concurrentFields->fetch_assoc();
+    $concurrentSource = (int)$concurrentSourceField['id'];
+    $concurrentTarget = (int)$concurrentTargetField['id'];
+    $concurrentReserve = (int)$concurrentReserveField['id'];
+    $concurrentKids = [$concurrentSource, $concurrentTarget, $concurrentReserve];
+    $availableRows = $db->query(
+        "SELECT kid, occupied FROM available_villages WHERE kid IN ($concurrentSource, $concurrentTarget, $concurrentReserve)"
+    );
+    while ($availableRow = $availableRows->fetch_assoc()) {
+        $concurrentAvailableOccupancy[(int)$availableRow['kid']] = (int)$availableRow['occupied'];
+    }
+    $nowMs = miliseconds();
+
+    $db->query("INSERT INTO users
+        (id, uuid, name, password, email, race, kid, total_pop, total_villages, desc1, desc2, note)
+        VALUES
+        ($concurrentAttacker, 'ov-regression-concurrent-attacker', 'OVConcurrentAttacker', 'x', '', 1, $concurrentSource, 100, 1, '', '', ''),
+        ($concurrentDefender, 'ov-regression-concurrent-defender', 'OVConcurrentDefender', 'x', '', 3, $concurrentReserve, 3, 2, '', '', '')");
+    $db->query("INSERT INTO vdata
+        (kid, owner, fieldtype, name, capital, pop, cp, wood, clay, iron, woodp, clayp, ironp, maxstore,
+         crop, cropp, maxcrop, upkeep, lastmupdate, created, expandedfrom)
+        VALUES
+        ($concurrentSource, $concurrentAttacker, " . (int)$concurrentSourceField['fieldtype'] . ", 'OV Concurrent Source', 1, 100, 0,
+         1000000, 1000000, 1000000, 0, 0, 0, 1000000, 1000000, 0, 1000000, 0, $nowMs, " . time() . ", 0),
+        ($concurrentTarget, $concurrentDefender, " . (int)$concurrentTargetField['fieldtype'] . ", 'OV Concurrent Target', 0, 2, 2,
+         1000000, 1000000, 1000000, 0, 0, 0, 1000000, 1000000, 0, 1000000, 0, $nowMs, " . time() . ", 0),
+        ($concurrentReserve, $concurrentDefender, " . (int)$concurrentReserveField['fieldtype'] . ", 'OV Concurrent Reserve', 1, 1, 0,
+         1000000, 1000000, 1000000, 0, 0, 0, 1000000, 1000000, 0, 1000000, 0, $nowMs, " . time() . ", 0)");
+    $db->query("INSERT INTO fdata (kid, f19, f19t) VALUES
+        ($concurrentSource, 0, 0),
+        ($concurrentTarget, 1, 15),
+        ($concurrentReserve, 0, 0)");
+    $db->query("INSERT INTO units (kid, race) VALUES
+        ($concurrentSource, 1),
+        ($concurrentTarget, 3),
+        ($concurrentReserve, 3)");
+    $db->query("UPDATE wdata SET occupied=1 WHERE id IN ($concurrentSource, $concurrentTarget, $concurrentReserve) AND occupied=0");
+    expect_same(3, $db->affectedRows(), 'concurrent village-destruction fixture fields occupied');
+
+    $concurrentUnits = array_fill(1, 11, 0);
+    $concurrentUnits[8] = 1000;
+    $concurrentEventTime = time() + 3600;
+    $concurrentTaskId = (int)(new MovementsModel())->addMovement(
+        $concurrentSource, $concurrentTarget, 1, $concurrentUnits, 15, 0, 0, 0, 0,
+        MovementsModel::ATTACKTYPE_NORMAL, $concurrentEventTime * 1000, $concurrentEventTime * 1000
+    );
+    expect_true($concurrentTaskId > 0, 'concurrent village-destruction movement queued');
+    expect_true($db->commit(), 'concurrent village-destruction fixture committed');
+    $concurrentFixtureCommitted = true;
+
+    $descriptorSpec = [
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ];
+    $barrierPath = tempnam(sys_get_temp_dir(), 'ov-destroy-start-');
+    $firstReadyPath = tempnam(sys_get_temp_dir(), 'ov-destroy-ready-');
+    $secondReadyPath = tempnam(sys_get_temp_dir(), 'ov-destroy-ready-');
+    expect_true($barrierPath !== false, 'concurrent village-destruction start barrier created');
+    expect_true($firstReadyPath !== false, 'first concurrent village-destruction ready signal created');
+    expect_true($secondReadyPath !== false, 'second concurrent village-destruction ready signal created');
+    $concurrentBarrierFiles = [$barrierPath, $firstReadyPath, $secondReadyPath];
+    $readyPaths = [$firstReadyPath, $secondReadyPath];
+    for ($i = 0; $i < 2; ++$i) {
+        $pipes = [];
+        $process = proc_open(
+            [
+                'php',
+                '/app/tests/movement-task-worker.php',
+                (string)$concurrentTaskId,
+                $barrierPath,
+                $readyPaths[$i],
+            ],
+            $descriptorSpec,
+            $pipes
+        );
+        expect_true(is_resource($process), "concurrent village-destruction worker $i started");
+        $concurrentWorkers[] = ['process' => $process, 'pipes' => $pipes];
+    }
+
+    $readyDeadline = microtime(true) + 10;
+    while (
+        (@file_get_contents($firstReadyPath) !== 'ready' || @file_get_contents($secondReadyPath) !== 'ready')
+        && microtime(true) < $readyDeadline
+    ) {
+        usleep(1000);
+    }
+    expect_same('ready', @file_get_contents($firstReadyPath), 'first concurrent village-destruction worker ready');
+    expect_same('ready', @file_get_contents($secondReadyPath), 'second concurrent village-destruction worker ready');
+    expect_true(file_put_contents($barrierPath, 'go', LOCK_EX) !== false, 'concurrent village-destruction workers released together');
+
+    $workerOutcomes = [];
+    foreach ($concurrentWorkers as $i => &$worker) {
+        $stdout = stream_get_contents($worker['pipes'][1]);
+        $stderr = stream_get_contents($worker['pipes'][2]);
+        fclose($worker['pipes'][1]);
+        fclose($worker['pipes'][2]);
+        $exitCode = proc_close($worker['process']);
+        $worker['process'] = null;
+        $worker['pipes'] = [];
+        $workerOutcomes[] = ['stdout' => $stdout, 'stderr' => $stderr, 'exitCode' => $exitCode];
+    }
+    unset($worker);
+
+    $workerResults = [];
+    foreach ($workerOutcomes as $i => $outcome) {
+        expect_same(0, $outcome['exitCode'], "concurrent village-destruction worker $i exit status: {$outcome['stderr']}");
+        expect_same('', $outcome['stderr'], "concurrent village-destruction worker $i stderr");
+        $workerResults[] = $outcome['stdout'];
+    }
+    sort($workerResults);
+    expect_same(['false', 'true'], $workerResults, 'concurrent village-destruction movement claimed once');
+    expect_same(0, (int)$db->fetchScalar("SELECT COUNT(*) FROM movement WHERE id=$concurrentTaskId"), 'concurrent village-destruction movement consumed once');
+    expect_same(0, (int)$db->fetchScalar("SELECT COUNT(*) FROM vdata WHERE kid=$concurrentTarget"), 'concurrent village-destruction removes village once');
+    expect_same(
+        1,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding
+             WHERE type=" . NoticeHelper::SURROUNDING_VILLAGE_DESTROYED . "
+               AND params='$concurrentDefender:OVConcurrentDefender:$concurrentTarget:OV Concurrent Target'"
+        ),
+        'concurrent village-destruction records one event'
+    );
+} finally {
+    foreach ($concurrentWorkers as &$worker) {
+        if (!isset($worker['process']) || !is_resource($worker['process'])) {
+            continue;
+        }
+        $status = proc_get_status($worker['process']);
+        if (!empty($status['running'])) {
+            proc_terminate($worker['process']);
+        }
+        foreach ($worker['pipes'] as $pipe) {
+            if (is_resource($pipe)) {
+                fclose($pipe);
+            }
+        }
+        proc_close($worker['process']);
+        $worker['process'] = null;
+        $worker['pipes'] = [];
+    }
+    unset($worker);
+    foreach ($concurrentBarrierFiles as $barrierFile) {
+        if (is_string($barrierFile) && file_exists($barrierFile)) {
+            unlink($barrierFile);
+        }
+    }
+
+    if (!$concurrentFixtureCommitted) {
+        $db->rollback();
+    }
+    if ($concurrentKids !== []) {
+        $kidList = implode(',', array_map('intval', $concurrentKids));
+        $destructionParams = "$concurrentDefender:OVConcurrentDefender:$concurrentTarget:OV Concurrent Target";
+        $fightParams = "$concurrentDefender:OVConcurrentDefender:$concurrentTarget";
+        $concurrentBattleCommitted = (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM surrounding
+             WHERE type=" . NoticeHelper::SURROUNDING_VILLAGE_DESTROYED . "
+               AND params='$destructionParams'"
+        ) === 1;
+        $db->query("DELETE FROM scheduled_task_failures WHERE task_table='movement' AND task_id=$concurrentTaskId");
+        $db->query("DELETE FROM movement WHERE kid IN ($kidList) OR to_kid IN ($kidList)");
+        $db->query("DELETE FROM ndata WHERE uid IN ($concurrentAttacker, $concurrentDefender)");
+        $db->query(
+            "DELETE FROM surrounding
+             WHERE (type=" . NoticeHelper::SURROUNDING_VILLAGE_DESTROYED . " AND params='$destructionParams')
+                OR (type=" . NoticeHelper::SURROUNDING_FIGHT . " AND params='$fightParams')"
+        );
+        $db->query(
+            "DELETE FROM multiaccount_log
+             WHERE uid IN ($concurrentAttacker, $concurrentDefender)
+                OR to_uid IN ($concurrentAttacker, $concurrentDefender)"
+        );
+        $db->query(
+            "DELETE FROM farmlist_last_reports
+             WHERE uid IN ($concurrentAttacker, $concurrentDefender)"
+        );
+        if ($concurrentBattleCommitted) {
+            $db->query(
+                "UPDATE casualties SET attacks=GREATEST(attacks-1, 0)
+                 WHERE time=$concurrentCasualtyTime"
+            );
+            if (!$concurrentCasualtyExisted) {
+                $db->query(
+                    "DELETE FROM casualties
+                     WHERE time=$concurrentCasualtyTime AND attacks=0 AND casualties=0"
+                );
+            }
+        }
+        $db->query("DELETE FROM units WHERE kid IN ($kidList)");
+        $db->query("DELETE FROM fdata WHERE kid IN ($kidList)");
+        $db->query("DELETE FROM vdata WHERE kid IN ($kidList)");
+        $db->query("DELETE FROM users WHERE id IN ($concurrentAttacker, $concurrentDefender)");
+        $db->query("UPDATE wdata SET occupied=0 WHERE id IN ($kidList)");
+        foreach ($concurrentAvailableOccupancy as $kid => $occupied) {
+            $db->query(
+                "UPDATE available_villages SET occupied=" . (int)$occupied . " WHERE kid=" . (int)$kid
+            );
+        }
     }
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
     $db->query("ALTER TABLE movement AUTO_INCREMENT=$movementAutoIncrement");

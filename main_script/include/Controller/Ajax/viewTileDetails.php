@@ -575,6 +575,13 @@ JSON;
                     '<a href="spieler.php?uid=' . $data[0] . '">' . $data[1] . '</a>',
                     '<a href="karte.php?d=' . $data[2] . '">' . $data[3] . '</a>');
                 break;
+            case NoticeHelper::SURROUNDING_VILLAGE_DESTROYED:
+                $icon = 'villageLost';
+                $data = explode(":", $row['params']);
+                $title = sprintf(T("Reports", "village x of player y was destroyed"),
+                    '<a href="karte.php?d=' . $data[2] . '">' . $data[3] . '</a>',
+                    '<a href="spieler.php?uid=' . $data[0] . '">' . $data[1] . '</a>');
+                break;
             case NoticeHelper::SURROUNDING_VILLAGE_RENAME:
                 $icon = 'villageRename';
                 $data = explode(":", $row['params']);

@@ -3929,6 +3929,7 @@ $Definition['Reports']['Tabs']['Spy'] = 'التجسس';
 $Definition['Reports']['Tabs']['Other'] = 'اخرى';
 $Definition['Reports']['needClub'] = 'انت بحاجه لنادي الذهب لتفعيل هذه الميزة';
 $Definition['Reports']['village totally destroyed'] = 'تم نسف القرية بالكامل';
+$Definition['Reports']['village x of player y was destroyed'] = 'تم تدمير قرية %s التابعة للاعب %s بالكامل.';
 $Definition['Reports']['adventureFailed'] = 'لم تنجح المغامرة !';
 $Definition['Reports']['Silver'] = 'الفضة';
 $Definition['Reports']['WWPlanCaptured'] = 'تم الإستيلاء على تحفة مخطط البناء !';

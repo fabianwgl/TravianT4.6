@@ -3930,6 +3930,7 @@ $Definition['Reports']['Tabs']['Spy'] = 'جاسوسی';
 $Definition['Reports']['Tabs']['Other'] = 'دیگر';
 $Definition['Reports']['needClub'] = 'برای استفاده از این قابلیت نیاز به کلوپ طلایی دارید.';
 $Definition['Reports']['village totally destroyed'] = 'دهکده کاملا نابود شد.';
+$Definition['Reports']['village x of player y was destroyed'] = 'دهکده %s بازیکن %s کاملا نابود شد.';
 $Definition['Reports']['adventureFailed'] = 'ماجراجویی با موفقیت آمیز نبود.';
 $Definition['Reports']['Silver'] = 'نقره';
 $Definition['Reports']['WWPlanCaptured'] = 'نقشه ساخت دزدیده شد.';

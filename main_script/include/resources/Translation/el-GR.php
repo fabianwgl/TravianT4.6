@@ -4095,6 +4095,7 @@ $Definition['Reports']['Tabs']['Spy'] = 'Κατασκοπία';
 $Definition['Reports']['Tabs']['Other'] = 'Διάφορα';
 $Definition['Reports']['needClub'] = 'Για να χρησιμοποιήσετε αυτή την επιλογή πρέπει να ενεργοποιήσετε το Gold Club.';
 $Definition['Reports']['village totally destroyed'] = 'Το χωριό καταστράφηκε ολοκληρωτικά.';
+$Definition['Reports']['village x of player y was destroyed'] = 'Το χωριό %s του %s καταστράφηκε ολοκληρωτικά.';
 $Definition['Reports']['adventureFailed'] = 'Αποτυχής περιπέτεια.';
 $Definition['Reports']['Silver'] = 'Ασήμι';
 $Definition['Reports']['WWPlanCaptured'] = 'Σχέδιο κατασκευής Παγκοσμίου Θαύματος κατακτήθηκε.';

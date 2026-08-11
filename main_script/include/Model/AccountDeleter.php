@@ -79,7 +79,7 @@ class AccountDeleter
                 $db->query("UPDATE wdata SET occupied=0 WHERE id=$kid");
                 $db->query("UPDATE available_villages SET occupied=0 WHERE kid=$kid");
             }
-            return;
+            return false;
         }
         $vdata = $vdata->fetch_assoc();
         if($full && $vdata['capital'] == 1){
@@ -97,7 +97,7 @@ class AccountDeleter
             }
             ResourcesHelper::updateVillageResources($kid, FALSE);
             $db->query("UPDATE vdata SET capital=0 WHERE kid=$kid");
-            return;
+            return true;
         }
         $db->query("DELETE FROM vdata WHERE kid=$kid");
         $db->query("DELETE FROM fdata WHERE kid=$kid");
@@ -212,6 +212,7 @@ class AccountDeleter
         if (array_sum($profile) > 0.500) {
             logError(print_r($profile, true));
         }
+        return true;
     }
 
     public function rematchExpands($kid)

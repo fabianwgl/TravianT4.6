@@ -4299,6 +4299,7 @@ $Definition['Reports']['Tabs']['Spy'] = 'Spy';
 $Definition['Reports']['Tabs']['Other'] = 'Other';
 $Definition['Reports']['needClub'] = 'For using this feature you need an active gold club.';
 $Definition['Reports']['village totally destroyed'] = 'Village totally destroyed.';
+$Definition['Reports']['village x of player y was destroyed'] = 'The village %s of %s was destroyed.';
 $Definition['Reports']['adventureFailed'] = 'Adventure wasn\'t successful.';
 $Definition['Reports']['Silver'] = 'Silver';
 $Definition['Reports']['WWPlanCaptured'] = 'WW Construction plan robbed.';

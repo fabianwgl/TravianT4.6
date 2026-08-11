@@ -404,7 +404,7 @@ class BattleModel
         if ($this->isFarm() || ($this->attacker['wave']['units']['num'][8] && !$this->defender['isOasis'] && !$this->cataWorks)) {
             $info['cata_is_disabled'] = true;
         }
-        if (!$this->isFarm() && $this->attacker['wave']['units']['num'][8] && !$this->defender['isOasis'] && $this->cataWorks) {
+        if (!$this->isFarm() && empty($this->info['totally_destroyed']) && $this->attacker['wave']['units']['num'][8] && !$this->defender['isOasis'] && $this->cataWorks) {
             $targets = [[0, 0, 0]];
             $selected = [0];
             if ($this->row['ctar2'] <> 0) {
@@ -2258,13 +2258,43 @@ class BattleModel
 
     private function checkIfVillageIsDestroyed()
     {
+        if (!empty($this->info['totally_destroyed'])) {
+            return;
+        }
+
         $db = DB::getInstance();
-        $pop = $db->fetchScalar("SELECT pop FROM vdata WHERE kid={$this->row['to_kid']}");
-        if ($pop > 0) return;
+        $kid = (int)$this->row['to_kid'];
+        $villageResult = $db->query("SELECT owner, name, pop FROM vdata WHERE kid=$kid FOR UPDATE");
+        if (!$villageResult) {
+            throw new \RuntimeException("Unable to lock village $kid before destruction.");
+        }
+        if (!$villageResult->num_rows) {
+            return;
+        }
+
+        $village = $villageResult->fetch_assoc();
+        if ((int)$village['pop'] > 0 || (int)$village['owner'] !== (int)$this->defender['uid']) {
+            return;
+        }
+
         $deleter = new AccountDeleter();
-        $reason = $deleter->isVillageDestroyAble($this->attacker['uid'], $this->row['to_kid'], $this->defender['uid']);
+        $reason = $deleter->isVillageDestroyAble($this->attacker['uid'], $kid, $this->defender['uid']);
         if (true === $reason) {
-            $deleter->deleteVillage($this->row['to_kid'], false);
+            if ($deleter->deleteVillage($kid, false) !== true) {
+                throw new \RuntimeException("Village $kid disappeared during destruction.");
+            }
+
+            $xy = Formulas::kid2xy($kid);
+            if (!NoticeHelper::addSurrounding(
+                $xy['x'],
+                $xy['y'],
+                NoticeHelper::SURROUNDING_VILLAGE_DESTROYED,
+                [$village['owner'], $this->defender['player']['name'], $kid, $village['name']],
+                $this->row['end_time_seconds']
+            )) {
+                throw new \RuntimeException("Unable to record destruction of village $kid.");
+            }
+
             $this->info['totally_destroyed'] = true;
         } else {
             $this->info['not_destroyed_reason'] = $reason;
