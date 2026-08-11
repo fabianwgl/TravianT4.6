@@ -53,6 +53,24 @@ Settling in the grey area schedules all 14 Natar demolition waves. They also
 arrive after 2 hours 24 minutes on the supported profile, in deterministic
 wave order.
 
+## Town Hall celebrations
+
+Celebration Culture Points are credited immediately. On the supported 10×
+profile, a small celebration is capped at 125 CP and a large celebration at
+500 CP; the level-dependent Town Hall cooldown is one quarter of the 1×
+duration. Small rewards use the village's theoretical daily building CP, while
+large rewards use the theoretical total of all owned non-World-Wonder villages.
+Grey-area villages therefore contribute their theoretical CP even though their
+stored passive production is zero.
+
+A built Town Hall is required to start a celebration, and a large celebration
+requires level 10. Starting is an atomic resource, cooldown, CP, and daily-quest
+transition. An ongoing celebration survives Town Hall destruction. While a
+large celebration is active, the existing conquest calculation applies the
+attacker and defender loyalty modifiers. These rules follow the official
+[Town Hall guide](https://support.travian.com/en/articles/82-celebrations-and-town-hall)
+and [10× speed table](https://support.travian.com/en/articles/20-game-versions-and-speed).
+
 ## Compatibility status
 
 Registration, activation, village creation, login, village fields, village

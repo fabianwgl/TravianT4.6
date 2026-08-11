@@ -140,32 +140,7 @@ class ResourcesHelper
         unset($find);
         if ($simple) {
             $lastmupdate = miliseconds();
-            $diff_time = ($lastmupdate - $row['lastmupdate']);
-            $production = [$row['woodp'], $row['clayp'], $row['ironp'], $row['cropp'] - $row['upkeep'] - $row['pop']];
-            $cur_res = [$row['wood'], $row['clay'], $row['iron'], $row['crop']];
-            $resources = [
-                (($production[0] / 3600000) * $diff_time),
-                (($production[1] / 3600000) * $diff_time),
-                (($production[2] / 3600000) * $diff_time),
-                (($production[3] / 3600000) * $diff_time),
-            ];
-            foreach ($resources as $key => $res) {
-                $nextValue = $res + $cur_res[$key];
-                $storage = $row[$key < 3 ? 'maxstore' : 'maxcrop'];
-                if ($nextValue >= $storage) {
-                    $resources[$key] = $row[$key < 3 ? 'maxstore' : 'maxcrop'] - $cur_res[$key];
-                }
-                $resources[$key] = round($resources[$key], 4);
-            }
-            $crop = $row['crop'];
-            if ($row['owner'] == 1 && $row['crop'] + $resources[3] < 0) {
-                $resources[3] = $row['maxcrop'] * 2 / 3;
-                $crop = 0;
-            }
-            if (!getGame("starvation") && ($row['crop'] + $resources[3]) <= 0) {
-                $resources[3] = -($row['crop'] + $resources[3]) + 1000;
-                $crop = 0;
-            }
+            [$resources, $crop] = self::calculateSimpleResourceUpdate($row, $lastmupdate);
             $db->query("UPDATE vdata SET wood=wood+{$resources[0]}, clay=clay+{$resources[1]}, iron=iron+{$resources[2]}, crop={$crop}+{$resources[3]}, lastmupdate=$lastmupdate WHERE kid={$row['kid']}");
             $master = new MasterBuilder();
             $master->updateCommence($row['kid'], FALSE);
@@ -308,5 +283,79 @@ class ResourcesHelper
             $master = new MasterBuilder();
             $master->updateCommence($kid, FALSE);
         }
+    }
+
+    public static function settleVillageResourcesForUpdate(int $kid): void
+    {
+        if ($kid <= 0) {
+            throw new \InvalidArgumentException('A positive village ID is required for resource settlement.');
+        }
+
+        $db = DB::getInstance();
+        $result = $db->query(
+            "SELECT isWW, pop, owner, kid, wood, woodp, clay, clayp, iron, ironp,
+                    crop, cropp, maxstore, maxcrop, lastmupdate, upkeep
+             FROM vdata WHERE kid=$kid FOR UPDATE"
+        );
+        if (!$result) {
+            throw new \RuntimeException("Unable to lock village $kid for resource settlement.");
+        }
+        if ($result->num_rows !== 1) {
+            throw new \RuntimeException("Village $kid is missing during resource settlement.");
+        }
+
+        $row = $result->fetch_assoc();
+        $lastUpdate = miliseconds();
+        [$resources, $crop] = self::calculateSimpleResourceUpdate($row, $lastUpdate);
+        if (!$db->query(
+            "UPDATE vdata
+             SET wood=wood+{$resources[0]}, clay=clay+{$resources[1]}, iron=iron+{$resources[2]},
+                 crop={$crop}+{$resources[3]}, lastmupdate=$lastUpdate
+             WHERE kid=$kid"
+        )) {
+            throw new \RuntimeException("Unable to settle resources for village $kid.");
+        }
+    }
+
+    private static function calculateSimpleResourceUpdate(array $row, int $lastUpdate): array
+    {
+        $difference = $lastUpdate - (int)$row['lastmupdate'];
+        $production = [
+            (float)$row['woodp'],
+            (float)$row['clayp'],
+            (float)$row['ironp'],
+            (float)$row['cropp'] - (float)$row['upkeep'] - (float)$row['pop'],
+        ];
+        $current = [
+            (float)$row['wood'],
+            (float)$row['clay'],
+            (float)$row['iron'],
+            (float)$row['crop'],
+        ];
+        $resources = [
+            ($production[0] / 3600000) * $difference,
+            ($production[1] / 3600000) * $difference,
+            ($production[2] / 3600000) * $difference,
+            ($production[3] / 3600000) * $difference,
+        ];
+        foreach ($resources as $key => $resource) {
+            $storage = (float)$row[$key < 3 ? 'maxstore' : 'maxcrop'];
+            if ($resource + $current[$key] >= $storage) {
+                $resources[$key] = $storage - $current[$key];
+            }
+            $resources[$key] = round($resources[$key], 4);
+        }
+
+        $crop = (float)$row['crop'];
+        if ((int)$row['owner'] === 1 && $crop + $resources[3] < 0) {
+            $resources[3] = (float)$row['maxcrop'] * 2 / 3;
+            $crop = 0;
+        }
+        if (!getGame("starvation") && $crop + $resources[3] <= 0) {
+            $resources[3] = -($crop + $resources[3]) + 1000;
+            $crop = 0;
+        }
+
+        return [$resources, $crop];
     }
 }

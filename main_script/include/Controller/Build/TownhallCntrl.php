@@ -4,13 +4,12 @@ namespace Controller\Build;
 
 use Controller\AnyCtrl;
 use Core\Config;
-use Core\Database\DB;
 use Core\Helper\TimezoneHelper;
 use Core\Session;
 use Core\Village;
 use Game\Formulas;
 use Game\GoldHelper;
-use Model\DailyQuestModel;
+use Model\CelebrationModel;
 use resources\View\PHPBatchView;
 
 class TownhallCntrl extends AnyCtrl
@@ -19,11 +18,33 @@ class TownhallCntrl extends AnyCtrl
     {
         parent::__construct();
         $level = Village::getInstance()->getField($index)['level'];
+        $uid = Session::getInstance()->getPlayerId();
+        $kid = Village::getInstance()->getKid();
+        $celebrationModel = new CelebrationModel();
+        if (
+            isset($_GET['z'], $_GET['type'])
+            && $_GET['z'] == Session::getInstance()->getChecker()
+        ) {
+            if (Session::getInstance()->banned()) {
+                $this->innerRedirect("InGameBannedPage");
+            } else if (Config::getInstance()->dynamic->serverFinished) {
+                $this->innerRedirect("InGameWinnerPage");
+            } else if (Session::getInstance()->isInVacationMode()) {
+                $this->redirect('options.php?s=4');
+            } else {
+                Session::getInstance()->changeChecker();
+                $type = is_scalar($_GET['type']) ? (int)$_GET['type'] : 0;
+                $celebrationModel->startCelebration($uid, $kid, $type);
+                $this->redirect('build.php?id=' . $index);
+            }
+        }
+
+        $rewards = $celebrationModel->getRewardPreview($uid, $kid);
         $this->view = new PHPBatchView("build/Townhall");
         $village = Village::getInstance();
         $helper = new GoldHelper();
-        $this->view->vars['smallCelebration']['active'] = $village->getCP() > 0;
-        $this->view->vars['smallCelebration']['points'] = Formulas::getCelebrationMaxCP(false, $village->getCP());
+        $this->view->vars['smallCelebration']['active'] = $rewards['small'] > 0;
+        $this->view->vars['smallCelebration']['points'] = $rewards['small'];
         $this->view->vars['smallCelebration']['cost'] = Formulas::celebrationCost(FALSE);
         $this->view->vars['smallCelebration']['time'] = secondsToString(Formulas::celebrationTime(FALSE, $level));
         if (Village::getInstance()->isResourcesAvailable($this->view->vars['smallCelebration']['cost'])) {
@@ -36,9 +57,8 @@ class TownhallCntrl extends AnyCtrl
             $this->view->vars['smallCelebration']['contractLink'] = $button['text'];
             $this->view->vars['smallCelebration']['npc'] = $button['npc'];
         }
-        $this->view->vars['bigCelebration']['active'] = $level >= 10;
-        $this->view->vars['bigCelebration']['points'] = Formulas::getCelebrationMaxCP(true,
-            $this->getTotalCulturePoints(Session::getInstance()->getPlayerId()));
+        $this->view->vars['bigCelebration']['active'] = $level >= 10 && $rewards['large'] > 0;
+        $this->view->vars['bigCelebration']['points'] = $rewards['large'];
         $this->view->vars['bigCelebration']['cost'] = Formulas::celebrationCost(TRUE);
         $this->view->vars['bigCelebration']['time'] = secondsToString(Formulas::celebrationTime(TRUE, $level));
         if (Village::getInstance()->isResourcesAvailable($this->view->vars['bigCelebration']['cost'])) {
@@ -51,53 +71,8 @@ class TownhallCntrl extends AnyCtrl
             $this->view->vars['bigCelebration']['contractLink'] = $button['text'];
             $this->view->vars['bigCelebration']['npc'] = $button['npc'];
         }
-        if ($this->view->vars['smallCelebration']['points'] == 0 && $this->view->vars['bigCelebration']['points'] == 0) {
+        if ($rewards['small'] === 0 && $rewards['large'] === 0) {
             $this->view = NULL;
-        } else {
-            //process requests.
-            if (!$this->isCelebrationRunning() && isset($_GET['z']) && $_GET['z'] == Session::getInstance()->getChecker() && isset($_GET['type']) && in_array($_GET['type'],
-                    [1, 2,])) {
-                if (Session::getInstance()->banned()) {
-                    $this->innerRedirect("InGameBannedPage");
-                } else if (Config::getInstance()->dynamic->serverFinished) {
-                    $this->innerRedirect("InGameWinnerPage");
-                } else if (Session::getInstance()->isInVacationMode()) {
-                    $this->redirect('options.php?s=4');
-                } else {
-                    Session::getInstance()->changeChecker();
-                    $type = (int)$_GET['type'];
-                    $cost = Formulas::celebrationCost($type == 2);
-                    if (Village::getInstance()->isResourcesAvailable($cost) && $this->view->vars[$type == 1 ? 'smallCelebration' : 'bigCelebration']['points'] && $this->view->vars[$type == 1 ? 'smallCelebration' : 'bigCelebration']['active']) {
-                        $db = DB::getInstance();
-                        if (Village::getInstance()->modifyResources($cost)) {
-                            $celebration = time() + Formulas::celebrationTime($type == 2, $level);
-                            $db->query("UPDATE vdata SET celebration=$celebration, type=$type WHERE kid=" . Village::getInstance()->getKid());
-                            Village::getInstance()->setCelebration($celebration);
-                            Village::getInstance()->setCelebrationType($_GET['type']);
-                            $dailyQuest = new DailyQuestModel();
-                            $dailyQuest->setQuestAsCompleted(Session::getInstance()->getPlayerId(), 10);
-                            if ($type == 1) {
-                                $cp = Formulas::getCelebrationMaxCP(false, $village->getCP());
-                            } else {
-                                $cp = Formulas::getCelebrationMaxCP(true,
-                                    $this->getTotalCulturePoints(Session::getInstance()->getPlayerId()));
-                            }
-                            $owner = Session::getInstance()->getPlayerId();
-                            $db->query("UPDATE users SET cp=cp+$cp WHERE id=$owner");
-                            {
-                                $button = $this->getButton($index, FALSE);
-                                $this->view->vars['smallCelebration']['contractLink'] = $button['text'];
-                                $this->view->vars['smallCelebration']['npc'] = $button['npc'];
-                            }
-                            {
-                                $button = $this->getButton($index, TRUE);
-                                $this->view->vars['bigCelebration']['contractLink'] = $button['text'];
-                                $this->view->vars['bigCelebration']['npc'] = $button['npc'];
-                            }
-                        }
-                    }
-                }
-            }
         }
         $this->view->vars['isCelebration'] = $this->isCelebrationRunning();
         if ($this->view->vars['isCelebration']) {
@@ -144,11 +119,5 @@ class TownhallCntrl extends AnyCtrl
     private function isCelebrationRunning()
     {
         return Village::getInstance()->getCelebration() > time();
-    }
-
-    private function getTotalCulturePoints($uid)
-    {
-        $db = DB::getInstance();
-        return $db->fetchScalar("SELECT SUM(cp) FROM vdata WHERE isWW=0 AND owner=$uid");
     }
 }

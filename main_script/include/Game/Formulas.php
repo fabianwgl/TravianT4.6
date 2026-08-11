@@ -3606,14 +3606,12 @@ Crannies have 20% less capacity against teuton raids with hero + 10-20% from any
     {
         $times = !getCustom('batchCelebration') ? 1 : ceil(getGameSpeed() / 50);
         $values = [
-            'small' => [1 => 500, 250, 250, 0, 250, 10 => 250, 20 => 125],
-            'big' => [1 => 2000, 2000, 1000, 0, 1000, 10 => 1000, 20 => 500],
+            'small' => [1 => 500, 2 => 500, 3 => 250, 5 => 250, 10 => 125],
+            'big' => [1 => 2000, 2 => 2000, 3 => 1000, 5 => 1000, 10 => 500],
         ];
-        if (getGameSpeed() <= 10) {
-            $cp = ceil($times * $values[$big ? 'big' : 'small'][getGameSpeed()]);
-        } else {
-            $cp = ceil($times * $values[$big ? 'big' : 'small'][3]);
-        }
+        $speed = getGameSpeed();
+        $limits = $values[$big ? 'big' : 'small'];
+        $cp = ceil($times * ($limits[$speed] ?? $limits[3]));
         if (!is_null($curCP)) {
             return min($times * $curCP, $cp);
         }

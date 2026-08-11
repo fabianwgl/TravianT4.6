@@ -21,6 +21,8 @@ use Model\AuctionModel;
 use Model\AccountDeleter;
 use Model\AllianceModel;
 use Model\BattleModel;
+use Model\BattleSetter;
+use Model\CelebrationModel;
 use Model\MasterBuilder;
 use Model\MarketPlaceProcessor;
 use Model\MovementsModel;
@@ -92,6 +94,8 @@ expect_same(24, Formulas::uSpeed(1), 'x10 legionnaire movement speed');
 expect_same(60, Formulas::uCarry(11), 'clubswinger carrying capacity');
 expect_same(2800.0, Formulas::fieldProduction(10), 'level-ten resource production');
 expect_same(80000.0, Formulas::storeCAP(20), 'level-twenty storage capacity');
+expect_same(125, (int)Formulas::getCelebrationMaxCP(false), 'x10 small celebration CP limit');
+expect_same(500, (int)Formulas::getCelebrationMaxCP(true), 'x10 large celebration CP limit');
 
 foreach ([[-25, -25], [-25, 25], [0, 0], [25, -25], [25, 25]] as [$x, $y]) {
     $coordinates = Formulas::kid2xy(Formulas::xy2kid($x, $y));
@@ -1256,6 +1260,758 @@ try {
     }
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
     $db->query("ALTER TABLE building_upgrade AUTO_INCREMENT=$buildingUpgradeAutoIncrement");
+    $db->query("ALTER TABLE demolition AUTO_INCREMENT=$demolitionAutoIncrement");
+    $db->query("ALTER TABLE send AUTO_INCREMENT=$sendAutoIncrement");
+}
+
+$celebrationOwner = 2000000053;
+$celebrationForeignOwner = 2000000054;
+$celebrationKids = [];
+$db->begin_transaction();
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM users WHERE id IN ($celebrationOwner, $celebrationForeignOwner)"
+        ),
+        'celebration fixture user IDs available'
+    );
+    $greyCelebrationFields = $db->query(
+        "SELECT w.id, w.fieldtype
+         FROM wdata w LEFT JOIN vdata v ON v.kid=w.id
+         WHERE w.id>0 AND w.occupied=0 AND w.oasistype=0 AND v.kid IS NULL
+           AND SQRT(POW(w.x, 2)+POW(w.y, 2))<=22
+           AND NOT EXISTS (SELECT 1 FROM fdata stale_fdata WHERE stale_fdata.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM marks m WHERE m.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM vdata child WHERE child.expandedfrom=w.id)
+           AND NOT EXISTS (SELECT 1 FROM movement movement_ref WHERE movement_ref.kid=w.id OR movement_ref.to_kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM odata oasis_ref WHERE oasis_ref.did=w.id)
+         ORDER BY w.id DESC LIMIT 1"
+    );
+    expect_same(1, $greyCelebrationFields->num_rows, 'grey celebration fixture field available');
+    $greyCelebrationField = $greyCelebrationFields->fetch_assoc();
+    $normalCelebrationFields = $db->query(
+        "SELECT w.id, w.fieldtype
+         FROM wdata w LEFT JOIN vdata v ON v.kid=w.id
+         WHERE w.id>0 AND w.occupied=0 AND w.oasistype=0 AND v.kid IS NULL
+           AND SQRT(POW(w.x, 2)+POW(w.y, 2))>22
+           AND NOT EXISTS (SELECT 1 FROM fdata stale_fdata WHERE stale_fdata.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM marks m WHERE m.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM vdata child WHERE child.expandedfrom=w.id)
+           AND NOT EXISTS (SELECT 1 FROM movement movement_ref WHERE movement_ref.kid=w.id OR movement_ref.to_kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM odata oasis_ref WHERE oasis_ref.did=w.id)
+         ORDER BY w.id DESC LIMIT 4"
+    );
+    expect_same(4, $normalCelebrationFields->num_rows, 'normal celebration fixture fields available');
+    $normalCelebrationField = $normalCelebrationFields->fetch_assoc();
+    $otherCelebrationField = $normalCelebrationFields->fetch_assoc();
+    $wwCelebrationField = $normalCelebrationFields->fetch_assoc();
+    $foreignCelebrationField = $normalCelebrationFields->fetch_assoc();
+    $greyCelebrationKid = (int)$greyCelebrationField['id'];
+    $normalCelebrationKid = (int)$normalCelebrationField['id'];
+    $otherCelebrationKid = (int)$otherCelebrationField['id'];
+    $wwCelebrationKid = (int)$wwCelebrationField['id'];
+    $foreignCelebrationKid = (int)$foreignCelebrationField['id'];
+    $celebrationKids = [
+        $greyCelebrationKid,
+        $normalCelebrationKid,
+        $otherCelebrationKid,
+        $wwCelebrationKid,
+        $foreignCelebrationKid,
+    ];
+    $celebrationKidList = implode(',', $celebrationKids);
+    $celebrationLastUpdate = miliseconds();
+    $celebrationCreated = time();
+    $db->query("INSERT INTO users
+        (id, uuid, name, password, email, race, kid, cp, cp_prod, lastupdate, total_pop, total_villages, desc1, desc2, note)
+        VALUES
+        ($celebrationOwner, 'ov-regression-celebration-owner', 'OVCelebrationOwner', 'x', '', 1,
+         $greyCelebrationKid, 1000, 300, $celebrationCreated, 0, 4, '', '', ''),
+        ($celebrationForeignOwner, 'ov-regression-celebration-foreign', 'OVCelebrationForeign', 'x', '', 2,
+         $foreignCelebrationKid, 2000, 31, $celebrationCreated, 0, 1, '', '', '')");
+    $db->query("INSERT INTO vdata
+        (kid, owner, fieldtype, name, capital, isWW, pop, cp, loyalty,
+         wood, clay, iron, woodp, clayp, ironp, maxstore, crop, cropp, maxcrop, upkeep,
+         lastmupdate, created, celebration, type, expandedfrom)
+        VALUES
+        ($greyCelebrationKid, $celebrationOwner, " . (int)$greyCelebrationField['fieldtype'] . ", 'OV Grey Celebration', 1, 0, 0, 0, 100,
+         100000, 100000, 100000, 0, 0, 0, 1000000, 100000, 0, 1000000, 0,
+         $celebrationLastUpdate, $celebrationCreated, 0, 0, 0),
+        ($normalCelebrationKid, $celebrationOwner, " . (int)$normalCelebrationField['fieldtype'] . ", 'OV Normal Celebration', 0, 0, 0, 223, 100,
+         100000, 100000, 100000, 0, 0, 0, 1000000, 100000, 0, 1000000, 0,
+         $celebrationLastUpdate, $celebrationCreated, 0, 0, 0),
+        ($otherCelebrationKid, $celebrationOwner, " . (int)$otherCelebrationField['fieldtype'] . ", 'OV Other Celebration', 0, 0, 0, 77, 100,
+         100000, 100000, 100000, 0, 0, 0, 1000000, 100000, 0, 1000000, 0,
+         $celebrationLastUpdate, $celebrationCreated, 0, 0, 0),
+        ($wwCelebrationKid, $celebrationOwner, " . (int)$wwCelebrationField['fieldtype'] . ", 'OV WW Celebration', 0, 1, 0, 0, 100,
+         100000, 100000, 100000, 0, 0, 0, 1000000, 100000, 0, 1000000, 0,
+         $celebrationLastUpdate, $celebrationCreated, 0, 0, 0),
+        ($foreignCelebrationKid, $celebrationForeignOwner, " . (int)$foreignCelebrationField['fieldtype'] . ", 'OV Foreign Celebration', 1, 0, 0, 31, 100,
+         100000, 100000, 100000, 0, 0, 0, 1000000, 100000, 0, 1000000, 0,
+         $celebrationLastUpdate, $celebrationCreated, 0, 0, 0)");
+    $db->query("INSERT INTO fdata (kid, f19, f19t, f20, f20t) VALUES
+        ($greyCelebrationKid, 1, 24, 20, 15),
+        ($normalCelebrationKid, 10, 24, 20, 26),
+        ($otherCelebrationKid, 20, 15, 0, 0),
+        ($wwCelebrationKid, 20, 24, 20, 26),
+        ($foreignCelebrationKid, 10, 24, 0, 0)");
+    $db->query("INSERT INTO daily_quest (uid, qst10) VALUES
+        ($celebrationOwner, 0), ($celebrationForeignOwner, 0)");
+    $db->query("UPDATE wdata SET occupied=1 WHERE id IN ($celebrationKidList) AND occupied=0");
+    expect_same(5, $db->affectedRows(), 'celebration fixture fields occupied');
+
+    $celebrationModel = new CelebrationModel();
+    $greyTheoreticalCp = (int)(Formulas::buildingCP(24, 1) + Formulas::buildingCP(15, 20));
+    $normalTheoreticalCp = (int)(Formulas::buildingCP(24, 10) + Formulas::buildingCP(26, 20));
+    $otherTheoreticalCp = (int)Formulas::buildingCP(15, 20);
+    expect_same(83, $greyTheoreticalCp, 'grey celebration theoretical CP fixture');
+    expect_same(223, $normalTheoreticalCp, 'normal celebration theoretical CP fixture');
+    expect_same(77, $otherTheoreticalCp, 'other celebration theoretical CP fixture');
+    expect_same(
+        ['small' => 83, 'large' => 383],
+        $celebrationModel->getRewardPreview($celebrationOwner, $greyCelebrationKid),
+        'grey celebration preview uses theoretical CP and excludes WW CP'
+    );
+    expect_same(
+        ['small' => 125, 'large' => 383],
+        $celebrationModel->getRewardPreview($celebrationOwner, $normalCelebrationKid),
+        'normal celebration preview applies 10x CP caps'
+    );
+    expect_same(
+        ['small' => 0, 'large' => 0],
+        $celebrationModel->getRewardPreview($celebrationOwner, $foreignCelebrationKid),
+        'celebration preview rejects a foreign destination'
+    );
+
+    $celebrationState = function () use (
+        $db,
+        $celebrationOwner,
+        $celebrationForeignOwner,
+        $celebrationKidList
+    ): array {
+        return [
+            'users' => (string)$db->fetchScalar(
+                "SELECT GROUP_CONCAT(CONCAT(id, ':', cp, ':', cp_prod) ORDER BY id SEPARATOR '|')
+                 FROM users WHERE id IN ($celebrationOwner, $celebrationForeignOwner)"
+            ),
+            'villages' => (string)$db->fetchScalar(
+                "SELECT GROUP_CONCAT(
+                    CONCAT(kid, ':', wood, ':', clay, ':', iron, ':', crop, ':', celebration, ':', type, ':', lastmupdate)
+                    ORDER BY kid SEPARATOR '|')
+                 FROM vdata WHERE kid IN ($celebrationKidList)"
+            ),
+            'quests' => (string)$db->fetchScalar(
+                "SELECT GROUP_CONCAT(CONCAT(uid, ':', qst10) ORDER BY uid SEPARATOR '|')
+                 FROM daily_quest WHERE uid IN ($celebrationOwner, $celebrationForeignOwner)"
+            ),
+        ];
+    };
+    $resetCelebrations = function () use (
+        $db,
+        $celebrationOwner,
+        $celebrationForeignOwner,
+        $celebrationKidList
+    ): void {
+        $lastUpdate = miliseconds();
+        $db->query(
+            "UPDATE vdata SET wood=100000, clay=100000, iron=100000, crop=100000,
+                 celebration=0, type=0, lastmupdate=$lastUpdate
+             WHERE kid IN ($celebrationKidList)"
+        );
+        $db->query("UPDATE users SET cp=IF(id=$celebrationOwner, 1000, 2000) WHERE id IN ($celebrationOwner, $celebrationForeignOwner)");
+        $db->query("UPDATE daily_quest SET qst10=0 WHERE uid IN ($celebrationOwner, $celebrationForeignOwner)");
+    };
+
+    $baselineCelebrationState = $celebrationState();
+    expect_same(false, $celebrationModel->startCelebration($celebrationOwner, $greyCelebrationKid, 0), 'celebration rejects type zero');
+    expect_same(false, $celebrationModel->startCelebration($celebrationOwner, $greyCelebrationKid, 3), 'celebration rejects unknown type');
+    expect_same(false, $celebrationModel->startCelebration(0, $greyCelebrationKid, 1), 'celebration rejects missing owner');
+    expect_same(false, $celebrationModel->startCelebration($celebrationOwner, 0, 1), 'celebration rejects missing village');
+    expect_same(false, $celebrationModel->startCelebration($celebrationOwner, $foreignCelebrationKid, 1), 'celebration rejects foreign village');
+    expect_same(false, $celebrationModel->startCelebration($celebrationOwner, $otherCelebrationKid, 1), 'celebration rejects missing Town Hall');
+    expect_same(false, $celebrationModel->startCelebration($celebrationOwner, $greyCelebrationKid, 2), 'large celebration requires Town Hall level ten');
+    expect_same($baselineCelebrationState, $celebrationState(), 'basic celebration rejections preserve state');
+
+    $db->query("UPDATE fdata SET f19=0, f19t=24 WHERE kid=$otherCelebrationKid");
+    $levelZeroState = $celebrationState();
+    expect_same(false, $celebrationModel->startCelebration($celebrationOwner, $otherCelebrationKid, 1), 'celebration rejects level-zero Town Hall');
+    expect_same($levelZeroState, $celebrationState(), 'level-zero Town Hall rejection preserves state');
+    $db->query("UPDATE fdata SET f19=20, f19t=15 WHERE kid=$otherCelebrationKid");
+
+    $db->query("UPDATE vdata SET celebration=" . (time() + 60) . ", type=1 WHERE kid=$greyCelebrationKid");
+    $cooldownState = $celebrationState();
+    expect_same(false, $celebrationModel->startCelebration($celebrationOwner, $greyCelebrationKid, 1), 'celebration rejects active cooldown');
+    expect_same($cooldownState, $celebrationState(), 'active cooldown rejection preserves state');
+    $db->query("UPDATE vdata SET celebration=0, type=0 WHERE kid=$greyCelebrationKid");
+
+    $smallCelebrationCost = array_map('intval', Formulas::celebrationCost(false));
+    foreach (['wood', 'clay', 'iron', 'crop'] as $resourceIndex => $resource) {
+        $db->query(
+            "UPDATE vdata SET wood=100000, clay=100000, iron=100000, crop=100000,
+                 $resource=" . ($smallCelebrationCost[$resourceIndex] - 1) . ", celebration=0, type=0,
+                 lastmupdate=" . miliseconds() . " WHERE kid=$greyCelebrationKid"
+        );
+        $insufficientState = $celebrationState();
+        expect_same(
+            false,
+            $celebrationModel->startCelebration($celebrationOwner, $greyCelebrationKid, 1),
+            "celebration rejects insufficient $resource"
+        );
+        expect_same($insufficientState, $celebrationState(), "insufficient $resource rejection preserves state");
+    }
+
+    $resetCelebrations();
+    $db->query("UPDATE vdata SET celebration=" . time() . " WHERE kid=$greyCelebrationKid");
+    $smallStartBefore = time();
+    expect_true($celebrationModel->startCelebration($celebrationOwner, $greyCelebrationKid, 1), 'expired-boundary grey celebration starts');
+    $smallStartAfter = time();
+    $smallCelebration = $db->query(
+        "SELECT wood, clay, iron, crop, celebration, type FROM vdata WHERE kid=$greyCelebrationKid"
+    )->fetch_assoc();
+    foreach (['wood', 'clay', 'iron', 'crop'] as $resourceIndex => $resource) {
+        expect_close(
+            100000 - $smallCelebrationCost[$resourceIndex],
+            (float)$smallCelebration[$resource],
+            0.0001,
+            "small celebration deducts exact $resource"
+        );
+    }
+    $smallDuration = (int)Formulas::celebrationTime(false, 1);
+    expect_true(
+        (int)$smallCelebration['celebration'] >= $smallStartBefore + $smallDuration
+        && (int)$smallCelebration['celebration'] <= $smallStartAfter + $smallDuration,
+        'small celebration stores canonical cooldown'
+    );
+    expect_same(1, (int)$smallCelebration['type'], 'small celebration stores type');
+    expect_same(1083, (int)$db->fetchScalar("SELECT cp FROM users WHERE id=$celebrationOwner"), 'small celebration credits grey theoretical CP immediately');
+    expect_same(1, (int)$db->fetchScalar("SELECT qst10 FROM daily_quest WHERE uid=$celebrationOwner"), 'small celebration advances daily quest once');
+    $smallSuccessState = $celebrationState();
+    expect_same(false, $celebrationModel->startCelebration($celebrationOwner, $greyCelebrationKid, 1), 'small celebration replay is rejected');
+    expect_same($smallSuccessState, $celebrationState(), 'small celebration replay preserves committed state');
+
+    $resetCelebrations();
+    $nestedCelebrationBaseline = $celebrationState();
+    expect_true($db->begin_transaction(), 'celebration caller savepoint opened');
+    try {
+        expect_true($celebrationModel->startCelebration($celebrationOwner, $greyCelebrationKid, 1), 'nested celebration succeeds before caller failure');
+        throw new RuntimeException('simulated celebration caller failure');
+    } catch (RuntimeException $e) {
+        expect_true($db->rollback(), 'celebration caller savepoint rolled back');
+        expect_same('simulated celebration caller failure', $e->getMessage(), 'celebration caller failure propagated');
+    }
+    expect_same($nestedCelebrationBaseline, $celebrationState(), 'caller rollback restores complete celebration state');
+    expect_true($celebrationModel->startCelebration($celebrationOwner, $greyCelebrationKid, 1), 'celebration retry succeeds after caller rollback');
+
+    $resetCelebrations();
+    $largeCelebrationCost = array_map('intval', Formulas::celebrationCost(true));
+    $largeStartBefore = time();
+    expect_true($celebrationModel->startCelebration($celebrationOwner, $normalCelebrationKid, 2), 'large celebration starts');
+    $largeStartAfter = time();
+    $largeCelebration = $db->query(
+        "SELECT wood, clay, iron, crop, celebration, type FROM vdata WHERE kid=$normalCelebrationKid"
+    )->fetch_assoc();
+    foreach (['wood', 'clay', 'iron', 'crop'] as $resourceIndex => $resource) {
+        expect_close(
+            100000 - $largeCelebrationCost[$resourceIndex],
+            (float)$largeCelebration[$resource],
+            0.0001,
+            "large celebration deducts exact $resource"
+        );
+    }
+    $largeDuration = (int)Formulas::celebrationTime(true, 10);
+    expect_true(
+        (int)$largeCelebration['celebration'] >= $largeStartBefore + $largeDuration
+        && (int)$largeCelebration['celebration'] <= $largeStartAfter + $largeDuration,
+        'large celebration stores canonical cooldown'
+    );
+    expect_same(2, (int)$largeCelebration['type'], 'large celebration stores type');
+    expect_same(1383, (int)$db->fetchScalar("SELECT cp FROM users WHERE id=$celebrationOwner"), 'large celebration credits capped account theoretical CP immediately');
+    expect_same(1, (int)$db->fetchScalar("SELECT qst10 FROM daily_quest WHERE uid=$celebrationOwner"), 'large celebration advances daily quest once');
+    expect_true((new BattleSetter())->is_great_celebration_running($normalCelebrationKid), 'large celebration activates conquest loyalty effect');
+} finally {
+    $db->rollback();
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+}
+
+$concurrentCelebrationOwner = 2000000055;
+$concurrentCelebrationKids = [];
+$concurrentCelebrationCommitted = false;
+$concurrentCelebrationAvailableOccupancy = [];
+$concurrentCelebrationWorkers = [];
+$concurrentCelebrationBarrierFiles = [];
+$concurrentCelebrationDemolitionTask = 0;
+$concurrentCelebrationDemolitionTaskIds = [];
+$concurrentCelebrationUnrelatedSendId = 0;
+$db->begin_transaction();
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id=$concurrentCelebrationOwner"),
+        'concurrent celebration fixture user ID available'
+    );
+    $concurrentCelebrationFields = $db->query(
+        "SELECT w.id, w.fieldtype
+         FROM wdata w LEFT JOIN vdata v ON v.kid=w.id
+         WHERE w.id>0 AND w.occupied=0 AND w.oasistype=0 AND v.kid IS NULL
+           AND SQRT(POW(w.x, 2)+POW(w.y, 2))>22
+           AND NOT EXISTS (SELECT 1 FROM fdata stale_fdata WHERE stale_fdata.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM research stale_research WHERE stale_research.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM tdata stale_tdata WHERE stale_tdata.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM smithy stale_smithy WHERE stale_smithy.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM training stale_training WHERE stale_training.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM odelete stale_odelete WHERE stale_odelete.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM traderoutes stale_route WHERE stale_route.kid=w.id OR stale_route.to_kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM send stale_send WHERE stale_send.kid=w.id OR stale_send.to_kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM market stale_market WHERE stale_market.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM building_upgrade stale_upgrade WHERE stale_upgrade.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM demolition stale_demolition WHERE stale_demolition.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM farmlist stale_farmlist WHERE stale_farmlist.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM raidlist stale_raidlist WHERE stale_raidlist.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM units stale_units WHERE stale_units.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM hero stale_hero WHERE stale_hero.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM enforcement stale_enforcement WHERE stale_enforcement.kid=w.id OR stale_enforcement.to_kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM trapped stale_trapped WHERE stale_trapped.kid=w.id OR stale_trapped.to_kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM marks m WHERE m.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM vdata child WHERE child.expandedfrom=w.id)
+           AND NOT EXISTS (SELECT 1 FROM movement movement_ref WHERE movement_ref.kid=w.id OR movement_ref.to_kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM odata oasis_ref WHERE oasis_ref.did=w.id)
+         ORDER BY w.id DESC LIMIT 3"
+    );
+    expect_same(3, $concurrentCelebrationFields->num_rows, 'concurrent celebration fixture fields available');
+    $concurrentCelebrationFieldA = $concurrentCelebrationFields->fetch_assoc();
+    $concurrentCelebrationFieldB = $concurrentCelebrationFields->fetch_assoc();
+    $concurrentCelebrationFieldC = $concurrentCelebrationFields->fetch_assoc();
+    $concurrentCelebrationKidA = (int)$concurrentCelebrationFieldA['id'];
+    $concurrentCelebrationKidB = (int)$concurrentCelebrationFieldB['id'];
+    $concurrentCelebrationKidC = (int)$concurrentCelebrationFieldC['id'];
+    $concurrentCelebrationKids = [
+        $concurrentCelebrationKidA,
+        $concurrentCelebrationKidB,
+        $concurrentCelebrationKidC,
+    ];
+    $concurrentCelebrationKidList = implode(',', $concurrentCelebrationKids);
+    $availableRows = $db->query(
+        "SELECT kid, occupied FROM available_villages WHERE kid IN ($concurrentCelebrationKidList)"
+    );
+    while ($availableRow = $availableRows->fetch_assoc()) {
+        $concurrentCelebrationAvailableOccupancy[(int)$availableRow['kid']] = (int)$availableRow['occupied'];
+    }
+    [$concurrentTownHallPop, $concurrentTownHallCp] = Formulas::buildingCpPop(24, 0, 1);
+    $concurrentTownHallPop = (int)$concurrentTownHallPop;
+    $concurrentTownHallCp = (int)$concurrentTownHallCp;
+    expect_same(6, $concurrentTownHallCp, 'concurrent celebration Town Hall CP fixture');
+    $now = time();
+    $lastUpdate = miliseconds();
+    $db->query("INSERT INTO users
+        (id, uuid, name, password, email, race, kid, cp, cp_prod, lastupdate, total_pop, total_villages, desc1, desc2, note)
+        VALUES ($concurrentCelebrationOwner, 'ov-regression-concurrent-celebration', 'OVConCelebrate',
+                'x', '', 1, $concurrentCelebrationKidA, 1000, " . (3 * $concurrentTownHallCp) . ",
+                $now, " . (3 * $concurrentTownHallPop) . ", 3, '', '', '')");
+    $db->query("INSERT INTO vdata
+        (kid, owner, fieldtype, name, capital, pop, cp, loyalty,
+         wood, clay, iron, woodp, clayp, ironp, maxstore, crop, cropp, maxcrop, upkeep,
+         lastmupdate, created, celebration, type, expandedfrom)
+        VALUES
+        ($concurrentCelebrationKidA, $concurrentCelebrationOwner, " . (int)$concurrentCelebrationFieldA['fieldtype'] . ", 'OV Concurrent Celebration A', 1,
+         $concurrentTownHallPop, $concurrentTownHallCp, 100, 100000, 100000, 100000, 0, 0, 0, 1000000,
+         100000, $concurrentTownHallPop, 1000000, 0, $lastUpdate, $now, 0, 0, 0),
+        ($concurrentCelebrationKidB, $concurrentCelebrationOwner, " . (int)$concurrentCelebrationFieldB['fieldtype'] . ", 'OV Concurrent Celebration B', 0,
+         $concurrentTownHallPop, $concurrentTownHallCp, 100, 100000, 100000, 100000, 0, 0, 0, 1000000,
+         100000, $concurrentTownHallPop, 1000000, 0, $lastUpdate, $now, 0, 0, 0),
+        ($concurrentCelebrationKidC, $concurrentCelebrationOwner, " . (int)$concurrentCelebrationFieldC['fieldtype'] . ", 'OV Concurrent Celebration C', 0,
+         $concurrentTownHallPop, $concurrentTownHallCp, 100, 100000, 100000, 100000, 0, 0, 0, 1000000,
+         100000, $concurrentTownHallPop, 1000000, 0, $lastUpdate, $now, 0, 0, 0)");
+    $db->query("INSERT INTO fdata (kid, f19, f19t) VALUES
+        ($concurrentCelebrationKidA, 1, 24),
+        ($concurrentCelebrationKidB, 1, 24),
+        ($concurrentCelebrationKidC, 1, 24)");
+    $db->query("INSERT INTO daily_quest (uid, qst10) VALUES ($concurrentCelebrationOwner, 0)");
+    $db->query("INSERT INTO send (kid, to_kid, wood, clay, iron, crop, x, mode, end_time)
+        VALUES ($concurrentCelebrationKidA, $concurrentCelebrationKidA, 1, 2, 3, 4, 1, 0, " . ($now + 3600) . ")");
+    $concurrentCelebrationUnrelatedSendId = (int)$db->lastInsertId();
+    $db->query("UPDATE wdata SET occupied=1 WHERE id IN ($concurrentCelebrationKidList) AND occupied=0");
+    expect_same(3, $db->affectedRows(), 'concurrent celebration fixture fields occupied');
+    expect_true($db->commit(), 'concurrent celebration fixture committed');
+    $concurrentCelebrationCommitted = true;
+
+    $runCelebrationRace = function (array $commandPrefixes, string $label) use (
+        &$concurrentCelebrationWorkers,
+        &$concurrentCelebrationBarrierFiles
+    ): array {
+        $descriptorSpec = [
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+        $barrierPath = tempnam(sys_get_temp_dir(), 'ov-celebration-start-');
+        expect_true($barrierPath !== false, "$label start barrier created");
+        $concurrentCelebrationBarrierFiles[] = $barrierPath;
+        $readyPaths = [];
+        foreach ($commandPrefixes as $i => $prefix) {
+            $readyPath = tempnam(sys_get_temp_dir(), 'ov-celebration-ready-');
+            expect_true($readyPath !== false, "$label worker $i ready signal created");
+            $readyPaths[] = $readyPath;
+            $concurrentCelebrationBarrierFiles[] = $readyPath;
+            $pipes = [];
+            $process = proc_open(array_merge($prefix, [$barrierPath, $readyPath]), $descriptorSpec, $pipes);
+            expect_true(is_resource($process), "$label worker $i started");
+            $concurrentCelebrationWorkers[] = ['process' => $process, 'pipes' => $pipes];
+        }
+
+        $readyDeadline = microtime(true) + 10;
+        do {
+            $ready = true;
+            foreach ($readyPaths as $readyPath) {
+                if (@file_get_contents($readyPath) !== 'ready') {
+                    $ready = false;
+                    break;
+                }
+            }
+            if (!$ready) {
+                usleep(1000);
+            }
+        } while (!$ready && microtime(true) < $readyDeadline);
+        expect_true($ready, "$label workers ready");
+        expect_true(file_put_contents($barrierPath, 'go', LOCK_EX) !== false, "$label workers released");
+
+        $outcomes = [];
+        $workerStart = count($concurrentCelebrationWorkers) - count($commandPrefixes);
+        foreach ($commandPrefixes as $i => $_prefix) {
+            $workerIndex = $workerStart + $i;
+            $worker = &$concurrentCelebrationWorkers[$workerIndex];
+            $stdout = stream_get_contents($worker['pipes'][1]);
+            $stderr = stream_get_contents($worker['pipes'][2]);
+            fclose($worker['pipes'][1]);
+            fclose($worker['pipes'][2]);
+            $exitCode = proc_close($worker['process']);
+            $worker['process'] = null;
+            $worker['pipes'] = [];
+            expect_same(0, $exitCode, "$label worker $i exit status: $stderr");
+            expect_same('', $stderr, "$label worker $i stderr");
+            $outcomes[] = $stdout;
+            unset($worker);
+        }
+
+        return $outcomes;
+    };
+    $resetConcurrentCelebrations = function () use (
+        $db,
+        $concurrentCelebrationOwner,
+        $concurrentCelebrationKidList
+    ): void {
+        $db->query(
+            "UPDATE vdata SET wood=100000, clay=100000, iron=100000, crop=100000,
+                 celebration=0, type=0, lastmupdate=" . miliseconds() . "
+             WHERE kid IN ($concurrentCelebrationKidList)"
+        );
+        $db->query("UPDATE users SET cp=1000, lastupdate=" . time() . " WHERE id=$concurrentCelebrationOwner");
+        $db->query("UPDATE daily_quest SET qst10=0 WHERE uid=$concurrentCelebrationOwner");
+    };
+    $restoreConcurrentTownHallC = function () use (
+        $db,
+        $concurrentCelebrationOwner,
+        $concurrentCelebrationKidC,
+        $concurrentTownHallPop,
+        $concurrentTownHallCp
+    ): void {
+        $db->query("UPDATE fdata SET f19=1, f19t=24 WHERE kid=$concurrentCelebrationKidC");
+        $db->query(
+            "UPDATE vdata SET pop=$concurrentTownHallPop, cp=$concurrentTownHallCp
+             WHERE kid=$concurrentCelebrationKidC"
+        );
+        $db->query(
+            "UPDATE users
+             SET total_pop=" . (3 * $concurrentTownHallPop) . ", cp_prod=" . (3 * $concurrentTownHallCp) . "
+             WHERE id=$concurrentCelebrationOwner"
+        );
+    };
+
+    $concurrentSmallCost = array_map('intval', Formulas::celebrationCost(false));
+    $resetConcurrentCelebrations();
+    $db->query(
+        "UPDATE vdata
+         SET wood=100000, woodp=3600000, maxstore=1000000000, lastmupdate=" . (miliseconds() - 5000) . "
+         WHERE kid=$concurrentCelebrationKidA"
+    );
+    expect_true($db->begin_transaction(), 'celebration stale-snapshot outer transaction opened');
+    $snapshotResourceState = $db->query(
+        "SELECT wood, lastmupdate FROM vdata WHERE kid=$concurrentCelebrationKidA"
+    )->fetch_assoc();
+    $resourceWorkerOutcomes = $runCelebrationRace([
+        ['php', '/app/tests/resource-settlement-worker.php', (string)$concurrentCelebrationKidA],
+    ], 'celebration stale-snapshot settlement');
+    $workerResourceState = json_decode($resourceWorkerOutcomes[0], true, 512, JSON_THROW_ON_ERROR);
+    expect_true(
+        (float)$workerResourceState['wood'] > (float)$snapshotResourceState['wood'],
+        'fresh resource settlement advances beyond outer snapshot'
+    );
+    expect_true(
+        (int)$workerResourceState['lastmupdate'] > (int)$snapshotResourceState['lastmupdate'],
+        'fresh resource settlement advances update timestamp'
+    );
+    expect_true(
+        (new CelebrationModel())->startCelebration(
+            $concurrentCelebrationOwner,
+            $concurrentCelebrationKidA,
+            1
+        ),
+        'celebration starts after fresh resource update despite older outer snapshot'
+    );
+    $finalResourceState = $db->query(
+        "SELECT wood, lastmupdate FROM vdata WHERE kid=$concurrentCelebrationKidA"
+    )->fetch_assoc();
+    $postWorkerProduction = round(
+        ((int)$finalResourceState['lastmupdate'] - (int)$workerResourceState['lastmupdate'])
+        * 3600000 / 3600000,
+        4
+    );
+    expect_close(
+        (float)$workerResourceState['wood'] + $postWorkerProduction - $concurrentSmallCost[0],
+        (float)$finalResourceState['wood'],
+        0.0001,
+        'celebration settles only production after the fresh-process update'
+    );
+    expect_true($db->rollback(), 'celebration stale-snapshot outer transaction rolled back');
+    $db->query(
+        "UPDATE vdata SET woodp=0, maxstore=1000000 WHERE kid=$concurrentCelebrationKidA"
+    );
+    $resetConcurrentCelebrations();
+
+    $sameVillageOutcomes = $runCelebrationRace([
+        ['php', '/app/tests/celebration-start-worker.php', (string)$concurrentCelebrationOwner, (string)$concurrentCelebrationKidA, '1'],
+        ['php', '/app/tests/celebration-start-worker.php', (string)$concurrentCelebrationOwner, (string)$concurrentCelebrationKidA, '1'],
+    ], 'same-village celebration race');
+    sort($sameVillageOutcomes);
+    expect_same(['false', 'true'], $sameVillageOutcomes, 'same-village celebration race starts once');
+    expect_same(1006, (int)$db->fetchScalar("SELECT cp FROM users WHERE id=$concurrentCelebrationOwner"), 'same-village celebration race credits CP once');
+    expect_same(1, (int)$db->fetchScalar("SELECT qst10 FROM daily_quest WHERE uid=$concurrentCelebrationOwner"), 'same-village celebration race advances quest once');
+    expect_same(
+        1,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM vdata WHERE kid=$concurrentCelebrationKidA AND celebration>" . time() . " AND type=1"),
+        'same-village celebration race stores one cooldown'
+    );
+    foreach (['wood', 'clay', 'iron', 'crop'] as $resourceIndex => $resource) {
+        expect_close(
+            100000 - $concurrentSmallCost[$resourceIndex],
+            (float)$db->fetchScalar("SELECT $resource FROM vdata WHERE kid=$concurrentCelebrationKidA"),
+            0.0001,
+            "same-village celebration race charges $resource once"
+        );
+    }
+
+    $resetConcurrentCelebrations();
+    $sameOwnerOutcomes = $runCelebrationRace([
+        ['php', '/app/tests/celebration-start-worker.php', (string)$concurrentCelebrationOwner, (string)$concurrentCelebrationKidA, '1'],
+        ['php', '/app/tests/celebration-start-worker.php', (string)$concurrentCelebrationOwner, (string)$concurrentCelebrationKidB, '1'],
+    ], 'same-owner celebration race');
+    expect_same(['true', 'true'], $sameOwnerOutcomes, 'same-owner celebration race starts both villages');
+    expect_same(1012, (int)$db->fetchScalar("SELECT cp FROM users WHERE id=$concurrentCelebrationOwner"), 'same-owner celebration race preserves both CP increments');
+    expect_same(2, (int)$db->fetchScalar("SELECT qst10 FROM daily_quest WHERE uid=$concurrentCelebrationOwner"), 'same-owner celebration race preserves both quest steps');
+    expect_same(
+        2,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM vdata
+             WHERE kid IN ($concurrentCelebrationKidA, $concurrentCelebrationKidB)
+               AND celebration>" . time() . " AND type=1"
+        ),
+        'same-owner celebration race stores both cooldowns'
+    );
+    foreach ([$concurrentCelebrationKidA, $concurrentCelebrationKidB] as $raceKid) {
+        foreach (['wood', 'clay', 'iron', 'crop'] as $resourceIndex => $resource) {
+            expect_close(
+                100000 - $concurrentSmallCost[$resourceIndex],
+                (float)$db->fetchScalar("SELECT $resource FROM vdata WHERE kid=$raceKid"),
+                0.0001,
+                "same-owner celebration race charges village $raceKid $resource once"
+            );
+        }
+    }
+
+    $resetConcurrentCelebrations();
+    $db->query("INSERT INTO demolition (kid, building_field, end_time, complete)
+        VALUES ($concurrentCelebrationKidC, 19, " . ($now + 3600) . ", 1)");
+    $concurrentCelebrationDemolitionTask = (int)$db->lastInsertId();
+    $concurrentCelebrationDemolitionTaskIds[] = $concurrentCelebrationDemolitionTask;
+    $demolitionCelebrationOutcomes = $runCelebrationRace([
+        ['php', '/app/tests/celebration-start-worker.php', (string)$concurrentCelebrationOwner, (string)$concurrentCelebrationKidC, '1'],
+        ['php', '/app/tests/demolition-task-worker.php', (string)$concurrentCelebrationDemolitionTask],
+    ], 'celebration-demolition race');
+    expect_true(in_array($demolitionCelebrationOutcomes[0], ['false', 'true'], true), 'celebration-demolition race returns valid celebration outcome');
+    expect_same('true', $demolitionCelebrationOutcomes[1], 'celebration-demolition race completes demolition');
+    expect_same(
+        '0|0|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(f19, '|', f19t, '|',
+                (SELECT COUNT(*) FROM demolition WHERE id=$concurrentCelebrationDemolitionTask))
+             FROM fdata WHERE kid=$concurrentCelebrationKidC"
+        ),
+        'celebration-demolition race removes Town Hall and consumes task'
+    );
+    if ($demolitionCelebrationOutcomes[0] === 'true') {
+        expect_same(1006, (int)$db->fetchScalar("SELECT cp FROM users WHERE id=$concurrentCelebrationOwner"), 'start-first demolition race keeps immediate CP reward');
+        expect_same(1, (int)$db->fetchScalar("SELECT qst10 FROM daily_quest WHERE uid=$concurrentCelebrationOwner"), 'start-first demolition race keeps quest step');
+        expect_same(
+            1,
+            (int)$db->fetchScalar("SELECT COUNT(*) FROM vdata WHERE kid=$concurrentCelebrationKidC AND celebration>" . time() . " AND type=1"),
+            'start-first demolition race preserves ongoing celebration'
+        );
+        foreach (['wood', 'clay', 'iron', 'crop'] as $resourceIndex => $resource) {
+            expect_close(
+                100000 - $concurrentSmallCost[$resourceIndex],
+                (float)$db->fetchScalar("SELECT $resource FROM vdata WHERE kid=$concurrentCelebrationKidC"),
+                0.0001,
+                "start-first demolition race keeps $resource charge"
+            );
+        }
+    } else {
+        expect_same(1000, (int)$db->fetchScalar("SELECT cp FROM users WHERE id=$concurrentCelebrationOwner"), 'demolition-first celebration race grants no CP');
+        expect_same(0, (int)$db->fetchScalar("SELECT qst10 FROM daily_quest WHERE uid=$concurrentCelebrationOwner"), 'demolition-first celebration race grants no quest step');
+        expect_same(
+            '100000.0000000000|100000.0000000000|100000.0000000000|100000.0000000000|0|0',
+            (string)$db->fetchScalar(
+                "SELECT CONCAT(wood, '|', clay, '|', iron, '|', crop, '|', celebration, '|', type)
+                 FROM vdata WHERE kid=$concurrentCelebrationKidC"
+            ),
+            'demolition-first celebration race leaves resources and cooldown untouched'
+        );
+    }
+
+    $resetConcurrentCelebrations();
+    $restoreConcurrentTownHallC();
+    $db->query("INSERT INTO demolition (kid, building_field, end_time, complete)
+        VALUES ($concurrentCelebrationKidC, 19, " . ($now + 3601) . ", 1)");
+    $startFirstDemolitionTask = (int)$db->lastInsertId();
+    $concurrentCelebrationDemolitionTaskIds[] = $startFirstDemolitionTask;
+    expect_true(
+        (new CelebrationModel())->startCelebration(
+            $concurrentCelebrationOwner,
+            $concurrentCelebrationKidC,
+            1
+        ),
+        'controlled start-first celebration succeeds'
+    );
+    expect_true(
+        Automation::getInstance()->processDemolitionTask($startFirstDemolitionTask),
+        'controlled start-first Town Hall demolition succeeds'
+    );
+    expect_same(
+        '0|0|1|1|1006',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(f.f19, '|', f.f19t, '|', v.type, '|', v.celebration>" . time() . ", '|', u.cp)
+             FROM fdata f JOIN vdata v ON v.kid=f.kid JOIN users u ON u.id=v.owner
+             WHERE f.kid=$concurrentCelebrationKidC"
+        ),
+        'controlled start-first ordering preserves immediate reward and ongoing celebration'
+    );
+    expect_same(1, (int)$db->fetchScalar("SELECT qst10 FROM daily_quest WHERE uid=$concurrentCelebrationOwner"), 'controlled start-first ordering advances quest');
+    foreach (['wood', 'clay', 'iron', 'crop'] as $resourceIndex => $resource) {
+        expect_close(
+            100000 - $concurrentSmallCost[$resourceIndex],
+            (float)$db->fetchScalar("SELECT $resource FROM vdata WHERE kid=$concurrentCelebrationKidC"),
+            0.0001,
+            "controlled start-first ordering charges $resource once"
+        );
+    }
+
+    $resetConcurrentCelebrations();
+    $restoreConcurrentTownHallC();
+    $db->query("INSERT INTO demolition (kid, building_field, end_time, complete)
+        VALUES ($concurrentCelebrationKidC, 19, " . ($now + 3602) . ", 1)");
+    $demolitionFirstTask = (int)$db->lastInsertId();
+    $concurrentCelebrationDemolitionTaskIds[] = $demolitionFirstTask;
+    expect_true(
+        Automation::getInstance()->processDemolitionTask($demolitionFirstTask),
+        'controlled demolition-first Town Hall demolition succeeds'
+    );
+    expect_same(
+        false,
+        (new CelebrationModel())->startCelebration(
+            $concurrentCelebrationOwner,
+            $concurrentCelebrationKidC,
+            1
+        ),
+        'controlled demolition-first celebration is rejected'
+    );
+    expect_same(
+        '0|0|0|0|1000|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(f.f19, '|', f.f19t, '|', v.type, '|', v.celebration, '|', u.cp, '|', q.qst10)
+             FROM fdata f JOIN vdata v ON v.kid=f.kid JOIN users u ON u.id=v.owner
+             JOIN daily_quest q ON q.uid=u.id WHERE f.kid=$concurrentCelebrationKidC"
+        ),
+        'controlled demolition-first ordering leaves celebration state untouched'
+    );
+    foreach (['wood', 'clay', 'iron', 'crop'] as $resource) {
+        expect_close(
+            100000,
+            (float)$db->fetchScalar("SELECT $resource FROM vdata WHERE kid=$concurrentCelebrationKidC"),
+            0.0001,
+            "controlled demolition-first ordering preserves $resource"
+        );
+    }
+    expect_same(
+        "$concurrentCelebrationKidA|$concurrentCelebrationKidA|1|2|3|4",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(kid, '|', to_kid, '|', wood, '|', clay, '|', iron, '|', crop)
+             FROM send WHERE id=$concurrentCelebrationUnrelatedSendId"
+        ),
+        'concurrent celebration fixture preserves unrelated candidate data'
+    );
+} finally {
+    foreach ($concurrentCelebrationWorkers as &$worker) {
+        if (!isset($worker['process']) || !is_resource($worker['process'])) {
+            continue;
+        }
+        $status = proc_get_status($worker['process']);
+        if (!empty($status['running'])) {
+            proc_terminate($worker['process']);
+        }
+        foreach ($worker['pipes'] as $pipe) {
+            if (is_resource($pipe)) {
+                fclose($pipe);
+            }
+        }
+        proc_close($worker['process']);
+        $worker['process'] = null;
+        $worker['pipes'] = [];
+    }
+    unset($worker);
+    foreach ($concurrentCelebrationBarrierFiles as $barrierFile) {
+        if (is_string($barrierFile) && file_exists($barrierFile)) {
+            unlink($barrierFile);
+        }
+    }
+
+    if (!$concurrentCelebrationCommitted) {
+        $db->rollback();
+    }
+    if ($concurrentCelebrationKids !== []) {
+        $kidList = implode(',', array_map('intval', $concurrentCelebrationKids));
+        if ($concurrentCelebrationDemolitionTaskIds !== []) {
+            $demolitionTaskList = implode(',', array_map('intval', $concurrentCelebrationDemolitionTaskIds));
+            $db->query(
+                "DELETE FROM scheduled_task_failures
+                 WHERE task_table='demolition' AND task_id IN ($demolitionTaskList)"
+            );
+        }
+        $db->query("DELETE FROM demolition WHERE kid IN ($kidList)");
+        if ($concurrentCelebrationUnrelatedSendId > 0) {
+            $db->query("DELETE FROM send WHERE id=$concurrentCelebrationUnrelatedSendId");
+        }
+        $db->query("DELETE FROM daily_quest WHERE uid=$concurrentCelebrationOwner");
+        $db->query("DELETE FROM fdata WHERE kid IN ($kidList)");
+        $db->query("DELETE FROM vdata WHERE kid IN ($kidList)");
+        $db->query("DELETE FROM users WHERE id=$concurrentCelebrationOwner");
+        $db->query("UPDATE wdata SET occupied=0 WHERE id IN ($kidList)");
+        foreach ($concurrentCelebrationAvailableOccupancy as $kid => $occupied) {
+            $db->query(
+                "UPDATE available_villages SET occupied=" . (int)$occupied . " WHERE kid=" . (int)$kid
+            );
+        }
+    }
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
     $db->query("ALTER TABLE demolition AUTO_INCREMENT=$demolitionAutoIncrement");
     $db->query("ALTER TABLE send AUTO_INCREMENT=$sendAutoIncrement");
 }
