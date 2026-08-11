@@ -79,7 +79,7 @@ class Starvation
 
         $this->db->query("UPDATE vdata SET lastmupdate=$now, wood=wood+$wood, clay=clay+$clay, iron=iron+$iron, crop=crop+$crop WHERE kid={$this->kid}");
 
-        $hdp = VillageModel::getHDP($this->kid, $this->villageRow['owner']);
+        $hdp = VillageModel::getHDP($this->kid, $this->userRow['race']);
         ResourcesHelper::updateVillageUpkeep($this->villageRow['owner'], $this->kid, $this->villageRow['isWW'] == 1, $hdp);
 
         unset($this->userRow);

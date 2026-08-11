@@ -14,6 +14,7 @@ use Core\Security\Password;
 use Controller\RallyPoint\Simulator;
 use Game\Buildings\BuildingHelper;
 use Game\Formulas;
+use Game\Starvation;
 use Game\TruceDay;
 use Model\AuctionModel;
 use Model\MasterBuilder;
@@ -1397,6 +1398,93 @@ try {
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
     $db->query("ALTER TABLE enforcement AUTO_INCREMENT=$enforcementAutoIncrement");
     $db->query("ALTER TABLE trapped AUTO_INCREMENT=$trappedAutoIncrement");
+}
+
+$starvationRomanOwner = 2000000016;
+$starvationGaulOwner = 2000000017;
+$starvationVillages = [
+    2000000031 => ['owner' => $starvationRomanOwner, 'race' => 1, 'trough' => 10, 'unit' => 'u4', 'troops' => 2, 'upkeep' => 4, 'expected' => '1|1', 'capital' => 1],
+    2000000032 => ['owner' => $starvationRomanOwner, 'race' => 1, 'trough' => 15, 'unit' => 'u5', 'troops' => 2, 'upkeep' => 6, 'expected' => '1|2', 'capital' => 0],
+    2000000033 => ['owner' => $starvationRomanOwner, 'race' => 1, 'trough' => 20, 'unit' => 'u6', 'troops' => 2, 'upkeep' => 8, 'expected' => '1|3', 'capital' => 0],
+    2000000034 => ['owner' => $starvationRomanOwner, 'race' => 1, 'trough' => null, 'unit' => 'u4', 'troops' => 2, 'upkeep' => 4, 'expected' => '1|2', 'capital' => 0],
+    2000000035 => ['owner' => $starvationGaulOwner, 'race' => 3, 'trough' => 20, 'unit' => 'u4', 'troops' => 2, 'upkeep' => 4, 'expected' => '1|2', 'capital' => 1],
+];
+$starvationTransactionStarted = false;
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM users WHERE id IN ($starvationRomanOwner, $starvationGaulOwner)"
+        ),
+        'starvation fixture user IDs available'
+    );
+    $starvationVillageIds = implode(',', array_keys($starvationVillages));
+    expect_same(
+        0,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM vdata WHERE kid IN ($starvationVillageIds)"
+        ),
+        'starvation fixture village IDs available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM fdata WHERE kid IN ($starvationVillageIds)"
+        ),
+        'starvation fixture building IDs available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM units WHERE kid IN ($starvationVillageIds)"
+        ),
+        'starvation fixture troop IDs available'
+    );
+    expect_true(
+        !TruceDay::isActive() && TruceDay::getTo() + 86400 <= time(),
+        'starvation fixture is outside truce protection'
+    );
+
+    expect_true($db->begin_transaction(), 'starvation fixture transaction started');
+    $starvationTransactionStarted = true;
+    $db->query("INSERT INTO users
+        (id, uuid, name, password, email, race, access, kid, total_villages, vacationActiveTil, desc1, desc2, note)
+        VALUES
+        ($starvationRomanOwner, 'ov-regression-starvation-roman', 'OVStarveRoman', 'x', '', 1, 1, 2000000031, 4, 0, '', '', ''),
+        ($starvationGaulOwner, 'ov-regression-starvation-gaul', 'OVStarveGaul', 'x', '', 3, 1, 2000000035, 1, 0, '', '', '')");
+
+    foreach ($starvationVillages as $kid => $fixture) {
+        $lastUpdate = miliseconds();
+        $db->query("INSERT INTO vdata
+            (kid, owner, fieldtype, name, capital, pop, cp, wood, clay, iron, woodp, clayp, ironp, maxstore,
+             crop, cropp, maxcrop, upkeep, lastmupdate, created, isWW, isFarm, expandedfrom)
+            VALUES
+            ($kid, {$fixture['owner']}, 3, 'OV Starvation', {$fixture['capital']}, 0, 0, 0, 0, 0, 0, 0, 0, 1000,
+             -1, {$fixture['upkeep']}, 1000, {$fixture['upkeep']}, $lastUpdate, " . time() . ", 0, 0, 0)");
+        if ($fixture['trough'] === null) {
+            $db->query("INSERT INTO fdata (kid) VALUES ($kid)");
+        } else {
+            $db->query("INSERT INTO fdata (kid, f19, f19t) VALUES ($kid, {$fixture['trough']}, 41)");
+        }
+        $db->query("INSERT INTO units (kid, race, {$fixture['unit']}) VALUES ($kid, {$fixture['race']}, {$fixture['troops']})");
+    }
+
+    foreach ($starvationVillages as $kid => $fixture) {
+        new Starvation($kid);
+        expect_same(
+            $fixture['expected'],
+            (string)$db->fetchScalar(
+                "SELECT CONCAT((SELECT {$fixture['unit']} FROM units WHERE kid=$kid), '|', upkeep)
+                 FROM vdata WHERE kid=$kid"
+            ),
+            "starvation upkeep and troop reduction for village $kid"
+        );
+    }
+} finally {
+    if ($starvationTransactionStarted) {
+        $db->rollback();
+    }
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
 }
 
 echo "Runtime regression checks passed.\n";
