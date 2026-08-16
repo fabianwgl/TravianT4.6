@@ -3,6 +3,7 @@
 namespace Model\Movements;
 
 use Core\Database\DB;
+use Core\Jobs\QuarantineTaskException;
 use Model\MasterBuilder;
 use Game\ResourcesHelper;
 
@@ -13,15 +14,18 @@ class ReturnProcessor
         $row['start_time_seconds'] = ceil($row['start_time'] / 1000);
         $row['end_time_seconds'] = ceil($row['end_time'] / 1000);
 
+        for ($i = 1; $i <= 11; ++$i) {
+            if ($row['u' . $i] < 0) {
+                throw new QuarantineTaskException("Malformed return movement: u$i cannot be negative.");
+            }
+        }
+
         if ($row['race'] == 5) {
             return;
         } else {
             $db = DB::getInstance();
             $modify = [];
             for ($i = 1; $i <= 11; ++$i) {
-                if ($row['u' . $i] < 0) {
-                    return; //There is a bug certainly
-                }
                 if ($row['u' . $i]) {
                     $modify[] = "u{$i}=u{$i}+" . $row['u' . $i];
                 }

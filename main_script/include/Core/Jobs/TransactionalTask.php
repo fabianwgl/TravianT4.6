@@ -7,6 +7,7 @@ use Core\Database\DB;
 final class TransactionalTask
 {
     private const MAX_ATTEMPTS = 5;
+    private static $effectSavepointSequence = 0;
     private const TABLES = [
         'building_upgrade',
         'buyGoldMessages',
@@ -64,7 +65,29 @@ final class TransactionalTask
             }
 
             $row = $result->fetch_assoc();
-            $effect($row);
+            $effectSavepoint = 'openvillage_task_effect_' . (++self::$effectSavepointSequence);
+            if (!$db->query("SAVEPOINT $effectSavepoint")) {
+                throw new \RuntimeException('Unable to create task effect savepoint.');
+            }
+            try {
+                $effect($row);
+                if (!$db->query("RELEASE SAVEPOINT $effectSavepoint")) {
+                    throw new \RuntimeException('Unable to release task effect savepoint.');
+                }
+            } catch (QuarantineTaskException $e) {
+                if (!$db->query("ROLLBACK TO SAVEPOINT $effectSavepoint")) {
+                    throw new \RuntimeException('Unable to roll back quarantined task effects.', 0, $e);
+                }
+                if (!$db->query("RELEASE SAVEPOINT $effectSavepoint")) {
+                    throw new \RuntimeException('Unable to release quarantined task effect savepoint.', 0, $e);
+                }
+                self::quarantine($table, $id, $row, $e);
+                if (!$db->commit()) {
+                    throw new \RuntimeException('Unable to commit task quarantine.', 0, $e);
+                }
+
+                return true;
+            }
             if ($consume) {
                 $db->query("DELETE FROM `$table` WHERE id=$id");
                 if ($db->affectedRows() !== 1) {
@@ -83,6 +106,36 @@ final class TransactionalTask
             self::recordFailure($table, $id, $e);
 
             throw $e;
+        }
+    }
+
+    private static function quarantine(
+        string $table,
+        int $id,
+        array $payloadRow,
+        QuarantineTaskException $error
+    ): void
+    {
+        $db = DB::getInstance();
+        $payload = json_encode($payloadRow, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($payload === false) {
+            throw new \RuntimeException('Unable to encode quarantined task payload.', 0, $error);
+        }
+        $escapedTable = $db->real_escape_string($table);
+        $escapedPayload = $db->real_escape_string($payload);
+        $escapedError = $db->real_escape_string(substr($error->getMessage(), 0, 1000));
+        $now = time();
+        if (!$db->query(
+            "INSERT INTO scheduled_task_failures
+                (task_table, task_id, attempts, payload, last_error, first_failed_at, last_failed_at)
+             VALUES ('$escapedTable', $id, " . self::MAX_ATTEMPTS . ", '$escapedPayload', '$escapedError', $now, $now)
+             ON DUPLICATE KEY UPDATE
+                attempts=VALUES(attempts), payload=VALUES(payload), last_error=VALUES(last_error), last_failed_at=VALUES(last_failed_at)"
+        )) {
+            throw new \RuntimeException('Unable to persist quarantined task payload.', 0, $error);
+        }
+        if (!$db->query("DELETE FROM `$table` WHERE id=$id") || $db->affectedRows() !== 1) {
+            throw new \RuntimeException('Unable to remove quarantined task from its live queue.', 0, $error);
         }
     }
 

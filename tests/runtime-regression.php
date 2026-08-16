@@ -8,6 +8,7 @@ use Core\Database\DB;
 use Core\Database\GlobalDB;
 use Core\Helper\Mailer;
 use Core\Helper\Notification;
+use Core\Jobs\QuarantineTaskException;
 use Core\Jobs\TransactionalTask;
 use Core\Jobs\WorkerRegistry;
 use Core\Security\Password;
@@ -342,6 +343,7 @@ expect_same(
 $researchKid = 2000000020;
 $researchTask = 2000000001;
 $poisonResearchTask = 2000000002;
+$terminalResearchTask = 2000000003;
 try {
     expect_same(
         0,
@@ -350,8 +352,10 @@ try {
     );
     expect_same(
         0,
-        (int)$db->fetchScalar("SELECT COUNT(*) FROM research WHERE id=$researchTask"),
-        'research fixture task ID available'
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM research WHERE id IN ($researchTask, $poisonResearchTask, $terminalResearchTask)"
+        ),
+        'research fixture task IDs available'
     );
     $db->query("INSERT INTO smithy (kid) VALUES ($researchKid)");
     $db->query("INSERT INTO research (id, kid, nr, mode, end_time) VALUES ($researchTask, $researchKid, 1, 0, 0)");
@@ -418,9 +422,49 @@ try {
         ),
         'poison research task quarantined with recoverable payload after retry limit'
     );
+
+    $db->query("INSERT INTO research (id, kid, nr, mode, end_time) VALUES ($terminalResearchTask, $researchKid, 3, 0, 0)");
+    expect_true(
+        TransactionalTask::consume(
+            'research',
+            $terminalResearchTask,
+            function () use ($db, $researchKid): void {
+                $db->query("UPDATE smithy SET u1=u1+10 WHERE kid=$researchKid");
+                throw new QuarantineTaskException('Structurally invalid research task.');
+            }
+        ),
+        'structurally invalid task quarantined immediately'
+    );
+    expect_same(
+        '0|1|5|Structurally invalid research task.',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM research WHERE id=$terminalResearchTask), '|',
+                (SELECT u1 FROM smithy WHERE kid=$researchKid), '|', attempts, '|', last_error
+            ) FROM scheduled_task_failures WHERE task_table='research' AND task_id=$terminalResearchTask"
+        ),
+        'terminal quarantine rolls back effects and retains recovery metadata'
+    );
+    expect_same(
+        false,
+        TransactionalTask::consume('research', $terminalResearchTask, static function (): void {
+        }),
+        'duplicate terminal task delivery ignored'
+    );
+    expect_same(
+        1,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM scheduled_task_failures
+             WHERE task_table='research' AND task_id=$terminalResearchTask AND attempts=5"
+        ),
+        'terminal quarantine ledger survives duplicate delivery'
+    );
 } finally {
-    $db->query("DELETE FROM scheduled_task_failures WHERE task_table='research' AND task_id IN ($researchTask, $poisonResearchTask)");
-    $db->query("DELETE FROM research WHERE id IN ($researchTask, $poisonResearchTask) OR kid=$researchKid");
+    $db->query(
+        "DELETE FROM scheduled_task_failures
+         WHERE task_table='research' AND task_id IN ($researchTask, $poisonResearchTask, $terminalResearchTask)"
+    );
+    $db->query("DELETE FROM research WHERE id IN ($researchTask, $poisonResearchTask, $terminalResearchTask) OR kid=$researchKid");
     $db->query("DELETE FROM smithy WHERE kid=$researchKid");
     $db->query("ALTER TABLE research AUTO_INCREMENT=$researchAutoIncrement");
 }
@@ -729,6 +773,8 @@ $returnOwner = 2000000010;
 $returnVillage = 2000000025;
 $returnOrigin = 2000000026;
 $returnTask = 2000000001;
+$malformedReturnTask = 2000000002;
+$malformedNatureReturnTask = 2000000003;
 $db->begin_transaction();
 try {
     expect_same(
@@ -743,8 +789,10 @@ try {
     );
     expect_same(
         0,
-        (int)$db->fetchScalar("SELECT COUNT(*) FROM movement WHERE id=$returnTask"),
-        'return-movement fixture task ID available'
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM movement WHERE id IN ($returnTask, $malformedReturnTask, $malformedNatureReturnTask)"
+        ),
+        'return-movement fixture task IDs available'
     );
     $db->query("INSERT INTO users (id, uuid, name, password, email, race, kid, desc1, desc2, note)
         VALUES ($returnOwner, 'ov-regression-return', 'OVReturn', 'x', '', 1, $returnVillage, '', '', '')");
@@ -760,6 +808,14 @@ try {
     $db->query("INSERT INTO movement
         (id, kid, to_kid, race, u1, mode, attack_type, start_time, end_time, data)
         VALUES ($returnTask, $returnOrigin, $returnVillage, 1, 5, 1, 3, 0, 0, '')");
+    $db->query("INSERT INTO movement
+        (id, kid, to_kid, race, u1, u2, mode, attack_type, start_time, end_time, data)
+        VALUES ($malformedReturnTask, $returnOrigin, $returnVillage, 1, 7, -2, 1, 3, 0, 123000, '10,20,30,40,0')");
+    $db->query("INSERT INTO movement
+        (id, kid, to_kid, race, u2, mode, attack_type, start_time, end_time, data)
+        VALUES ($malformedNatureReturnTask, $returnOrigin, $returnVillage, 5, -1, 1, 3, 0, 0, '')");
+    $malformedReturnResult = $db->query("SELECT * FROM movement WHERE id=$malformedReturnTask");
+    $malformedReturnPayload = $malformedReturnResult->fetch_assoc();
 
     $automation = Automation::getInstance();
     expect_true($automation->processMovementTask($returnTask), 'return movement processed');
@@ -773,6 +829,62 @@ try {
     );
     expect_same(false, $automation->processMovementTask($returnTask), 'duplicate return movement ignored');
     expect_same(5, (int)$db->fetchScalar("SELECT u1 FROM units WHERE kid=$returnVillage"), 'return movement troops not duplicated');
+
+    expect_true($automation->processMovementTask($malformedReturnTask), 'malformed return movement quarantined');
+    expect_same(
+        '0|5|0|0|0|0|0|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM movement WHERE id=$malformedReturnTask), '|',
+                u.u1, '|', u.u2, '|', FLOOR(v.wood), '|', FLOOR(v.clay), '|', FLOOR(v.iron), '|', FLOOR(v.crop), '|',
+                v.lastReturn
+            ) FROM units u JOIN vdata v ON v.kid=u.kid WHERE u.kid=$returnVillage"
+        ),
+        'malformed return movement applies no troop, resource, or timestamp effects'
+    );
+    $malformedFailureResult = $db->query(
+        "SELECT attempts, payload, last_error FROM scheduled_task_failures
+         WHERE task_table='movement' AND task_id=$malformedReturnTask"
+    );
+    $malformedFailure = $malformedFailureResult->fetch_assoc();
+    expect_same(5, (int)$malformedFailure['attempts'], 'malformed return movement has terminal attempt count');
+    expect_same(
+        'Malformed return movement: u2 cannot be negative.',
+        $malformedFailure['last_error'],
+        'malformed return movement records a stable reason'
+    );
+    expect_same(
+        $malformedReturnPayload,
+        json_decode($malformedFailure['payload'], true, 512, JSON_THROW_ON_ERROR),
+        'malformed return movement retains its complete payload'
+    );
+    expect_same(
+        false,
+        $automation->processMovementTask($malformedReturnTask),
+        'duplicate malformed return delivery ignored'
+    );
+    expect_same(
+        1,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM scheduled_task_failures
+             WHERE task_table='movement' AND task_id=$malformedReturnTask AND attempts=5"
+        ),
+        'malformed return quarantine survives duplicate delivery'
+    );
+    expect_true(
+        $automation->processMovementTask($malformedNatureReturnTask),
+        'malformed nature return movement quarantined'
+    );
+    expect_same(
+        '0|5|Malformed return movement: u2 cannot be negative.',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM movement WHERE id=$malformedNatureReturnTask), '|', attempts, '|', last_error
+            ) FROM scheduled_task_failures
+              WHERE task_table='movement' AND task_id=$malformedNatureReturnTask"
+        ),
+        'nature return validation runs before the race shortcut'
+    );
 } finally {
     $db->rollback();
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
