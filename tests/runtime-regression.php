@@ -15,12 +15,14 @@ use Controller\RallyPoint\RallyPointHTML;
 use Controller\RallyPoint\Simulator;
 use Game\Buildings\BuildingHelper;
 use Game\Formulas;
+use Game\GoldHelper;
 use Game\NoticeHelper;
 use Game\Starvation;
 use Game\TruceDay;
 use Model\AuctionModel;
 use Model\AccountDeleter;
 use Model\AllianceModel;
+use Model\AutoExtendModel;
 use Model\BattleModel;
 use Model\BattleSetter;
 use Model\BreweryModel;
@@ -292,6 +294,9 @@ $buyGoldMessageAutoIncrement = (int)$db->fetchScalar(
 );
 $banQueueAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='banQueue'"
+);
+$autoExtendAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='autoExtend'"
 );
 $messageAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='mdata'"
@@ -3854,6 +3859,224 @@ try {
     $db->query("ALTER TABLE casualties AUTO_INCREMENT=$casualtiesAutoIncrement");
     $db->query("ALTER TABLE multiaccount_log AUTO_INCREMENT=$multiAccountLogAutoIncrement");
     $db->query("ALTER TABLE farmlist_last_reports AUTO_INCREMENT=$farmListLastReportsAutoIncrement");
+}
+
+$autoExtendOwner = 2000000060;
+$autoExtendTask = 2000000001;
+$secondAutoExtendTask = 2000000002;
+$autoExtendWorkers = [];
+$autoExtendBarrierFiles = [];
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id=$autoExtendOwner"),
+        'auto-extension fixture user ID available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM autoExtend WHERE id IN ($autoExtendTask, $secondAutoExtendTask)"
+        ),
+        'auto-extension fixture task IDs available'
+    );
+
+    $plusCost = (int)$config->gold->plusGold;
+    $plusDuration = (int)$config->gold->plusAccountDurationSeconds;
+    $boostCost = (int)$config->gold->productionBoostGold;
+    $boostDuration = (int)$config->gold->productionBoostDurationSeconds;
+    $autoExtendNow = time();
+    $plusCommence = $autoExtendNow + 60;
+    $boostCommence = $autoExtendNow + 120;
+    $db->query("INSERT INTO users
+        (id, uuid, name, password, email, race, kid, gift_gold, bought_gold, plus, b1, desc1, desc2, note)
+        VALUES
+        ($autoExtendOwner, 'ov-regression-auto-extend', 'OVAutoExtend', 'x', '', 1, 1,
+         " . ($plusCost - 1) . ", 0, 0, 0, '', '', '')");
+    $db->query("INSERT INTO daily_quest (uid, qst5) VALUES ($autoExtendOwner, 0)");
+    $db->query("INSERT INTO autoExtend
+        (id, uid, type, commence, lastChecked, enabled, finished)
+        VALUES ($autoExtendTask, $autoExtendOwner, 1, $plusCommence, 0, 1, 0)");
+
+    expect_same(
+        false,
+        GoldHelper::decreaseGold($autoExtendOwner, $plusCost),
+        'underfunded gold debit rejected'
+    );
+    expect_same(
+        ($plusCost - 1) . '|0|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(gift_gold, '|', bought_gold, '|',
+                (SELECT qst5 FROM daily_quest WHERE uid=$autoExtendOwner))
+             FROM users WHERE id=$autoExtendOwner"
+        ),
+        'underfunded gold debit preserves the balance and quest state'
+    );
+
+    $runAutoExtendRace = function (array $taskIds, string $label) use (
+        $autoExtendNow,
+        &$autoExtendWorkers,
+        &$autoExtendBarrierFiles
+    ): array {
+        $descriptorSpec = [
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+        $barrierPath = tempnam(sys_get_temp_dir(), 'ov-auto-extend-start-');
+        expect_true($barrierPath !== false, "$label start barrier created");
+        $autoExtendBarrierFiles[] = $barrierPath;
+        $readyPaths = [];
+        foreach ($taskIds as $i => $taskId) {
+            $readyPath = tempnam(sys_get_temp_dir(), 'ov-auto-extend-ready-');
+            expect_true($readyPath !== false, "$label worker $i ready signal created");
+            $readyPaths[] = $readyPath;
+            $autoExtendBarrierFiles[] = $readyPath;
+            $pipes = [];
+            $process = proc_open(
+                [
+                    'php',
+                    '/app/tests/auto-extend-worker.php',
+                    (string)$taskId,
+                    (string)$autoExtendNow,
+                    $barrierPath,
+                    $readyPath,
+                ],
+                $descriptorSpec,
+                $pipes
+            );
+            expect_true(is_resource($process), "$label worker $i started");
+            $autoExtendWorkers[] = ['process' => $process, 'pipes' => $pipes];
+        }
+
+        $readyDeadline = microtime(true) + 10;
+        do {
+            $ready = true;
+            foreach ($readyPaths as $readyPath) {
+                if (@file_get_contents($readyPath) !== 'ready') {
+                    $ready = false;
+                    break;
+                }
+            }
+            if (!$ready) {
+                usleep(1000);
+            }
+        } while (!$ready && microtime(true) < $readyDeadline);
+        expect_true($ready, "$label workers ready");
+        expect_true(file_put_contents($barrierPath, 'go', LOCK_EX) !== false, "$label workers released");
+
+        $outcomes = [];
+        $workerStart = count($autoExtendWorkers) - count($taskIds);
+        foreach ($taskIds as $i => $_taskId) {
+            $workerIndex = $workerStart + $i;
+            $worker = &$autoExtendWorkers[$workerIndex];
+            $stdout = stream_get_contents($worker['pipes'][1]);
+            $stderr = stream_get_contents($worker['pipes'][2]);
+            fclose($worker['pipes'][1]);
+            fclose($worker['pipes'][2]);
+            $exitCode = proc_close($worker['process']);
+            $worker['process'] = null;
+            $worker['pipes'] = [];
+            expect_same(0, $exitCode, "$label worker $i exit status: $stderr");
+            expect_same('', $stderr, "$label worker $i stderr");
+            $outcomes[] = $stdout;
+            unset($worker);
+        }
+
+        return $outcomes;
+    };
+
+    $db->query("UPDATE users SET gift_gold=$plusCost, bought_gold=0 WHERE id=$autoExtendOwner");
+    $sameTaskOutcomes = $runAutoExtendRace(
+        [$autoExtendTask, $autoExtendTask],
+        'same-task auto-extension race'
+    );
+    sort($sameTaskOutcomes);
+    expect_same(['false', 'true'], $sameTaskOutcomes, 'same auto-extension task applies once');
+    $firstPlusShowTo = $plusCommence + $plusDuration;
+    expect_same(
+        "0|0|$firstPlusShowTo|1|$firstPlusShowTo|0",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(u.gift_gold, '|', u.bought_gold, '|', u.plus, '|', q.qst5, '|',
+                a.commence, '|', a.lastChecked)
+             FROM users u
+             JOIN daily_quest q ON q.uid=u.id
+             JOIN autoExtend a ON a.uid=u.id AND a.id=$autoExtendTask
+             WHERE u.id=$autoExtendOwner"
+        ),
+        'same-task auto-extension charges and grants exactly once'
+    );
+
+    $db->query(
+        "UPDATE users
+         SET gift_gold=" . ($plusCost + $boostCost) . ", bought_gold=0, plus=0, b1=0
+         WHERE id=$autoExtendOwner"
+    );
+    $db->query("UPDATE daily_quest SET qst5=0 WHERE uid=$autoExtendOwner");
+    $db->query(
+        "UPDATE autoExtend
+         SET type=1, commence=$plusCommence, lastChecked=0, enabled=1, finished=0
+         WHERE id=$autoExtendTask"
+    );
+    $db->query("INSERT INTO autoExtend
+        (id, uid, type, commence, lastChecked, enabled, finished)
+        VALUES ($secondAutoExtendTask, $autoExtendOwner, 2, $boostCommence, 0, 1, 0)");
+
+    $distinctTaskOutcomes = $runAutoExtendRace(
+        [$autoExtendTask, $secondAutoExtendTask],
+        'same-user auto-extension race'
+    );
+    sort($distinctTaskOutcomes);
+    expect_same(['true', 'true'], $distinctTaskOutcomes, 'distinct auto-extension tasks both apply');
+    $secondPlusShowTo = $plusCommence + $plusDuration;
+    $boostShowTo = $boostCommence + $boostDuration;
+    expect_same(
+        "0|0|$secondPlusShowTo|$boostShowTo|2|$secondPlusShowTo|$boostShowTo",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(u.gift_gold, '|', u.bought_gold, '|', u.plus, '|', u.b1, '|', q.qst5, '|',
+                MAX(IF(a.id=$autoExtendTask, a.commence, 0)), '|',
+                MAX(IF(a.id=$secondAutoExtendTask, a.commence, 0)))
+             FROM users u
+             JOIN daily_quest q ON q.uid=u.id
+             JOIN autoExtend a ON a.uid=u.id
+             WHERE u.id=$autoExtendOwner
+             GROUP BY u.id, u.gift_gold, u.bought_gold, u.plus, u.b1, q.qst5"
+        ),
+        'same-user auto-extensions serialize both gold debits and benefits'
+    );
+} finally {
+    foreach ($autoExtendWorkers as &$worker) {
+        if (!isset($worker['process']) || !is_resource($worker['process'])) {
+            continue;
+        }
+        $status = proc_get_status($worker['process']);
+        if (!empty($status['running'])) {
+            proc_terminate($worker['process']);
+        }
+        foreach ($worker['pipes'] as $pipe) {
+            if (is_resource($pipe)) {
+                fclose($pipe);
+            }
+        }
+        proc_close($worker['process']);
+        $worker['process'] = null;
+        $worker['pipes'] = [];
+    }
+    unset($worker);
+    foreach ($autoExtendBarrierFiles as $barrierFile) {
+        if (is_string($barrierFile) && file_exists($barrierFile)) {
+            unlink($barrierFile);
+        }
+    }
+    $db->query(
+        "DELETE FROM scheduled_task_failures
+         WHERE task_table='autoExtend' AND task_id IN ($autoExtendTask, $secondAutoExtendTask)"
+    );
+    $db->query("DELETE FROM autoExtend WHERE id IN ($autoExtendTask, $secondAutoExtendTask)");
+    $db->query("DELETE FROM infobox WHERE uid=$autoExtendOwner");
+    $db->query("DELETE FROM daily_quest WHERE uid=$autoExtendOwner");
+    $db->query("DELETE FROM users WHERE id=$autoExtendOwner");
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE autoExtend AUTO_INCREMENT=$autoExtendAutoIncrement");
+    $db->query("ALTER TABLE infobox AUTO_INCREMENT=$infoBoxAutoIncrement");
 }
 
 $queuedMessageOwner = 2000000011;
