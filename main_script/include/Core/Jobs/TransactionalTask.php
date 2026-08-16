@@ -22,6 +22,7 @@ final class TransactionalTask
         'odelete',
         'traderoutes',
         'notificationQueue',
+        'autoExtend',
     ];
 
     public static function consume(string $table, int $id, callable $effect, ?callable $beforeTaskLock = null): bool

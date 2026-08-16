@@ -66,34 +66,24 @@ class GoldHelper
 
     public static function decreaseGold($uid, $num)
     {
+        $uid = (int)$uid;
         $num = (int)$num;
         if (!getCustom("serverIsFreeGold")) {
-            if (!$num) return false;
+            if ($num <= 0) return false;
             $db = DB::getInstance();
-            $user = $db->query("SELECT bought_gold, gift_gold FROM users WHERE id=$uid");
-            if (!$user->num_rows) return false;
-            $user = $user->fetch_assoc();
-            $bought_gold = $user['bought_gold'];
-            $gift_gold = $user['gift_gold'];
-            while ($num > 0 && (($bought_gold + $gift_gold) > 0)) {
-                if ($gift_gold > 0) {
-                    $count = min($gift_gold, $num);
-                    $gift_gold -= $count;
-                    $num -= $count;
-                }
-                if ($num > 0 && $bought_gold > 0) {
-                    $count = min($bought_gold, $num);
-                    $bought_gold -= $count;
-                    $num -= $count;
-                }
+            $db->query(
+                "UPDATE users
+                 SET bought_gold=bought_gold-GREATEST($num-gift_gold, 0),
+                     gift_gold=GREATEST(gift_gold-$num, 0)
+                 WHERE id=$uid AND bought_gold+gift_gold >= $num"
+            );
+            if ($db->affectedRows() !== 1) {
+                return false;
             }
-            $db->query("UPDATE users SET bought_gold=$bought_gold, gift_gold=$gift_gold WHERE id=$uid");
-        } else {
-            $num = 0;
         }
         $dailyQuest = new DailyQuestModel();
         $dailyQuest->setQuestAsCompleted($uid, 5);
-        return $num === 0;
+        return true;
     }
 
     public function giftPlus($till)
