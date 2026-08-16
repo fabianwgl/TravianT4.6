@@ -1024,6 +1024,7 @@ HTML;
 
     public function modifyResources($costs, $mode = 0)
     {
+        $resourceState = $this->getResourceState();
         if ($mode == 0) {
             $this->village['wood'] -= $costs[0];
             $this->village['clay'] -= $costs[1];
@@ -1036,7 +1037,8 @@ HTML;
             $this->village['crop'] += $costs[3];
         }
 
-        $stmt = $this->db->run('UPDATE vdata SET wood=?, clay=?, iron=?, crop=?, lastmupdate=? WHERE kid=?', [
+        $db = DB::getInstance();
+        $stmt = $db->run('UPDATE vdata SET wood=?, clay=?, iron=?, crop=?, lastmupdate=? WHERE kid=?', [
             $this->village['wood'],
             $this->village['clay'],
             $this->village['iron'],
@@ -1045,7 +1047,58 @@ HTML;
             $this->village['kid'],
         ]);
 
-        return $stmt && $stmt->rowCount() > 0;
+        if (!$stmt || $db->affectedRows() <= 0) {
+            $this->restoreResourceState($resourceState);
+            return false;
+        }
+
+        return true;
+    }
+
+    public function getResourceState(): array
+    {
+        return [
+            'wood' => $this->village['wood'],
+            'clay' => $this->village['clay'],
+            'iron' => $this->village['iron'],
+            'crop' => $this->village['crop'],
+            'lastmupdate' => $this->village['lastmupdate'],
+        ];
+    }
+
+    public function restoreResourceState(array $resources): void
+    {
+        $this->village['wood'] = $resources['wood'];
+        $this->village['clay'] = $resources['clay'];
+        $this->village['iron'] = $resources['iron'];
+        $this->village['crop'] = $resources['crop'];
+        $this->village['lastmupdate'] = $resources['lastmupdate'];
+    }
+
+    public function lockResourceStateForUpdate(): bool
+    {
+        $db = DB::getInstance();
+        if (!$db->inTransaction()) {
+            return false;
+        }
+
+        ResourcesHelper::settleVillageResourcesForUpdate((int)$this->getKid());
+        $result = $db->query(
+            "SELECT wood, clay, iron, crop, lastmupdate
+             FROM vdata WHERE kid=" . (int)$this->getKid()
+        );
+        if (!$result || $result->num_rows !== 1) {
+            return false;
+        }
+
+        $row = $result->fetch_assoc();
+        $this->village['wood'] = (float)$row['wood'];
+        $this->village['clay'] = (float)$row['clay'];
+        $this->village['iron'] = (float)$row['iron'];
+        $this->village['crop'] = (float)$row['crop'];
+        $this->village['lastmupdate'] = (int)$row['lastmupdate'];
+
+        return true;
     }
 
     private function fetchMasterBuildsAll()

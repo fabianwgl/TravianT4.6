@@ -126,8 +126,29 @@ class prepareMarketplace extends AjaxBase
             $this->response['errorMessage'] = T("MarketPlace", "not enough merchants");
             return;
         }
-        if (Village::getInstance()->modifyResources($resources)) {
-            $m->sendResources(Session::getInstance()->getKid(), $kid, Session::getInstance()->getRace(), $r1, $r2, $r3, $r4, $x2);
+        $village = Village::getInstance();
+        if ($m->performAtomicVillageMutation(
+            $village,
+            function () use ($village, $resources, $m, $kid, $r1, $r2, $r3, $r4, $x2, $merchantsNeeded, $merchant_cap): bool {
+                $merchantsAvailable = $village->hasMarketPlace()
+                    - $m->getOnTheWayMerchantsCount($village->getKid(), $merchant_cap)
+                    - $m->getOfferingMerchantsCount($village->getKid(), $merchant_cap);
+                if (!$village->isResourcesAvailable($resources) || $merchantsNeeded > $merchantsAvailable) {
+                    return false;
+                }
+                return $village->modifyResources($resources)
+                    && $m->sendResources(
+                        Session::getInstance()->getKid(),
+                        $kid,
+                        Session::getInstance()->getRace(),
+                        $r1,
+                        $r2,
+                        $r3,
+                        $r4,
+                        $x2
+                    );
+            }
+        )) {
             $this->response['data']['notice'] = T("MarketPlace", "resourcesSent");
             $view = new PHPBatchView('build/marketPlaceGoBack');
             $view->vars['dname'] = null;
@@ -136,6 +157,8 @@ class prepareMarketplace extends AjaxBase
             $view->vars['x2'] = null;
             $this->response['data']['formular'] = $view->output();
             $this->response['data']['button'] = PHPBatchView::render('build/prepare_button');
+        } else {
+            $this->response['data']['errorMessage'] = 'Unable to send resources. Please try again.';
         }
     }
 

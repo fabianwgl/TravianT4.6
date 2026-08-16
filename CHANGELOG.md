@@ -102,6 +102,12 @@
 - Settler cancellation now locks and reverses an outgoing movement atomically,
   so stale, late, concurrent, and replayed requests cannot duplicate its
   resource refund.
+- Research, alliance-bonus, referral, and recurring-trade tasks now reject
+  missing or failed effect targets instead of silently consuming or advancing
+  them; retry and quarantine metadata preserve every failed payload.
+- Marketplace sends and offer creation, acceptance, and cancellation now commit
+  their resource and merchant effects atomically, so an insert failure cannot
+  consume resources, delete an offer, or leave half of an accepted trade live.
 - Winner and no-winner pages now preserve literal CSS percentages in translated
   markup instead of treating them as `vsprintf` format tokens.
 - Nullable database and resource values are normalized before PHP 8.3 string

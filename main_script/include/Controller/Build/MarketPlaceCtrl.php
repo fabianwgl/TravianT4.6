@@ -108,25 +108,39 @@ class MarketPlaceCtrl extends AnyCtrl
                                     } else if (Config::getInstance()->dynamic->serverFinished) {
                                         $this->innerRedirect("InGameWinnerPage");
                                     }
-                                    if (Village::getInstance()->modifyResources($res)) {
-                                        if ($m->deleteOffer($offer['id'])) {
-                                            //accept offer here.
-                                            $playerId = $m->getVillageOwner($offer['kid']);
-                                            $race = $m->getPlayerRace($playerId);
-                                            $m->sendResources($offer['kid'], Village::getInstance()->getKid(), $race, $offer['giveType'] == 1 ? $offer['giveValue'] : 0, $offer['giveType'] == 2 ? $offer['giveValue'] : 0, $offer['giveType'] == 3 ? $offer['giveValue'] : 0, $offer['giveType'] == 4 ? $offer['giveValue'] : 0, 1);
-                                            $type = [1 => 'wood', 'clay', 'iron', 'crop',][$offer['giveType']];
-                                            $db = DB::getInstance();
-                                            $m->sendResources(Village::getInstance()->getKid(), $offer['kid'], Session::getInstance()->getRace(), $offer['needType'] == 1 ? $offer['needValue'] : 0, $offer['needType'] == 2 ? $offer['needValue'] : 0, $offer['needType'] == 3 ? $offer['needValue'] : 0, $offer['needType'] == 4 ? $offer['needValue'] : 0, 1);
-                                            $quest = Quest::getInstance();
-                                            $quest->setQuestBitwise('economy', 7, 1);
-                                            $playerName = $db->fetchScalar("SELECT name FROM users WHERE id=$playerId");
-                                            $view->vars['offerAccepted'] = TRUE;
-                                            $view->vars['offerAcceptTitle'] = sprintf(T("MarketPlace", 'x\'s offering has been accepted'), '<a href="spieler.php?uid=' . $playerId . '">' . $playerName . '</a>');
-                                            $view->vars['giveType'] = $offer['giveType'];
-                                            $view->vars['giveValue'] = $offer['giveValue'];
-                                            $view->vars['needType'] = $offer['needType'];
-                                            $view->vars['needValue'] = $offer['needValue'];
+                                    $village = Village::getInstance();
+                                    $playerId = $m->getVillageOwner($offer['kid']);
+                                    $race = $m->getPlayerRace($playerId);
+                                    $merchantsNeeded = ceil($offer['needValue'] / $merchant_cap);
+                                    if ($m->performAtomicVillageMutation(
+                                        $village,
+                                        function () use ($village, $res, $m, $offer, $race, $merchant_cap, $merchantsNeeded): bool {
+                                            $merchantsAvailable = $this->building_level
+                                                - $m->getOfferingMerchantsCount($village->getKid(), $merchant_cap)
+                                                - $m->getOnTheWayMerchantsCount($village->getKid(), $merchant_cap);
+                                            if (!$village->isResourcesAvailable($res)
+                                                || $merchantsNeeded > $merchantsAvailable
+                                                || !$village->modifyResources($res)
+                                                || !$m->deleteOffer($offer['id'])) {
+                                                return false;
+                                            }
+                                            if (!$m->sendResources($offer['kid'], $village->getKid(), $race, $offer['giveType'] == 1 ? $offer['giveValue'] : 0, $offer['giveType'] == 2 ? $offer['giveValue'] : 0, $offer['giveType'] == 3 ? $offer['giveValue'] : 0, $offer['giveType'] == 4 ? $offer['giveValue'] : 0, 1)) {
+                                                return false;
+                                            }
+                                            return $m->sendResources($village->getKid(), $offer['kid'], Session::getInstance()->getRace(), $offer['needType'] == 1 ? $offer['needValue'] : 0, $offer['needType'] == 2 ? $offer['needValue'] : 0, $offer['needType'] == 3 ? $offer['needValue'] : 0, $offer['needType'] == 4 ? $offer['needValue'] : 0, 1);
                                         }
+                                    )) {
+                                        //accept offer here.
+                                        $db = DB::getInstance();
+                                        $quest = Quest::getInstance();
+                                        $quest->setQuestBitwise('economy', 7, 1);
+                                        $playerName = $db->fetchScalar("SELECT name FROM users WHERE id=$playerId");
+                                        $view->vars['offerAccepted'] = TRUE;
+                                        $view->vars['offerAcceptTitle'] = sprintf(T("MarketPlace", 'x\'s offering has been accepted'), '<a href="spieler.php?uid=' . $playerId . '">' . $playerName . '</a>');
+                                        $view->vars['giveType'] = $offer['giveType'];
+                                        $view->vars['giveValue'] = $offer['giveValue'];
+                                        $view->vars['needType'] = $offer['needType'];
+                                        $view->vars['needValue'] = $offer['needValue'];
                                     }
                                 }
                             }
@@ -217,7 +231,13 @@ class MarketPlaceCtrl extends AnyCtrl
         $m = new MarketModel();
         $village = Village::getInstance();
         if (isset($_GET['del'])) {
-            $village->modifyResources($m->cancelOffer(Village::getInstance()->getKid(), (int)$_GET['del']), 1);
+            $m->performAtomicVillageMutation(
+                $village,
+                function () use ($m, $village): bool {
+                    $refund = $m->cancelOffer($village->getKid(), (int)$_GET['del']);
+                    return array_sum($refund) > 0 && $village->modifyResources($refund, 1);
+                }
+            );
         }
         $view->vars['hasAlliance'] = Session::getInstance()->getAllianceId() > 0;
         $view->vars['total_merchants'] = $this->building_level;
@@ -248,12 +268,26 @@ class MarketPlaceCtrl extends AnyCtrl
                 } else if (Config::getInstance()->dynamic->serverFinished) {
                     $this->innerRedirect("InGameWinnerPage");
                 }
-                if ($village->modifyResources($res)) {
-                    $m->addOffer(Village::getInstance()->getKid(), isset($_POST['ally']) ? Session::getInstance()->getAllianceId() : 0, isset($_POST['d1']) ? (int)$_POST['d2'] : 0, $_POST['rid2'], (int)$_POST['m2'], $_POST['rid1'], (int)$_POST['m1']);
+                $merchantsNeeded = ceil($_POST['m1'] / $merchant_cap);
+                if ($m->performAtomicVillageMutation(
+                    $village,
+                    function () use ($village, $res, $m, $merchant_cap, $merchantsNeeded): bool {
+                        $merchantsAvailable = $this->building_level
+                            - $m->getOfferingMerchantsCount($village->getKid(), $merchant_cap)
+                            - $m->getOnTheWayMerchantsCount($village->getKid(), $merchant_cap);
+                        if (!$village->isResourcesAvailable($res) || $merchantsNeeded > $merchantsAvailable) {
+                            return false;
+                        }
+                        return $village->modifyResources($res)
+                            && $m->addOffer($village->getKid(), isset($_POST['ally']) ? Session::getInstance()->getAllianceId() : 0, isset($_POST['d1']) ? (int)$_POST['d2'] : 0, $_POST['rid2'], (int)$_POST['m2'], $_POST['rid1'], (int)$_POST['m1']);
+                    }
+                )) {
                     $view->vars['success'] = T("MarketPlace", 'offer added successfully');
                     $view->vars['merchantsAvailable'] -= ceil($_POST['m1'] / $merchant_cap);
                     $quest = Quest::getInstance();
                     $quest->setQuestBitwise('economy', 7, 1);
+                } else {
+                    $view->vars['error'] = 'Unable to create offer. Please try again.';
                 }
             }
         }
@@ -556,4 +590,4 @@ class MarketPlaceCtrl extends AnyCtrl
         }
         $this->view->vars['content'] .= $view->output();
     }
-} 
+}

@@ -11,6 +11,7 @@ namespace Model;
 use Core\Config;
 use Core\Database\DB;
 use Core\Helper\TimezoneHelper;
+use Core\Village;
 use Game\Formulas;
 use Game\ResourcesHelper;
 
@@ -111,13 +112,58 @@ class MarketModel
         return FALSE;
     }
 
-    public function addOffer($kid, $aid, $hours, $needType, $needValue, $giveType, $giveValue)
+    public function addOffer($kid, $aid, $hours, $needType, $needValue, $giveType, $giveValue): bool
     {
         $rate = round($needValue / $giveValue, 1);
         $xy = Formulas::kid2xy($kid);
         $maxtime = $hours * 3600;
         $db = DB::getInstance();
-        $db->query("INSERT INTO market (aid, kid, x, y, rate, needType, needValue, giveType, giveValue, maxtime) VALUES ($aid, $kid, {$xy['x']}, {$xy['y']}, '$rate', $needType, $needValue, $giveType, $giveValue, $maxtime) ");
+        return (bool)$db->query("INSERT INTO market (aid, kid, x, y, rate, needType, needValue, giveType, giveValue, maxtime) VALUES ($aid, $kid, {$xy['x']}, {$xy['y']}, '$rate', $needType, $needValue, $giveType, $giveValue, $maxtime) ");
+    }
+
+    public function performAtomicMutation(callable $mutation, ?callable $restoreState = null): bool
+    {
+        $db = DB::getInstance();
+        if ($db->inTransaction() || !$db->begin_transaction()) {
+            return false;
+        }
+
+        try {
+            if (!$mutation()) {
+                throw new \RuntimeException('Marketplace mutation failed.');
+            }
+            if (!$db->commit()) {
+                if ($db->rollback() && $restoreState !== null) {
+                    $restoreState();
+                }
+                return false;
+            }
+            return true;
+        } catch (\Throwable $e) {
+            if ($db->rollback() && $restoreState !== null) {
+                $restoreState();
+            }
+            return false;
+        }
+    }
+
+    public function performAtomicVillageMutation(Village $village, callable $mutation): bool
+    {
+        $resourceState = null;
+        return $this->performAtomicMutation(
+            function () use ($village, $mutation, &$resourceState): bool {
+                if (!$village->lockResourceStateForUpdate()) {
+                    return false;
+                }
+                $resourceState = $village->getResourceState();
+                return $mutation();
+            },
+            function () use ($village, &$resourceState): void {
+                if ($resourceState !== null) {
+                    $village->restoreResourceState($resourceState);
+                }
+            }
+        );
     }
 
     public function renderMovement($my_kid, $row)
@@ -291,7 +337,7 @@ HTML;
         $db->query("UPDATE traderoutes SET enabled=$enabled, time=$time WHERE kid=$kid AND id=$trid");
     }
 
-    public function sendResources($kid, $to_kid, $race, $r1, $r2, $r3, $r4, $repeat, $time = -1)
+    public function sendResources($kid, $to_kid, $race, $r1, $r2, $r3, $r4, $repeat, $time = -1): bool
     {
         if ($time == -1) {
             $time = time();
@@ -299,7 +345,10 @@ HTML;
         $speed = Formulas::merchantSpeed($race);
         $time = $time + round(Formulas::getDistance($kid, $to_kid) / $speed * 3600);
         $db = DB::getInstance();
-        $db->query("INSERT INTO send (kid, to_kid, wood, clay, iron, crop, x, mode, end_time) VALUES ($kid, $to_kid,$r1, $r2, $r3, $r4, $repeat,0,$time)");
+        return (bool)$db->query(
+            "INSERT INTO send (kid, to_kid, wood, clay, iron, crop, x, mode, end_time)
+             VALUES ($kid, $to_kid, $r1, $r2, $r3, $r4, $repeat, 0, $time)"
+        );
     }
 
     public function getPlayerRace($uid)
