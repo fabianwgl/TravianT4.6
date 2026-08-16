@@ -87,7 +87,7 @@ function jdate($format,$timestamp='',$none='',$time_zone='Asia/Tehran',$tr_num='
 	$out.=jdate_words(array('rr'=>$j_d),' ');
 	break;
 
-	case'k';
+		case'k':
 	$out.=tr_num(100-(int)($doy/($kab+365)*1000)/10,$tr_num);
 	break;
 

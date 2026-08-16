@@ -24,6 +24,11 @@ class AjaxCtrl extends AnyCtrl
         if (isset($_GET['cmd'])) {
             $cmd = filter_var($_GET['cmd'], FILTER_SANITIZE_STRING);
             $response = ["response" => ['error' => FALSE, 'errorMsg' => NULL, 'data' => [],],];
+            if (in_array($cmd, ['paymentProviders', 'paymentRules', 'paymentWizard'], true)) {
+                $response['response']['error'] = TRUE;
+                $response['response']['errorMsg'] = 'Payments are disabled in this release.';
+                response($response);
+            }
             if (!in_array($cmd, ['news', 'configuration'])) {
                 $this->checkAjaxToken($response);
             }
@@ -48,9 +53,9 @@ class AjaxCtrl extends AnyCtrl
     }
     function checkAjaxToken(&$response)
     {
-        return true;
-        if (!isset($_POST['ajaxToken']) || filter_var($_POST['ajaxToken'],
-                FILTER_SANITIZE_STRING) != $this->session->getAjaxToken()) {
+        $providedToken = $_POST['ajaxToken'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+        $expectedToken = (string)$this->session->getAjaxToken();
+        if ($providedToken === '' || !hash_equals($expectedToken, (string)$providedToken)) {
             $response['ajaxToken'] = NULL;
             $response['response']['error'] = TRUE;
             $response['response']['errorMsg'] = 'Invalid token.';

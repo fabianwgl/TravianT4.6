@@ -208,7 +208,7 @@ class viewTileDetails extends AjaxBase
             } else {
                 $view->vars['options'] .= '<br><div class="option"><span class="a arrow needGoldClub" id="raidListButtonNoGoldClub" title="' . T("map", "for this feature you need the goldclub actived") . '">' . T("map", "Add to farm list") . '</span></div>';
                 $view->vars['options'] .= <<<JSON
-<script type="text/javascript">jQuery(function() { jQuery('#raidListButtonNoGoldClub').click(function () {jQuery(window).trigger('buttonClicked', [event.target, {"goldclubDialog":{"featureKey":"raidList","infoIcon":"http:\/\/t4.answers.travian.com\/index.php?aid=Travian Answers#go2answer"}}]);})});</script>
+<script type="text/javascript">jQuery(function() { jQuery('#raidListButtonNoGoldClub').click(function () {jQuery(window).trigger('buttonClicked', [event.target, {"goldclubDialog":{"featureKey":"raidList","infoIcon":"/docs/index.php?aid=Travian Answers#go2answer"}}]);})});</script>
 JSON;
             }
         } else {
@@ -448,7 +448,7 @@ JSON;
         } else {
             $view->vars['options'] .= '<br><div class="option"><span class="a arrow needGoldClub" id="raidListButtonNoGoldClub" title="' . T("map", "for this feature you need the goldclub actived") . '">' . T("map", "Add to farm list") . '</span></div>';
             $view->vars['options'] .= <<<JSON
-<script type="text/javascript">jQuery(function() { jQuery('#raidListButtonNoGoldClub').addEvent('click',function () {jQuery(window).trigger('buttonClicked', [event.target, {"goldclubDialog":{"featureKey":"raidList","infoIcon":"http:\/\/t4.answers.travian.com\/index.php?aid=Travian Answers#go2answer"}}]);})});</script>
+<script type="text/javascript">jQuery(function() { jQuery('#raidListButtonNoGoldClub').addEvent('click',function () {jQuery(window).trigger('buttonClicked', [event.target, {"goldclubDialog":{"featureKey":"raidList","infoIcon":"/docs/index.php?aid=Travian Answers#go2answer"}}]);})});</script>
 JSON;
         }
         return $other . $view->output();
@@ -551,8 +551,8 @@ JSON;
                 $icon = 'fight';
                 $data = explode(":", $row['params']);
                 $title = sprintf(T("Reports", "A fight took at village name of player name"),
-                    '<a href="spieler.php?uid=' . $data[0] . '">' . $data[1] . '</a>',
-                    '<a href="karte.php?d=' . $data[2] . '">' . $this->getVillageName($data[2]) . '</a>');
+                    '<a href="karte.php?d=' . $data[2] . '">' . $this->getVillageName($data[2]) . '</a>',
+                    '<a href="spieler.php?uid=' . $data[0] . '">' . $data[1] . '</a>');
                 break;
             case NoticeHelper::SURROUNDING_VILLAGE_FOUND:
                 $icon = 'villageFound';
@@ -574,6 +574,13 @@ JSON;
                 $title = sprintf(T("Reports", "x has lost y"),
                     '<a href="spieler.php?uid=' . $data[0] . '">' . $data[1] . '</a>',
                     '<a href="karte.php?d=' . $data[2] . '">' . $data[3] . '</a>');
+                break;
+            case NoticeHelper::SURROUNDING_VILLAGE_DESTROYED:
+                $icon = 'villageLost';
+                $data = explode(":", $row['params']);
+                $title = sprintf(T("Reports", "village x of player y was destroyed"),
+                    '<a href="karte.php?d=' . $data[2] . '">' . $data[3] . '</a>',
+                    '<a href="spieler.php?uid=' . $data[0] . '">' . $data[1] . '</a>');
                 break;
             case NoticeHelper::SURROUNDING_VILLAGE_RENAME:
                 $icon = 'villageRename';
@@ -660,4 +667,4 @@ JSON;
         }
         return $other . $view->output();
     }
-} 
+}

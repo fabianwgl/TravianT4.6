@@ -44,7 +44,7 @@
 					<div
 						class="boxContent"><?=T("PaymentWizard", "Plus FAQ Desc"); ?></div>
 					<div class="footer"><a
-							href="http://t4.answers.travian.com/index.php?aid=259#go2answer"
+							href="/docs/index.php?aid=259#go2answer"
 							target="_blank"><?=T("PaymentWizard", "Travian Answers"); ?></a>
 					</div>
 				</div>

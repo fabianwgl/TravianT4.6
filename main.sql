@@ -32,7 +32,7 @@ CREATE TABLE `activation` (
   `id` int(11) NOT NULL,
   `worldId` varchar(5) NOT NULL,
   `name` varchar(30) NOT NULL,
-  `password` varchar(50) NOT NULL,
+  `password` varchar(255) NOT NULL,
   `email` varchar(45) NOT NULL,
   `activationCode` varchar(15) NOT NULL,
   `newsletter` tinyint(1) UNSIGNED NOT NULL,
@@ -116,14 +116,7 @@ CREATE TABLE `configurations` (
 --
 
 INSERT INTO `configurations` (`id`, `name`, `data`) VALUES
-(2, '3x', '{\"speed\":\"3\",\"mapSize\":\"400\",\"startGold\":\"10000\",\"protectionHours\":\"72\",\"roundLength\":\"auto\",\"isPromoted\":\"0\",\"needPreregistrationCode\":\"0\",\"buyAnimals\":\"0\",\"buyAnimalsInterval\":\"0\",\"buyResources\":\"0\",\"buyResourcesInterval\":\"0\",\"buyTroops\":\"0\",\"buyTroopsInterval\":\"0\",\"startTimezone\":\"0\",\"instantFinishTraining\":\"0\",\"buyAdventure\":\"0\",\"activation\":\"1\"}'),
-(3, 'Tx5', '{\"speed\":\"5\",\"mapSize\":\"400\",\"startGold\":\"100\",\"protectionHours\":\"48\",\"roundLength\":\"auto\",\"isPromoted\":\"1\",\"needPreregistrationCode\":\"0\",\"buyAnimals\":\"0\",\"buyAnimalsInterval\":\"0\",\"buyResources\":\"0\",\"buyResourcesInterval\":\"0\",\"buyTroops\":\"0\",\"buyTroopsInterval\":\"0\",\"startTimezone\":\"0\",\"instantFinishTraining\":\"0\",\"buyAdventure\":\"0\",\"activation\":\"1\"}'),
-(4, '100x', '{\"speed\":\"100\",\"mapSize\":\"200\",\"startGold\":\"0\",\"protectionHours\":\"12\",\"roundLength\":\"7\",\"isPromoted\":\"1\",\"needPreregistrationCode\":\"0\",\"buyAnimals\":\"0\",\"buyAnimalsInterval\":\"0\",\"buyResources\":\"0\",\"buyResourcesInterval\":\"0\",\"buyTroops\":\"0\",\"buyTroopsInterval\":\"0\",\"startTimezone\":\"1\",\"instantFinishTraining\":\"0\",\"buyAdventure\":\"0\",\"activation\":\"1\"}'),
-(5, '100k', '{\"speed\":\"100000\",\"mapSize\":\"200\",\"startGold\":\"500\",\"protectionHours\":\"12\",\"roundLength\":\"5\",\"isPromoted\":\"0\",\"needPreregistrationCode\":\"1\",\"buyAnimals\":\"1\",\"buyAnimalsInterval\":\"0\",\"buyResources\":\"1\",\"buyResourcesInterval\":\"0\",\"buyTroops\":\"1\",\"buyTroopsInterval\":\"0\",\"startTimezone\":\"1\",\"instantFinishTraining\":\"1\",\"buyAdventure\":\"1\",\"activation\":\"1\"}'),
-(6, 'SP1', '{\"speed\":\"200000\",\"mapSize\":\"200\",\"startGold\":\"1000\",\"protectionHours\":\"6\",\"roundLength\":\"7\",\"isPromoted\":\"1\",\"needPreregistrationCode\":\"0\",\"buyAnimals\":\"1\",\"buyAnimalsInterval\":\"0\",\"buyResources\":\"1\",\"buyResourcesInterval\":\"0\",\"buyTroops\":\"1\",\"buyTroopsInterval\":\"0\",\"startTimezone\":\"1\",\"instantFinishTraining\":\"1\",\"buyAdventure\":\"1\",\"activation\":\"1\"}'),
-(7, '10x', '{\"speed\":\"10\",\"mapSize\":\"400\",\"startGold\":\"50\",\"protectionHours\":\"12\",\"roundLength\":\"30\",\"isPromoted\":\"1\",\"needPreregistrationCode\":\"1\",\"buyAnimals\":\"0\",\"buyAnimalsInterval\":\"0\",\"buyResources\":\"0\",\"buyResourcesInterval\":\"0\",\"buyTroops\":\"0\",\"buyTroopsInterval\":\"0\",\"startTimezone\":\"1\",\"instantFinishTraining\":\"0\",\"buyAdventure\":\"1\",\"activation\":\"1\"}'),
-(8, '5X', '{\"speed\":\"5\",\"mapSize\":\"400\",\"startGold\":\"50\",\"protectionHours\":\"48\",\"roundLength\":\"30\",\"isPromoted\":\"1\",\"needPreregistrationCode\":\"0\",\"buyAnimals\":\"0\",\"buyAnimalsInterval\":\"0\",\"buyResources\":\"0\",\"buyResourcesInterval\":\"0\",\"buyTroops\":\"0\",\"buyTroopsInterval\":\"0\",\"startTimezone\":\"1\",\"instantFinishTraining\":\"0\",\"buyAdventure\":\"0\",\"activation\":\"1\"}'),
-(9, '100000x', '{\"speed\":\"100000\",\"mapSize\":\"200\",\"startGold\":\"500\",\"protectionHours\":\"12\",\"roundLength\":\"3\",\"isPromoted\":\"0\",\"needPreregistrationCode\":\"0\",\"buyAnimals\":\"1\",\"buyAnimalsInterval\":\"0\",\"buyResources\":\"1\",\"buyResourcesInterval\":\"0\",\"buyTroops\":\"1\",\"buyTroopsInterval\":\"0\",\"startTimezone\":\"1\",\"instantFinishTraining\":\"1\",\"buyAdventure\":\"1\",\"activation\":\"0\"}');
+(1, 'Local', '{\"speed\":\"10\",\"mapSize\":\"25\",\"startGold\":\"0\",\"protectionHours\":\"48\",\"roundLength\":\"35\",\"isPromoted\":\"0\",\"needPreregistrationCode\":\"0\",\"buyAnimals\":\"0\",\"buyAnimalsInterval\":\"0\",\"buyResources\":\"0\",\"buyResourcesInterval\":\"0\",\"buyTroops\":\"0\",\"buyTroopsInterval\":\"0\",\"startTimezone\":\"0\",\"instantFinishTraining\":\"0\",\"buyAdventure\":\"0\",\"activation\":\"0\"}');
 
 -- --------------------------------------------------------
 
@@ -166,8 +159,7 @@ CREATE TABLE `gameServers` (
 --
 
 INSERT INTO `gameServers` (`id`, `worldId`, `speed`, `name`, `version`, `gameWorldUrl`, `startTime`, `roundLength`, `finished`, `registerClosed`, `activation`, `preregistration_key_only`, `hidden`, `promoted`, `configFileLocation`) VALUES
-(9, 'dev', 5000, 'Developer', 4, 'http://dev.YOUR_DOMAIN', 1538922600, 1, 0, 0, 1, 0, 0, 0, '/home/travian/USERNAME_HERE/servers/dev/include/connection.php'),
-(359, 'ts2', 100000, '100000X', 4, 'http://ts2.YOUR_DOMAIN/', 1685131200, 3, 1, 1, 1, 0, 0, 0, '/home/travian/USERNAME_HERE/servers/ts2/include/connection.php');
+(1, 'local', 10, 'Local World', 4, 'http://127.0.0.1:8080/game/', 0, 35, 0, 0, 0, 0, 0, 0, '/app/main_script/copyable/include/connection.php');
 
 
 -- --------------------------------------------------------
@@ -190,30 +182,6 @@ CREATE TABLE `goldProducts` (
   `isSMS` tinyint(4) NOT NULL DEFAULT 0,
   `isActive` tinyint(4) NOT NULL DEFAULT 10
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-
---
--- Dumping data for table `goldProducts`
---
-
-INSERT INTO `goldProducts` (`goldProductId`, `goldProductName`, `goldProductLocation`, `goldProductGold`, `goldProductPrice`, `goldProductMoneyUnit`, `goldProductImageName`, `goldProductHasOffer`, `isBestSeller`, `isBestValue`, `isSMS`, `isActive`) VALUES
-(2, 'بسته A', 1, 100, 49000, 'IRR', 'Travian_Facelift_1.png', 0, 0, 0, 0, 1),
-(3, 'بسته B', 1, 250, 99000, 'IRR', 'Travian_Facelift_2.png', 0, 0, 0, 0, 1),
-(4, 'بسته C', 1, 500, 179000, 'IRR', 'Travian_Facelift_3.png', 0, 1, 0, 0, 1),
-(5, 'بسته D', 1, 1600, 499000, 'IRR', 'Travian_Facelift_4.png', 0, 0, 0, 0, 1),
-(6, 'بسته E', 1, 3500, 999000, 'IRR', 'Travian_Facelift_5.png', 0, 0, 1, 0, 1),
-(7, 'Package A', 2, 30, 0.49, 'USD', 'Travian_Facelift_1.png', 0, 0, 0, 1, 1),
-(8, 'Package B', 2, 100, 1.49, 'USD', 'Travian_Facelift_2.png', 0, 0, 0, 0, 1),
-(9, 'Package C', 2, 250, 2.99, 'USD', 'Travian_Facelift_3.png', 0, 0, 0, 0, 1),
-(10, 'Package D', 2, 600, 6.99, 'USD', 'Travian_Facelift_4.png', 0, 0, 0, 0, 1),
-(11, 'Package E', 2, 1600, 13.99, 'USD', 'Travian_Facelift_5.png', 0, 1, 0, 0, 1),
-(12, 'Package F', 2, 3500, 27.99, 'USD', 'Travian_Facelift_6.png', 0, 0, 0, 0, 0),
-(13, 'Package G', 2, 7000, 49.99, 'USD', '4_6_5.png', 0, 0, 1, 0, 1),
-(14, 'Package A', 2, 30, 0.49, 'USD', '4_6_1.png', 0, 0, 0, 1, 0),
-(15, 'Package B', 2, 100, 1.49, 'USD', '4_6_2.png', 0, 0, 0, 0, 0),
-(16, 'Package C', 2, 250, 2.99, 'USD', '4_6_3.png', 0, 0, 0, 0, 0),
-(17, 'Package D', 2, 600, 6.99, 'USD', '4_6_4.png', 0, 0, 0, 0, 0),
-(18, 'Package E', 2, 1600, 13.99, 'USD', '4_6_5.png', 0, 1, 0, 0, 0),
-(19, 'Package F', 2, 3500, 27.99, 'USD', '4_6_6.png', 0, 0, 0, 0, 1);
 
 -- --------------------------------------------------------
 
@@ -265,6 +233,7 @@ CREATE TABLE `mailServer` (
   `toEmail` varchar(255) NOT NULL,
   `subject` varchar(255) NOT NULL,
   `html` longtext NOT NULL,
+  `delivery_key` varchar(191) DEFAULT NULL,
   `priority` int(11) NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -305,6 +274,7 @@ CREATE TABLE `newsletter` (
 CREATE TABLE `notifications` (
   `id` int(11) UNSIGNED NOT NULL,
   `message` text NOT NULL,
+  `delivery_key` varchar(191) DEFAULT NULL,
   `pin` tinyint(1) UNSIGNED NOT NULL DEFAULT 0,
   `time` int(10) UNSIGNED NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -583,6 +553,7 @@ ALTER TABLE `locations`
 --
 ALTER TABLE `mailServer`
   ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `delivery_key` (`delivery_key`),
   ADD KEY `priority` (`priority`);
 
 --
@@ -605,6 +576,7 @@ ALTER TABLE `newsletter`
 --
 ALTER TABLE `notifications`
   ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `delivery_key` (`delivery_key`),
   ADD KEY `search` (`time`);
 
 --

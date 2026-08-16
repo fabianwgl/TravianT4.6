@@ -108,6 +108,7 @@
     <input type="hidden" name="a" value="<?= $vars['checker']; ?>"/>
     <input type="hidden" name="id" value="0"/>
     <input type="hidden" name="amount" value="1"/>
+    <input type="hidden" name="sellHorse" value="0"/>
 </form>
 <script type="text/javascript">
 
@@ -171,14 +172,22 @@
                     buttonTextOk: '<?=T("Global", "General.ok");?>',
                     preventFormSubmit: true,
                     onOkay: function(dialog, contentElement) {
-                        window.location.href = 'hero.php?t=4&action=sellHorse&itemId=' + itemId;
+                        var sellForm = jQuery('#sellForm');
+                        sellForm[0].id.value = itemId;
+                        sellForm[0].amount.value = 1;
+                        sellForm[0].sellHorse.value = 1;
+                        sellForm.submit();
                     },
                     onClose: function(dialog, contentElement) {
                         $this.alreadyOpen = false;
                     }
                 }
             );
-            dialog.setContent('<?=T("Auction", "Do you want to sell this horse for 100 silver?");?>');
+            dialog.setContent('<?=str_replace(
+                '100',
+                (string)$vars['firstHorseSilver'],
+                T("Auction", "Do you want to sell this horse for 100 silver?")
+            );?>');
             dialog.show();
         },
 
@@ -261,6 +270,7 @@
 
             sellForm[0].id.value = id;
             sellForm[0].amount.value = amount;
+            sellForm[0].sellHorse.value = 0;
 
             var dialog = new Travian.Dialog.Dialog(
                 {

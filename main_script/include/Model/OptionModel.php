@@ -5,6 +5,7 @@ use Core\Config;
 use Core\Database\DB;
 use Core\Database\GlobalDB;
 use Core\Helper\Mailer;
+use Core\Security\Password;
 use function miliseconds;
 use function strtolower;
 
@@ -22,26 +23,64 @@ class OptionModel
 
     public function abortVacation($uid)
     {
+        $uid = (int)$uid;
         $db = DB::getInstance();
-        $db->query("UPDATE users SET vacationActiveTil=0 WHERE id=$uid");
-        $m = new InfoBoxModel();
-        $m->deleteInfoByType($uid, 13);
-        //TODO: send email
+        $db->begin_transaction();
+        try {
+            $db->query("UPDATE users SET vacationActiveTil=0 WHERE id=$uid");
+            if ($db->affectedRows() !== 1) {
+                $db->rollback();
+                return false;
+            }
+            (new InfoBoxModel())->deleteInfoByType($uid, 13);
+            $db->commit();
+            return true;
+        } catch (\Throwable $e) {
+            $db->rollback();
+            \logError('Unable to abort vacation mode: ' . $e->getMessage());
+            return false;
+        }
     }
 
     public function enterVacationMode($uid, $days)
     {
-        //TODO: send email
+        $uid = (int)$uid;
+        $days = (int)$days;
+        if ($uid <= 0 || $days <= 0) {
+            return false;
+        }
         $till = time() + 86400 * $days;
         $db = DB::getInstance();
-        $db->query("UPDATE users SET vacationUsedDays=vacationUsedDays+$days, vacationActiveTil=$till WHERE id=$uid");
-        $m = new InfoBoxModel();
-        $m->addInfo($uid, FALSE, 13, '', time(), $till);
-        $miliseconds = miliseconds();
-        $villages = $db->query("SELECT kid FROM vdata WHERE owner=$uid");
-        while($row = $villages->fetch_assoc()) {
-            $db->query("UPDATE movement SET to_kid=kid, kid={$row['kid']}, mode=1, end_time=(2*$miliseconds-start_time), start_time=$miliseconds WHERE to_kid={$row['kid']} AND mode=0 AND attack_type=" . MovementsModel::ATTACKTYPE_SPY);
+        $db->begin_transaction();
+        try {
+            $db->query("UPDATE users SET vacationUsedDays=vacationUsedDays+$days, vacationActiveTil=$till WHERE id=$uid");
+            if ($db->affectedRows() !== 1) {
+                $db->rollback();
+                return false;
+            }
+            $m = new InfoBoxModel();
+            $m->deleteInfoByType($uid, 13);
+            if (!$m->addInfo($uid, FALSE, 13, '', time(), $till)) {
+                $db->rollback();
+                return false;
+            }
+            $miliseconds = miliseconds();
+            $villages = $db->query("SELECT kid FROM vdata WHERE owner=$uid");
+            while($row = $villages->fetch_assoc()) {
+                $db->query("UPDATE movement SET to_kid=kid, kid={$row['kid']}, mode=1, end_time=(2*$miliseconds-start_time), start_time=$miliseconds WHERE to_kid={$row['kid']} AND mode=0 AND attack_type=" . MovementsModel::ATTACKTYPE_SPY);
+            }
+            $db->commit();
+            return true;
+        } catch (\Throwable $e) {
+            $db->rollback();
+            \logError('Unable to enter vacation mode: ' . $e->getMessage());
+            return false;
         }
+    }
+
+    public static function vacationDaysToUse(int $requestedDays, int $remainingDays): int
+    {
+        return min(max($requestedDays, 1), max($remainingDays, 0));
     }
 
     public function getPlayerVillagesAsArray($uid)
@@ -204,9 +243,10 @@ class OptionModel
     public function changePassword($uid, $newPass)
     {
         $db = DB::getInstance();
-        $newPass = sha1($newPass);
+        $newPass = Password::hash($newPass);
         $uid = (int) $uid;
-        $db->query("UPDATE users SET password='$newPass' WHERE id=$uid");
+        $db->run("UPDATE users SET password=? WHERE id=?", [$newPass, $uid]);
+        return $newPass;
     }
 
     public function isDeletion($uid)

@@ -22,6 +22,18 @@ use function var_dump;
 
 class NatarsModel
 {
+    public const GREY_AREA_ATTACK_WAVE_COUNT = 14;
+
+    public static function greyAreaAttackTravelSeconds(int $gameSpeed): int
+    {
+        return max((int)ceil(86400 / max(1, $gameSpeed)), 600);
+    }
+
+    public static function greyAreaWaveDelayMilliseconds(int $waveNumber): int
+    {
+        return intdiv(max(1, $waveNumber) - 1, 3);
+    }
+
     public function runJobs()
     {
         $this->releaseArtifacts();
@@ -55,14 +67,15 @@ class NatarsModel
         }
     }
 
-    public function attackNewVillage($kid)
+    public function attackNewVillage(int $kid): int
     {
         if (!getGame("attackNewVillageInGreyArea")) {
-            return;
+            return 0;
         }
         $miliseconds = miliseconds();
         $multiplier = getGameSpeed() <= 10 ? 1 : ceil(getGameSpeed() / (isInstantFinishEnabled() ? 30 : 50));
         $move = new MovementsModel();
+        $db = DB::getInstance();
         $cap_kid = Formulas::xy2kid(0, 0);
         $wave_arr = [
             1  => [1 => 1000, 1250, 250, 0, 900, 600, 1000, 100, 0, 0, 0],
@@ -80,36 +93,47 @@ class NatarsModel
             13 => [1 => 183, 145, 5, 0, 23, 31, 129, 31, 0, 0, 0],
             14 => [1 => 25, 197, 46, 0, 138, 143, 60, 18, 0, 0, 0],
         ];
-        foreach ($wave_arr as $waveNumber => $units) {
-            if ($waveNumber > 11) continue;
-            $units = array_map(function ($x) use ($multiplier) {
-                return round($x * $multiplier);
-            },
-                $units);
-            $time = max(24 * 3600 / getGameSpeed(), 600);
-            $increase = 0;
-            if ($waveNumber <= 3) {
-                $increase = 0;
-            } else if ($waveNumber <= 6) {
-                $increase = 1;
-            } else if ($waveNumber <= 9) {
-                $increase = 2;
-            } else if ($waveNumber <= 11) {
-                $increase = 3;
-            }
-            $move->addMovement($cap_kid,
-                $kid,
-                5,
-                $units,
-                99,
-                99,
-                0,
-                0,
-                0,
-                MovementsModel::ATTACKTYPE_NORMAL,
-                $miliseconds,
-                $miliseconds + (1000 * $time) + $increase);
+        $scheduled = 0;
+        if (!$db->begin_transaction()) {
+            logError('Unable to begin grey-area Natar movement transaction.');
+
+            return 0;
         }
+        try {
+            foreach ($wave_arr as $waveNumber => $units) {
+                $units = array_map(function ($x) use ($multiplier) {
+                    return round($x * $multiplier);
+                }, $units);
+                $time = self::greyAreaAttackTravelSeconds(getGameSpeed());
+                $increase = self::greyAreaWaveDelayMilliseconds($waveNumber);
+                $movementId = $move->addMovement($cap_kid,
+                    $kid,
+                    5,
+                    $units,
+                    99,
+                    99,
+                    0,
+                    0,
+                    0,
+                    MovementsModel::ATTACKTYPE_NORMAL,
+                    $miliseconds,
+                    $miliseconds + (1000 * $time) + $increase);
+                if (!$movementId) {
+                    throw new \RuntimeException('Unable to persist grey-area Natar movement.');
+                }
+                ++$scheduled;
+            }
+            if (!$db->commit()) {
+                throw new \RuntimeException('Unable to commit grey-area Natar movements.');
+            }
+        } catch (\Throwable $e) {
+            $db->rollback();
+            logError($e->getMessage());
+
+            return 0;
+        }
+
+        return $scheduled;
     }
 
     public function createFarmVillages()
@@ -293,4 +317,4 @@ class NatarsModel
         }*/
     }
 
-} 
+}

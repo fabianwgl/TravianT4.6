@@ -15,6 +15,7 @@ class DB
     private $lastPing;
     private static $_self;
     private $details;
+    private $transactionDepth = 0;
 
     public function setDatabaseDetails($details)
     {
@@ -125,6 +126,7 @@ class DB
     public function real_connect($host = NULL, $username = NULL, $passwd = NULL, $dbname = NULL, $port = NULL, $socket = NULL)
     {
         $this->mysqli = new \mysqli($host, $username, $passwd, $dbname, $port, $socket);
+        $this->transactionDepth = 0;
         $status = $this->mysqli->ping();
         if ($status) {
             $this->set_charset("utf8");
@@ -150,7 +152,7 @@ class DB
             sleep(2);
         }
         $ping = TRUE;
-        if (($this->lastPing - time()) > 100 || $force) {
+        if ((time() - $this->lastPing) > 100 || $force) {
             $ping = $this->ping();
             $try = 0;
             while (!$ping && $try <= 20) {
@@ -173,17 +175,70 @@ class DB
 
     public function begin_transaction()
     {
-        return $this->mysqli->begin_transaction();
+        if ($this->transactionDepth === 0) {
+            if (!$this->mysqli->begin_transaction()) {
+                return false;
+            }
+            $this->transactionDepth = 1;
+
+            return true;
+        }
+
+        $savepoint = $this->savepointName($this->transactionDepth);
+        if (!$this->mysqli->query("SAVEPOINT $savepoint")) {
+            return false;
+        }
+        ++$this->transactionDepth;
+
+        return true;
     }
 
     public function commit()
     {
-        return $this->mysqli->commit();
+        if ($this->transactionDepth <= 1) {
+            $committed = $this->mysqli->commit();
+            if ($committed) {
+                $this->transactionDepth = 0;
+            }
+
+            return $committed;
+        }
+
+        $savepoint = $this->savepointName($this->transactionDepth - 1);
+        if (!$this->mysqli->query("RELEASE SAVEPOINT $savepoint")) {
+            return false;
+        }
+        --$this->transactionDepth;
+
+        return true;
     }
 
     public function rollback()
     {
-        return $this->mysqli->rollback();
+        if ($this->transactionDepth <= 1) {
+            $rolledBack = $this->mysqli->rollback();
+            if ($rolledBack) {
+                $this->transactionDepth = 0;
+            }
+
+            return $rolledBack;
+        }
+
+        $savepoint = $this->savepointName($this->transactionDepth - 1);
+        if (!$this->mysqli->query("ROLLBACK TO SAVEPOINT $savepoint")) {
+            return false;
+        }
+        if (!$this->mysqli->query("RELEASE SAVEPOINT $savepoint")) {
+            return false;
+        }
+        --$this->transactionDepth;
+
+        return true;
+    }
+
+    private function savepointName(int $depth): string
+    {
+        return 'openvillage_transaction_' . $depth;
     }
 
     public function next_result()
@@ -202,6 +257,20 @@ class DB
             trigger_error("Mysqli Error: " . $this->mysqli->error . ' in Query: ' . $query, E_USER_WARNING);
         }
         return $status;
+    }
+
+    public function run($query, array $parameters = [])
+    {
+        $statement = $this->mysqli->prepare($query);
+        if ($statement === false) {
+            trigger_error("Mysqli prepare error: " . $this->mysqli->error, E_USER_WARNING);
+            return false;
+        }
+        if (!$statement->execute($parameters)) {
+            trigger_error("Mysqli execute error: " . $statement->error, E_USER_WARNING);
+            return false;
+        }
+        return $statement;
     }
 
     public function fetchScalar($query, $parameters = [], $default = false)
@@ -225,7 +294,7 @@ class DB
 
     public function real_escape_string($escapestr)
     {
-        return $this->mysqli->real_escape_string($escapestr);
+        return $this->mysqli->real_escape_string((string)$escapestr);
     }
 
     public function close()

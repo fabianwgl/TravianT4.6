@@ -13,6 +13,7 @@ $total_pop = Session::getInstance()->get("total_pop");
     <input type="hidden" name="e" value="2"/>
     <input type="hidden" name="s" value="2"/>
     <input type="hidden" name="formType" value="account"/>
+    <?=Session::getCheckerInput();?>
     <script type="text/javascript">
         function getAccountRenameValues()
         {
@@ -110,8 +111,7 @@ $total_pop = Session::getInstance()->get("total_pop");
 <form id="settings" action="options.php" method="post">
     <input type="hidden" name="e" value="2"/>
     <input type="hidden" name="s" value="2"/>
-    <input type="hidden" name="a"
-           value="<?=Session::getInstance()->getChecker(); ?>"/>
+    <?=Session::getCheckerInput();?>
 
     <h4 class="round spacer"><?=T("Options", "Change password"); ?></h4>
 
@@ -179,8 +179,8 @@ $total_pop = Session::getInstance()->get("total_pop");
             <tbody>
             <tr>
                 <th colspan="2" class="process">
-                    <button type="button" class="icon "
-                            onclick="window.location.href = 'options.php?e=2&amp;s=2&amp;a=<?=Session::getInstance()->getChecker(); ?>&amp;email_abbrechen'; return false;">
+                    <button type="submit" class="icon" name="cancelEmailChange" value="1"
+                            title="<?=T('Global', 'General.cancel');?>">
                         <img src="img/x.gif" class="del" alt="del"/>
                     </button> <?=T("Options", "Email change is in progress"); ?>
                 </th>
@@ -232,31 +232,6 @@ $total_pop = Session::getInstance()->get("total_pop");
             </tbody>
         </table>
     <?php endif; ?>
-        <h4 class="round spacer"><?= T("Options", "Graphic pack"); ?></h4>
-        <table cellpadding="1" cellspacing="1" class="account transparent">
-            <tbody>
-            <tr>
-                <td colspan="2"><?= T("Options", "You can change the way the game looks for you"); ?></td>
-            </tr>
-            <tr>
-                <th>
-                    <?= T("Options", "Graphic pack"); ?>
-                </th>
-                <td>
-                    <select name="gpackNew">
-                        <?php
-                        global $globalConfig;
-                        foreach($globalConfig['staticParameters']['gpacks']['list'] as $key => $value){
-                            echo '<option value="'.$key.'"'.($key == get_gpack_version() ? ' selected="selected"' : '').'>'.$value['name'].' '.($value['isNew'] ? '('.T("Options", "new").')' : "").'</option>';
-                        }
-                        ?>
-                    </select>
-                </td>
-            </tr>
-            </tbody>
-        </table>
-
-
     <h4 class="round spacer"><?=T("Options", "Delete account"); ?></h4>
     <table cellpadding="1" cellspacing="1" id="del_acc"
            class="account transparent">
@@ -296,7 +271,9 @@ $total_pop = Session::getInstance()->get("total_pop");
                 <tr>
                     <td colspan="2" class="count">
                         <?php
-                        echo(!isServerFinished() ? "<button type=\"button\" class=\"icon \" onclick=\"window.location.href = 'options.php?s=2&amp;id=" . Session::getInstance()->getPlayerId() . "&amp;a=1&amp;e=2'; return false;\"><img src=\"img/x.gif\" class=\"del\" alt=\"del\"></button> " : '');
+                        if (!isServerFinished()) {
+                            echo '<button type="submit" class="icon" name="cancelDeletion" value="1" title="' . T('Global', 'General.cancel') . '"><img src="img/x.gif" class="del" alt="del"></button> ';
+                        }
                         echo sprintf(T("inGame", "The account will be deleted in"), appendTimer($timestamp - time()));
                         ?>
                     </td>

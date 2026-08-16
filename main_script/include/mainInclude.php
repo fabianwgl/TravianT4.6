@@ -8,18 +8,24 @@ use Game\ResourcesHelper;
 use Model\ArtefactsModel;
 
 require __DIR__ . DIRECTORY_SEPARATOR . "bootstrap.php";
-$uri = $_SERVER['REQUEST_URI'];
-$page = basename($uri, '?' . $_SERVER['QUERY_STRING']);
-if ($page == ('?' . $_SERVER['QUERY_STRING'])) {
-    $page = '/';
+$requestPath = rawurldecode((string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/'));
+$gamePrefix = '/game';
+if ($requestPath === $gamePrefix) {
+    $relativePath = '';
+} else if (str_starts_with($requestPath, $gamePrefix . '/')) {
+    $relativePath = substr($requestPath, strlen($gamePrefix) + 1);
+} else {
+    $relativePath = ltrim($requestPath, '/');
+}
+$relativePath = trim($relativePath, '/');
+$uri = '/' . $relativePath;
+$page = $relativePath;
+
+if ($relativePath !== '' && (str_contains($relativePath, '/') || basename($relativePath) !== $relativePath)) {
+    $page = '404.php';
 }
 
-$uriCheck = str_replace(['?', $_SERVER['QUERY_STRING'], '/'], null, $uri) == $page;
-if(!$uriCheck){
-    $page = '404';
-}
-
-if (empty($page) || $page == '/') {
+if ($page === '') {
     $page = 'index.php';
 }
 
@@ -135,7 +141,6 @@ $pages = [
     'start_adventure.php' => 'StartAdventure',
     'statistiken.php' => 'StatistikenCtrl',
     'stats.php' => 'StatsCtrl',
-    'tgpay.php' => 'TG_PAY',
     'credits.php' => 'CreditsCtrl',
     'verify.php' => 'EmailVerificationCtrl',
     'verify-url.php' => 'EmailVerificationUrlCtrl',

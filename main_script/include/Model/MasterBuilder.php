@@ -32,8 +32,21 @@ class MasterBuilder
         $player = $player->fetch_assoc();
         $buildings = $this->sortBuildings($row['kid']);
         $item_id = $buildings['buildings'][$row['building_field']]['item_id'];
-        $level = $buildings['buildings'][$row['building_field']]['level'] + 1;
-        $level += (int)$db->fetchScalar("SELECT COUNT(id) FROM building_upgrade WHERE isMaster=0 AND building_field={$row['building_field']} AND kid={$row['kid']}");
+        $normalQueueLength = (int)$db->fetchScalar("SELECT COUNT(id) FROM building_upgrade WHERE isMaster=0 AND building_field={$row['building_field']} AND kid={$row['kid']}");
+        $level = self::queuedTargetLevel(
+            (int)$buildings['buildings'][$row['building_field']]['level'],
+            $normalQueueLength,
+            0
+        );
+        if (
+            $item_id <= 0
+            || !VillageModel::isBuildingAllowedInCapitalState($item_id, (int)$village['capital'] === 1)
+            || $level > Formulas::buildingMaxLvl($item_id, (int)$village['capital'] === 1)
+        ) {
+            $this->deleteProcess((int)$row['id'], (int)$row['kid'], (int)$row['building_field'], $level);
+
+            return;
+        }
         $costs = Formulas::buildingUpgradeCosts($item_id, $level);
         $workers = $this->isWorkersBusy($player['race'],
             $player['plus'] >= time(),
@@ -41,14 +54,13 @@ class MasterBuilder
             $row['building_field'] <= 18,
             $item_id == 40);
         if ($workers['isBusy']) {
-            //logError("MasterBuilder: Workers were busy.");
+            $this->updateCommence((int)$row['kid'], false);
             return;
         }
         //ignore  ww here
         if ($item_id <> 40) {
             if (!$this->isResourcesAvailable($village, $costs)) {
-                //maybe a server lag!
-                //logError("MasterBuilder: Resources not available.");
+                $this->updateCommence((int)$row['kid'], false);
                 return;
             }
         }
@@ -64,7 +76,6 @@ class MasterBuilder
                 logError('MasterBuilder: Unable to reduce gold.');
                 return;
             }
-            //TODO: level 0 buildings when building level 1
         }
         $kid = $row['kid'];
         $commence = $row['commence'];
@@ -164,12 +175,56 @@ class MasterBuilder
         return true;
     }
 
+    public static function queuedTargetLevel(int $builtLevel, int $normalQueueLength, int $masterTasksBefore): int
+    {
+        return $builtLevel + $normalQueueLength + $masterTasksBefore + 1;
+    }
+
+    public static function calculateResourceWait(array $resources, array $production, array $costs): ?int
+    {
+        $timeNeeded = 0;
+        for ($i = 0; $i < 4; ++$i) {
+            $available = floor((float)$resources[$i]);
+            $required = (float)$costs[$i];
+            if ($available >= $required) {
+                continue;
+            }
+            $hourlyProduction = (float)$production[$i];
+            if ($hourlyProduction <= 0) {
+                return null;
+            }
+            $timeNeeded = max(
+                $timeNeeded,
+                (int)ceil(($required - $available) * 3600 / $hourlyProduction)
+            );
+        }
+
+        return $timeNeeded;
+    }
+
+    private static function advanceResources(array &$resources, array $production, array $capacity, int $seconds): void
+    {
+        if ($seconds <= 0) {
+            return;
+        }
+        for ($i = 0; $i < 4; ++$i) {
+            $resources[$i] = min(
+                (float)$capacity[$i],
+                (float)$resources[$i] + ((float)$production[$i] * $seconds / 3600)
+            );
+        }
+    }
+
     public function updateCommence($kid, $update = true, $simple = false)
     {
-        $maxTime = time() + 100 * 86400;
+        $kid = (int)$kid;
+        $now = time();
+        $maxTime = $now + 100 * 86400;
         $helper = new BuildingHelper();
         $db = DB::getInstance();
-        $villageModel = new VillageModel();
+        if ($update) {
+            ResourcesHelper::updateVillageResources($kid, $simple);
+        }
         $masterBuilders = $db->query("SELECT * FROM building_upgrade WHERE isMaster=1 AND kid={$kid} ORDER BY id");
         if (!$masterBuilders->num_rows) {
             return false;
@@ -183,35 +238,63 @@ class MasterBuilder
         if (!$player->num_rows) {
             return false;
         }
-        if ($update) {
-            ResourcesHelper::updateVillageResources($kid, $simple);
-        }
         $player = $player->fetch_assoc();
         $buildings = $this->sortBuildings($kid);
+        $normalQueueLengths = [];
+        $normalQueue = $db->query("SELECT building_field, COUNT(id) AS queue_length FROM building_upgrade WHERE isMaster=0 AND kid=$kid GROUP BY building_field");
+        while ($normalRow = $normalQueue->fetch_assoc()) {
+            $normalQueueLengths[(int)$normalRow['building_field']] = (int)$normalRow['queue_length'];
+        }
         if (!$village['isWW']) {
             $wwLevel = -1;
         } else {
-            $onLoadLevels = (int)$db->fetchScalar("SELECT COUNT(id) FROM building_upgrade WHERE isMaster=0 AND building_field=99 AND kid=$kid");
-            $wwLevel = $buildings['buildings'][99]['level'] + (int)$onLoadLevels;
+            $wwLevel = (int)$buildings['buildings'][99]['level'] + ($normalQueueLengths[99] ?? 0);
         }
-        $previous_commence = 0;
+        $masterQueueLengths = [];
+        $projectedCropLoading = $this->getCropLoading($kid, $village['isWW'], $buildings['buildings']);
+        $projectedResources = [
+            (float)$village['wood'],
+            (float)$village['clay'],
+            (float)$village['iron'],
+            (float)$village['crop'],
+        ];
+        $production = [
+            (float)$village['woodp'],
+            (float)$village['clayp'],
+            (float)$village['ironp'],
+            (float)$village['cropp'] - (float)$village['pop'] - (float)$village['upkeep'],
+        ];
+        $capacity = [
+            (float)$village['maxstore'],
+            (float)$village['maxstore'],
+            (float)$village['maxstore'],
+            (float)$village['maxcrop'],
+        ];
+        $projectedResourceTime = $now;
+        $previousCommence = $now;
         $queryBatch = [];
         while ($row = $masterBuilders->fetch_assoc()) {
-            $item_id = $buildings['buildings'][$row['building_field']]['item_id'];
-            $level = $buildings['buildings'][$row['building_field']]['level'] + 1;
-            $level += (int)$db->fetchScalar("SELECT COUNT(id) FROM building_upgrade WHERE isMaster=0 AND building_field={$row['building_field']} AND kid=$kid");
-            $cu = Formulas::buildingCropConsumption($item_id, $level, $village['isWW']);
-            $commence = time() + $previous_commence;
-            if ($level > Formulas::buildingMaxLvl($item_id, $village['capital'])) {
-                $this->deleteProcess($row['id'], $kid, $row['building_field'], $level);
+            $field = (int)$row['building_field'];
+            $item_id = (int)$buildings['buildings'][$field]['item_id'];
+            $level = self::queuedTargetLevel(
+                (int)$buildings['buildings'][$field]['level'],
+                $normalQueueLengths[$field] ?? 0,
+                $masterQueueLengths[$field] ?? 0
+            );
+            $commence = max($now, $previousCommence);
+            if (
+                !VillageModel::isBuildingAllowedInCapitalState($item_id, (int)$village['capital'] === 1)
+                || $level > Formulas::buildingMaxLvl($item_id, $village['capital'])
+            ) {
+                $this->deleteProcess($row['id'], $kid, $field, $level);
                 continue;
             }
-            if ($row['building_field'] > 18 && $level == 1 && $helper->canCreateNewBuild($village['capital'],
+            if ($field > 18 && $level == 1 && $helper->canCreateNewBuild($village['capital'],
                     $player['race'],
                     $item_id,
                     $buildings['buildings'],
                     true) <> 1) {
-                $this->deleteProcess($row['id'], $kid, $row['building_field'], $level);
+                $this->deleteProcess($row['id'], $kid, $field, $level);
                 continue;
             }
             if ($helper->checkArtifactDependencies($player['aid'],
@@ -220,50 +303,68 @@ class MasterBuilder
                     $item_id,
                     $village['isWW'],
                     $wwLevel) <> 0) {
-                $this->deleteProcess($row['id'], $kid, $row['building_field'], $level);
+                $this->deleteProcess($row['id'], $kid, $field, $level);
                 continue;
             }
-            $freeCrop = $village['cropp'] + $village['upkeep'] - $this->getCropLoading($row['kid'], $village['isWW'], $buildings['buildings']);
+            $freeCrop = (float)$village['cropp'] - (float)$village['pop'] - $projectedCropLoading;
             if ($helper->checkDependencies($item_id,
                     $level,
                     $village['isWW'],
                     $freeCrop,
                     $village['maxstore'],
                     $village['maxcrop']) <> 0) {
-                $this->deleteProcess($row['id'], $kid, $row['building_field'], $level);
+                $this->deleteProcess($row['id'], $kid, $field, $level);
                 continue;
             }
             $workers = $this->isWorkersBusy($player['race'],
-                $player['plus'] >= time(),
-                $row['kid'],
-                $item_id <= 4,
+                $player['plus'] >= $now,
+                $kid,
+                $field <= 18,
                 $item_id == 40);
             if ($workers['isBusy']) {
-                $end_time = $db->fetchScalar("SELECT commence FROM building_upgrade WHERE isMaster=0 AND kid={$row['kid']} ORDER BY commence ASC LIMIT 1");
-                if ($end_time > $commence) {
-                    $commence += (int)$end_time - time();
-                }
+                $endTime = (int)$db->fetchScalar("SELECT commence FROM building_upgrade WHERE isMaster=0 AND kid=$kid ORDER BY commence ASC LIMIT 1");
+                $commence = max($commence, $endTime);
             }
-            //ignore WW here cuz it's not actually master and we got the resources first.
+            self::advanceResources(
+                $projectedResources,
+                $production,
+                $capacity,
+                $commence - $projectedResourceTime
+            );
+            $projectedResourceTime = $commence;
+
+            // World Wonder resources are reserved when the queue entry is created.
             if ($item_id <> 40) {
                 $cost = Formulas::buildingUpgradeCosts($item_id, $level);
-                if (!$this->isResourcesAvailable($village, $cost)) {
-                    $commence += $this->calcualteAvailable($village, $cost);
-                }
-            }
-            if ($commence <> $row['commence']) {
-                // check outrange
-                if($commence > $maxTime)
+                $wait = self::calculateResourceWait($projectedResources, $production, $cost);
+                if ($wait === null || $commence + $wait > $maxTime) {
                     $commence = $maxTime;
+                } else {
+                    self::advanceResources($projectedResources, $production, $capacity, $wait);
+                    $commence += $wait;
+                    for ($i = 0; $i < 4; ++$i) {
+                        $projectedResources[$i] -= $cost[$i];
+                    }
+                }
+                $projectedResourceTime = $commence;
+            }
+            if ($commence != (int)$row['commence']) {
                 $queryBatch[] = "UPDATE building_upgrade SET commence={$commence} WHERE id={$row['id']}";
             }
-            $previous_commence += $commence - time();
+            $previousCommence = $commence;
+            $masterQueueLengths[$field] = ($masterQueueLengths[$field] ?? 0) + 1;
+            $projectedCropLoading += Formulas::buildingCropConsumption($item_id, $level, $village['isWW']);
+            if ($field === 99) {
+                ++$wwLevel;
+            }
         }
         if (sizeof($queryBatch)) {
             foreach ($queryBatch as $query) {
                 $db->query($query);
             }
         }
+
+        return true;
     }
 
     private function deleteProcess($processId, $wid, $building_field, $level)
@@ -297,31 +398,4 @@ class MasterBuilder
         return $cu;
     }
 
-    private function calcualteAvailable($data, $costs)
-    {
-        //TODO: i don't know how they calculate minus crop in master builder but no problem we set to update every day
-        // resources are not valid! calculate resources until end of plus and again further!
-        $timeNeeded = 0;
-        $cur_res = [$data['wood'], $data['clay'], $data['iron'], $data['crop']];
-        $cur_prod = [
-            $data['woodp'],
-            $data['clayp'],
-            $data['ironp'],
-            $data['cropp'],
-        ];
-        for ($i = 0; $i < 4; ++$i) {
-            if (floor($cur_res[$i]) < $costs[$i]) {
-                if ($i == 3 && $cur_prod[$i] <= 0) {
-                    $neededTime = 86400;
-                } else {
-                    $neededTime = ($costs[$i] - floor($cur_res[$i])) / $cur_prod[$i] * 3600000;
-                }
-                if ($neededTime > $timeNeeded) {
-                    $timeNeeded = $neededTime;
-                }
-            }
-        }
-
-        return floor($timeNeeded / 1000);
-    }
 }

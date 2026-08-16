@@ -29,11 +29,7 @@ if ($config->game->speed <= 20 || $config->game->round_length == 'auto') {
 }
 $config->game->round_length_real = ceil(($config->timers->wwPlansReleaseTime - $config->game->start_time) / 86400);
 $config->heroConfig->resourcesMultiplier = getGameSpeed();
-if (strpos($globalConfig['staticParameters']['indexUrl'], "example.com") !== false) {
-    require __DIR__ . "/config.username.php";
-} else {
-    die("No valid configuration found.");
-}
+require __DIR__ . "/config.local.php";
 $customConfigFile = dirname(GLOBAL_CONFIG_FILE) . "/config.custom.php";
 if (is_file($customConfigFile)) {
     require $customConfigFile;

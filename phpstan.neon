@@ -1,0 +1,6 @@
+parameters:
+    level: 0
+    paths:
+        - main_script/include
+    bootstrapFiles:
+        - main_script/copyable/include/env.php

@@ -6,6 +6,7 @@ use Core\Database\DB;
 use Core\Database\GlobalDB;
 use Core\Helper\Mailer;
 use Core\Helper\Notification;
+use Core\Jobs\TransactionalTask;
 use Exception;
 use Game\AllianceBonus\AllianceBonus;
 use Game\Buildings\BuildingAction;
@@ -78,51 +79,154 @@ class Automation
         $result = $db->query("SELECT * FROM building_upgrade WHERE commence<=" . (time()) . " ORDER BY commence ASC, id ASC LIMIT 100");
         while ($row = $result->fetch_assoc()) {
             if ($row['isMaster']) {
-                $m->process($row);
+                $this->processMasterBuilderTask((int)$row['id'], $m);
             } else {
-                $db->query("DELETE FROM building_upgrade WHERE id={$row['id']}");
-                if ($db->affectedRows()) {
-                    BuildingAction::upgrade($row['kid'], $row['building_field']);
-                }
+                $this->processBuildingTask((int)$row['id']);
             }
         }
         $db = DB::getInstance();
         $result = $db->query("SELECT * FROM demolition WHERE end_time <= " . (time()) . " ORDER BY end_time ASC, id ASC LIMIT 50");
         while ($row = $result->fetch_assoc()) {
-            $db->query("DELETE FROM demolition WHERE id={$row['id']}");
-            if ($db->affectedRows()) {
-                BuildingAction::downgrade($row['kid'], $row['building_field'], 1, $row['complete']);
-            }
+            $this->processDemolitionTask((int)$row['id']);
         }
+    }
+
+    public function processBuildingTask(int $taskId): bool
+    {
+        return TransactionalTask::consume('building_upgrade', $taskId, function (array $row): void {
+            if (!$this->isBuildingTaskAllowed($row)) {
+                return;
+            }
+            BuildingAction::upgrade((int)$row['kid'], (int)$row['building_field']);
+        }, function () use ($taskId): void {
+            $this->lockVillageOwnerBeforeTask('building_upgrade', $taskId);
+        });
+    }
+
+    public function processMasterBuilderTask(int $taskId, ?MasterBuilder $masterBuilder = null): bool
+    {
+        $masterBuilder = $masterBuilder ?? new MasterBuilder();
+
+        return TransactionalTask::mutate('building_upgrade', $taskId, function (array $row) use ($masterBuilder): void {
+            $masterBuilder->process($row);
+        }, function () use ($taskId): void {
+            $this->lockVillageOwnerBeforeTask('building_upgrade', $taskId);
+        });
+    }
+
+    public function processDemolitionTask(int $taskId): bool
+    {
+        return TransactionalTask::consume('demolition', $taskId, function (array $row): void {
+            BuildingAction::downgrade(
+                (int)$row['kid'],
+                (int)$row['building_field'],
+                1,
+                (bool)$row['complete'],
+                false
+            );
+        }, function () use ($taskId): void {
+            $this->lockVillageOwnerBeforeTask('demolition', $taskId);
+        });
+    }
+
+    private function lockVillageOwnerBeforeTask(string $table, int $taskId): void
+    {
+        if (!in_array($table, ['building_upgrade', 'demolition'], true)) {
+            throw new \InvalidArgumentException("Unsupported village task table $table.");
+        }
+        $db = DB::getInstance();
+        $ownerResult = $db->query(
+            "SELECT v.owner FROM `$table` task
+             JOIN vdata v ON v.kid=task.kid WHERE task.id=$taskId"
+        );
+        if (!$ownerResult) {
+            throw new \RuntimeException("Unable to inspect $table task $taskId before locking it.");
+        }
+        if (!$ownerResult->num_rows) {
+            return;
+        }
+        $owner = (int)$ownerResult->fetch_assoc()['owner'];
+        $lockedOwner = $db->query("SELECT id FROM users WHERE id=$owner FOR UPDATE");
+        if (!$lockedOwner) {
+            throw new \RuntimeException("Unable to lock player $owner before $table task $taskId.");
+        }
+    }
+
+    private function isBuildingTaskAllowed(array $row): bool
+    {
+        $db = DB::getInstance();
+        $kid = (int)$row['kid'];
+        $field = (int)$row['building_field'];
+        $taskId = (int)$row['id'];
+        if ($field < 1 || ($field > 40 && $field !== 99)) {
+            return false;
+        }
+        $levelColumn = "f{$field}";
+        $typeColumn = "f{$field}t";
+        $stateResult = $db->query(
+            "SELECT v.capital, f.$levelColumn AS level, f.$typeColumn AS item_id
+             FROM vdata v JOIN fdata f ON f.kid=v.kid
+             WHERE v.kid=$kid FOR UPDATE"
+        );
+        if (!$stateResult) {
+            throw new \RuntimeException("Unable to lock building state for task $taskId.");
+        }
+        if (!$stateResult->num_rows) {
+            return false;
+        }
+        $state = $stateResult->fetch_assoc();
+        $itemId = (int)$state['item_id'];
+        $level = (int)$state['level'];
+        $capital = (int)$state['capital'] === 1;
+        $allowed = $itemId > 0
+            && VillageModel::isBuildingAllowedInCapitalState($itemId, $capital)
+            && $level < Formulas::buildingMaxLvl($itemId, $capital);
+        if ($allowed) {
+            return true;
+        }
+
+        $db->query(
+            "DELETE FROM building_upgrade
+             WHERE kid=$kid AND building_field=$field AND id<>$taskId"
+        );
+        $db->query("DELETE FROM demolition WHERE kid=$kid AND building_field=$field");
+        if ($field > 18 && $field < 99 && $level <= 0) {
+            $db->query("UPDATE fdata SET $typeColumn=0 WHERE kid=$kid");
+        }
+
+        return false;
     }
 
 
     public function attackMovementComplete()
     {
         $db = DB::getInstance();
-        $movements = $db->query("SELECT * FROM movement WHERE mode=0 AND end_time <= " . miliseconds() . " ORDER BY end_time ASC, id ASC LIMIT 250");
+        $movements = $db->query("SELECT id FROM movement WHERE mode=0 AND end_time <= " . miliseconds() . " ORDER BY end_time ASC, id ASC LIMIT 250");
         $this->processMovementComplete($movements);
     }
 
     public function otherMovementComplete()
     {
         $db = DB::getInstance();
-        $movements = $db->query("SELECT * FROM movement WHERE mode=1 AND end_time <= " . miliseconds() . " ORDER BY end_time ASC, id ASC LIMIT 250");
+        $movements = $db->query("SELECT id FROM movement WHERE mode=1 AND end_time <= " . miliseconds() . " ORDER BY end_time ASC, id ASC LIMIT 250");
         $this->processMovementComplete($movements);
     }
 
     public function processMovementComplete(\mysqli_result $movements)
     {
-        $db = DB::getInstance();
         mt_srand(make_seed());
         while ($row = $movements->fetch_assoc()) {
-            $db->query("DELETE FROM movement WHERE id={$row['id']}");
-            if (!$db->affectedRows()) {
-                continue;
-            }
+            $this->processMovementTask((int)$row['id']);
+        }
+    }
+
+    public function processMovementTask(int $taskId): bool
+    {
+        return TransactionalTask::consume('movement', $taskId, function (array $row): void {
             if ($row['mode'] == 1) {
                 new ReturnProcessor($row);
-                continue;
+
+                return;
             }
             switch ($row['attack_type']) {
                 case MovementsModel::ATTACKTYPE_EVASION:
@@ -143,7 +247,38 @@ class Automation
                     new SettlersProcessor($row);
                     break;
             }
-        }
+        }, function () use ($taskId): void {
+            $db = DB::getInstance();
+            $taskResult = $db->query(
+                "SELECT mode, attack_type, u7, u8, to_kid FROM movement WHERE id=$taskId"
+            );
+            if (!$taskResult) {
+                throw new \RuntimeException("Unable to inspect movement $taskId before locking it.");
+            }
+            if (!$taskResult->num_rows) {
+                return;
+            }
+            $task = $taskResult->fetch_assoc();
+            if (
+                (int)$task['mode'] !== 0
+                || (int)$task['attack_type'] !== MovementsModel::ATTACKTYPE_NORMAL
+                || (empty($task['u7']) && empty($task['u8']))
+            ) {
+                return;
+            }
+
+            $targetKid = (int)$task['to_kid'];
+            $owner = (int)$db->fetchScalar("SELECT owner FROM vdata WHERE kid=$targetKid");
+            if ($owner <= 0) {
+                return;
+            }
+            $ownerResult = $db->query("SELECT id FROM users WHERE id=$owner FOR UPDATE");
+            if (!$ownerResult) {
+                throw new \RuntimeException(
+                    "Unable to lock player $owner before destructive movement $taskId."
+                );
+            }
+        });
     }
 
     public function handleAllianceBonusTasks()
@@ -164,16 +299,24 @@ class Automation
         $m = new AllianceBonusModel();
         $stmt = $db->query("SELECT * FROM alliance_bonus_upgrade_queue WHERE time < " . time() . " LIMIT 100");
         while ($row = $stmt->fetch_assoc()) {
-            $db->query("DELETE FROM alliance_bonus_upgrade_queue WHERE id={$row['id']}");
-            $m->levelUpBonus($row['aid'], $row['type']);
+            $this->processAllianceBonusTask((int)$row['id'], $m);
         }
+    }
+
+    public function processAllianceBonusTask(int $taskId, ?AllianceBonusModel $allianceBonus = null): bool
+    {
+        $allianceBonus = $allianceBonus ?? new AllianceBonusModel();
+
+        return TransactionalTask::consume('alliance_bonus_upgrade_queue', $taskId, function (array $row) use ($allianceBonus): void {
+            $allianceBonus->levelUpBonus((int)$row['aid'], (int)$row['type']);
+        });
     }
 
     public function marketComplete()
     {
         $db = DB::getInstance();
         $time = (time());
-        $result = $db->query("SELECT * FROM send WHERE end_time < $time ORDER BY end_time ASC, id ASC");
+        $result = $db->query("SELECT id FROM send WHERE end_time < $time ORDER BY end_time ASC, id ASC");
         $processor = new MarketPlaceProcessor();
         while ($row = $result->fetch_assoc()) {
             $processor->processRow($row);
@@ -183,15 +326,24 @@ class Automation
     public function researchComplete()
     {
         $db = DB::getInstance();
-        $result = $db->query("SELECT id, kid, nr, mode FROM research WHERE end_time <= " . (time()) . " ORDER BY end_time ASC, id ASC LIMIT 100");
+        $result = $db->query("SELECT id FROM research WHERE end_time <= " . (time()) . " ORDER BY end_time ASC, id ASC LIMIT 100");
         while ($row = $result->fetch_assoc()) {
-            $db->query("DELETE FROM research WHERE id={$row['id']}");
-            if ($row['mode'] == 1) {
-                $db->query("UPDATE tdata SET u{$row['nr']}=1 WHERE kid={$row['kid']}");
-            } else {
-                $db->query("UPDATE smithy SET u{$row['nr']}=IF(u{$row['nr']}+1>20, 20, u{$row['nr']}+1) WHERE kid={$row['kid']}");
-            }
+            $this->processResearchTask((int)$row['id']);
         }
+    }
+
+    public function processResearchTask(int $taskId): bool
+    {
+        return TransactionalTask::consume('research', $taskId, function (array $row): void {
+            $db = DB::getInstance();
+            $kid = (int)$row['kid'];
+            $nr = (int)$row['nr'];
+            if ((int)$row['mode'] === 1) {
+                $db->query("UPDATE tdata SET u$nr=1 WHERE kid=$kid");
+            } else {
+                $db->query("UPDATE smithy SET u$nr=IF(u$nr+1>20, 20, u$nr+1) WHERE kid=$kid");
+            }
+        });
     }
 
     public function trainingComplete()
@@ -201,18 +353,27 @@ class Automation
         $delay = 0;
         $time = getGame("useNanoseconds") ? (nanoseconds() - $delay * 1e9) : (getGame("useMilSeconds") ? (miliseconds() - $delay * 1000) : (time() - $delay));
         $immediate_train = implode(",", [9, 10, 11]);
-        $result = $db->query("SELECT * FROM training WHERE nr IN($immediate_train) AND commence < $time LIMIT 100");
+        $result = $db->query("SELECT id FROM training WHERE nr IN($immediate_train) AND commence < $time LIMIT 100");
         while ($row = $result->fetch_assoc()) {
-            $training->handleTrainingCompleteResult($row);
+            $this->processTrainingTask((int)$row['id'], $training);
         }
         if (getGameSpeed() > 20) {
             $delay = min(max(0, floor(getGameSpeed() / 1000) * 5), 30);
         }
         $time = getGame("useNanoseconds") ? (nanoseconds() - $delay * 1e9) : (getGame("useMilSeconds") ? (miliseconds() - $delay * 1000) : (time() - $delay));
-        $result = $db->query("SELECT * FROM training WHERE nr NOT IN($immediate_train) AND commence < $time LIMIT 100");
+        $result = $db->query("SELECT id FROM training WHERE nr NOT IN($immediate_train) AND commence < $time LIMIT 100");
         while ($row = $result->fetch_assoc()) {
-            $training->handleTrainingCompleteResult($row);
+            $this->processTrainingTask((int)$row['id'], $training);
         }
+    }
+
+    public function processTrainingTask(int $taskId, ?TrainingModel $training = null): bool
+    {
+        $training = $training ?? new TrainingModel();
+
+        return TransactionalTask::mutate('training', $taskId, function (array $row) use ($training): void {
+            $training->handleTrainingCompleteResult($row);
+        });
     }
 
     public function zeroPopVillages()
@@ -249,19 +410,36 @@ class Automation
     {
         $db = DB::getInstance();
         $message = new MessageModel();
-        $result = $db->query("SELECT * FROM voting_reward_queue LIMIT 50");
+        $result = $db->query("SELECT id FROM voting_reward_queue LIMIT 50");
         while ($row = $result->fetch_assoc()) {
-            $db->query("DELETE FROM voting_reward_queue WHERE id={$row['id']}");
+            $this->processVotingRewardTask((int)$row['id'], $message);
+        }
+        $result = $db->query("SELECT id FROM buyGoldMessages LIMIT 50");
+        while ($row = $result->fetch_assoc()) {
+            $this->processBuyGoldMessageTask((int)$row['id'], $message);
+        }
+    }
+
+    public function processVotingRewardTask(int $taskId, ?MessageModel $message = null): bool
+    {
+        $message = $message ?? new MessageModel();
+
+        return TransactionalTask::consume('voting_reward_queue', $taskId, function (array $row) use ($message): void {
             $arr = ['TopG', 'ArenaTop100', 'GTop100'];
-            if (in_array($row['votingName'], $arr) && !empty(Config::getProperty("Voting", $row['votingName'], "link"))) {
+            if (in_array($row['votingName'], $arr, true) && !empty(Config::getProperty("Voting", $row['votingName'], "link"))) {
                 $gift_gold = Config::getProperty("Voting", $row['votingName'], "gold");
+                $db = DB::getInstance();
                 $db->query("UPDATE users SET gift_gold=gift_gold+$gift_gold WHERE id={$row['uid']}");
                 $message->sendMessage(0, $row['uid'], null, $gift_gold, 4);
             }
-        }
-        $result = $db->query("SELECT * FROM buyGoldMessages LIMIT 50");
-        while ($row = $result->fetch_assoc()) {
-            $db->query("DELETE FROM buyGoldMessages WHERE id={$row['id']}");
+        });
+    }
+
+    public function processBuyGoldMessageTask(int $taskId, ?MessageModel $message = null): bool
+    {
+        $message = $message ?? new MessageModel();
+
+        return TransactionalTask::consume('buyGoldMessages', $taskId, function (array $row) use ($message): void {
             if ($row['type'] == 1) {
                 $title = T("Global", "BuyGoldSubject");
                 $msg = sprintf(T("Global", "BuyGoldText"), $row['gold'], $row['trackingCode']);
@@ -270,131 +448,194 @@ class Automation
                 $msg = sprintf(T("Global", "voucherText"), $row['gold'], $row['trackingCode']);
             }
             $message->sendMessage(0, $row['uid'], $title, $msg);
-        }
+        });
     }
 
     public function banProgress()
     {
         (new MultiAccount())->runProgress();
         $db = DB::getInstance();
-        $result = $db->query("SELECT * FROM banQueue WHERE end>0 AND end < " . time() . " LIMIT 10");
+        $result = $db->query("SELECT id FROM banQueue WHERE end>0 AND end < " . time() . " LIMIT 10");
         $infoBox = new InfoBoxModel();
         while ($row = $result->fetch_assoc()) {
-            $db->query("DELETE FROM banQueue WHERE id={$row['id']}");
+            $this->processBanTask((int)$row['id'], $infoBox);
+        }
+    }
+
+    public function processBanTask(int $taskId, ?InfoBoxModel $infoBox = null): bool
+    {
+        $infoBox = $infoBox ?? new InfoBoxModel();
+
+        return TransactionalTask::consume('banQueue', $taskId, function (array $row) use ($infoBox): void {
+            $db = DB::getInstance();
             $db->query("UPDATE users SET access=1 WHERE id={$row['uid']}");
             $infoBox->deleteInfoByType($row['uid'], 14);
-        }
+        });
     }
 
     public function referenceCheck()
     {
-        $inviteGold = Config::getProperty("gold", "invitePlayerGold");
-        $refLimit = Config::getAdvancedProperty("refLimit");
-
         $db = DB::getInstance();
-        $result = $db->query("SELECT * FROM player_references WHERE rewardGiven=0 LIMIT 100");
+        $result = $db->query("SELECT id FROM player_references WHERE rewardGiven=0 ORDER BY id ASC LIMIT 100");
         while ($row = $result->fetch_assoc()) {
+            $this->processReferenceTask((int)$row['id']);
+        }
+    }
+
+    public function processReferenceTask(int $taskId): bool
+    {
+        $inviteGold = (int)Config::getProperty("gold", "invitePlayerGold");
+        $refLimit = (int)Config::getAdvancedProperty("refLimit");
+
+        return TransactionalTask::mutate('player_references', $taskId, function (array $row) use ($inviteGold, $refLimit): void {
+            if ((int)$row['rewardGiven'] !== 0) {
+                return;
+            }
+            $db = DB::getInstance();
+            $userIds = array_unique([(int)$row['uid'], (int)$row['ref_uid']]);
+            sort($userIds, SORT_NUMERIC);
+            $lockedUsers = implode(',', $userIds);
+            if ($lockedUsers !== '') {
+                $db->query("SELECT id FROM users WHERE id IN ($lockedUsers) ORDER BY id FOR UPDATE");
+            }
             $totalVillagesCount = $db->fetchScalar("SELECT total_villages FROM users WHERE id={$row['uid']}");
             if (!$totalVillagesCount) {
                 $db->query("DELETE FROM player_references WHERE id={$row['id']}");
-                continue;
+                return;
             }
-            $countTotal = $db->fetchScalar("SELECT COUNT(id) FROM player_references WHERE rewardGiven=1 AND ref_uid={$row['ref_uid']}");
+            $countTotal = $db->fetchScalar(
+                "SELECT COUNT(id) FROM player_references WHERE rewardGiven=1 AND ref_uid={$row['ref_uid']}"
+            );
             if ($countTotal >= $refLimit) {
                 $db->query("UPDATE player_references SET rewardGiven=2 WHERE id={$row['id']}");
-                continue;
+                return;
             }
             if ($totalVillagesCount >= 2) {
                 $db->query("UPDATE player_references SET rewardGiven=1 WHERE id={$row['id']}");
                 $db->query("UPDATE users SET gift_gold=gift_gold+$inviteGold WHERE id={$row['ref_uid']}");
             }
-        }
+        });
     }
 
     public function deleteOasisComplete()
     {
         $db = DB::getInstance();
-        $result = $db->query("SELECT * FROM odelete WHERE end_time <= " . (time()) . " ORDER BY end_time ASC, id ASC LIMIT 10");
-        $m = new AccountDeleter();
+        $result = $db->query("SELECT id FROM odelete WHERE end_time <= " . (time()) . " ORDER BY end_time ASC, id ASC LIMIT 10");
         while ($row = $result->fetch_assoc()) {
-            $db->query("DELETE FROM odelete WHERE id={$row['id']}");
-            OasesModel::releaseOasis($row['oid'], $row['kid']);
+            $this->processOasisDeletionTask((int)$row['id']);
+        }
+    }
+
+    public function processOasisDeletionTask(int $taskId): bool
+    {
+        return TransactionalTask::consume('odelete', $taskId, function (array $row): void {
+            $db = DB::getInstance();
+            $accountDeleter = new AccountDeleter();
+            if (!OasesModel::releaseOasis($row['oid'], $row['kid'], $row['end_time'], true)) {
+                return;
+            }
             $enforces = $db->query("SELECT * FROM enforcement WHERE to_kid={$row['oid']}");
             while ($enforce = $enforces->fetch_assoc()) {
-                $m->returnTrappedOrEnforcementRow($enforce, true);
+                $accountDeleter->returnTrappedOrEnforcementRow($enforce, true);
             }
             $find = $db->query("SELECT * FROM movement WHERE to_kid={$row['oid']} AND mode=0");
-            while ($row = $find->fetch_assoc()) {
-                $m->cancelMovement($row['id'], $row['to_kid'], $row['kid']);
+            while ($movement = $find->fetch_assoc()) {
+                $accountDeleter->cancelMovement($movement['id'], $movement['to_kid'], $movement['kid']);
             }
-        }
+        });
     }
 
     public function tradeRoutes()
     {
         $usePeriodicTradeRoutes = getGame("usePeriodicTradeRoutes");
         $db = DB::getInstance();
-        $result = $db->query("SELECT * FROM traderoutes WHERE enabled=1 AND time <= " . (time()) . " LIMIT 100");
-        $marketModel = new MarketModel();
+        $result = $db->query("SELECT id FROM traderoutes WHERE enabled=1 AND time <= " . (time()) . " ORDER BY time ASC, id ASC LIMIT 100");
         while ($row = $result->fetch_assoc()) {
-            if ($usePeriodicTradeRoutes) {
-                $db->query("UPDATE traderoutes SET time=time+{$row['start_hour']} WHERE id={$row['id']}");
-            } else {
-                $db->query("UPDATE traderoutes SET time=time+86400 WHERE id={$row['id']}");
+            $this->processTradeRouteTask((int)$row['id'], (bool)$usePeriodicTradeRoutes);
+        }
+    }
+
+    public function processTradeRouteTask(int $taskId, bool $usePeriodicTradeRoutes = false): bool
+    {
+        return TransactionalTask::mutate('traderoutes', $taskId, function (array $row) use ($usePeriodicTradeRoutes): void {
+            if ((int)$row['enabled'] !== 1 || (int)$row['time'] > time()) {
+                return;
             }
-            $uid = $marketModel->getVillageOwner($row['kid']);
+            $db = DB::getInstance();
+            $nextTime = (int)$row['time'] + ($usePeriodicTradeRoutes ? (int)$row['start_hour'] : 86400);
+            $advance = static function () use ($db, $row, $nextTime): void {
+                $db->query("UPDATE traderoutes SET time=$nextTime WHERE id={$row['id']}");
+            };
+            $ownerResult = $db->query("SELECT owner FROM vdata WHERE kid={$row['kid']} FOR UPDATE");
+            $uid = $ownerResult && $ownerResult->num_rows ? (int)$ownerResult->fetch_assoc()['owner'] : 0;
             if ($uid === 0) {
                 $db->query("DELETE FROM traderoutes WHERE kid={$row['kid']} OR to_kid={$row['kid']}");
+                return;
             }
+            $marketModel = new MarketModel();
             $race = $marketModel->getPlayerRace($uid);
             $market = $marketModel->getMarketAndTradeOfficeLevel($row['kid']);
             if (!$market[17]) {
-                continue;
+                $advance();
+                return;
             }
-            $cur_resources = array_map("floor", $marketModel->getVillageResources($row['kid']));
-            $resources_to_send = [
+            $curResources = array_map("floor", $marketModel->getVillageResources($row['kid']));
+            $resourcesToSend = array_map("floor", [
                 1 => $row['r1'],
                 2 => $row['r2'],
                 3 => $row['r3'],
                 4 => $row['r4'],
-            ];
-            $zeroCount = 0;
-            $resources_to_send = array_map("floor", $resources_to_send);
-            foreach ($resources_to_send as $k => $v) {
-                if ($v > $cur_resources[$k]) {
-                    $resources_to_send[$k] = $cur_resources[$k];
-                }
-                if ($v <= 0) {
-                    $zeroCount++;
+            ]);
+            foreach ($resourcesToSend as $key => $value) {
+                if ($value > $curResources[$key]) {
+                    $resourcesToSend[$key] = $curResources[$key];
                 }
             }
-            if (!array_sum($resources_to_send)) {
-                continue;
+            if (!array_sum($resourcesToSend)) {
+                $advance();
+                return;
             }
-            $alliance_bonus = 1;
-            $alliance = $db->query("SELECT aid, alliance_join_time FROM users WHERE id=$uid")->fetch_assoc();
-            if ($alliance['aid'] > 0) {
-                $alliance_bonus = AllianceBonus::getTradersBonus($alliance['aid'], $alliance['alliance_join_time']);
+            $allianceBonus = 1;
+            $alliance = $db->query("SELECT aid, alliance_join_time FROM users WHERE id=$uid FOR UPDATE")->fetch_assoc();
+            if ($alliance && $alliance['aid'] > 0) {
+                $allianceBonus = AllianceBonus::getTradersBonus($alliance['aid'], $alliance['alliance_join_time']);
             }
-            $merchant_cap = Formulas::merchantCAP($race, $market[28], $alliance_bonus);
-            $total_resources = array_sum($resources_to_send);
-            $total_available_merchants = $market[17] - $marketModel->getOfferingMerchantsCount($row['kid'], $merchant_cap) - $marketModel->getOnTheWayMerchantsCount($row['kid'], $merchant_cap);
-            if (!$total_available_merchants) {
-                continue;
+            $merchantCap = Formulas::merchantCAP($race, $market[28], $allianceBonus);
+            $totalResources = array_sum($resourcesToSend);
+            $totalAvailableMerchants = $market[17]
+                - $marketModel->getOfferingMerchantsCount($row['kid'], $merchantCap)
+                - $marketModel->getOnTheWayMerchantsCount($row['kid'], $merchantCap);
+            if ($totalAvailableMerchants <= 0) {
+                $advance();
+                return;
             }
-            $total_need_merchants = ceil($total_resources / $merchant_cap);
-            if ($total_need_merchants > $total_available_merchants) {
-                $resourcesTogo = [1 => 0, 2 => 0, 3 => 0, 4 => 0];
-                $max = $total_available_merchants * $merchant_cap;
-                for ($i = 1; $i <= 4; $i++) {
-                    $resourcesTogo[$i] = max(min($max, $resources_to_send[$i]), 0);
-                    $max -= $resourcesTogo[$i];
+            $totalNeedMerchants = ceil($totalResources / $merchantCap);
+            if ($totalNeedMerchants > $totalAvailableMerchants) {
+                $resourcesToGo = [1 => 0, 2 => 0, 3 => 0, 4 => 0];
+                $remainingCapacity = $totalAvailableMerchants * $merchantCap;
+                for ($i = 1; $i <= 4; ++$i) {
+                    $resourcesToGo[$i] = max(min($remainingCapacity, $resourcesToSend[$i]), 0);
+                    $remainingCapacity -= $resourcesToGo[$i];
                 }
-                $resources_to_send = $resourcesTogo;
+                $resourcesToSend = $resourcesToGo;
             }
-            $marketModel->sendResources($row['kid'], $row['to_kid'], $race, $resources_to_send[1], $resources_to_send[2], $resources_to_send[3], $resources_to_send[4], $row['times'], $row['time']);
-            $db->query("UPDATE vdata SET wood=wood-{$resources_to_send[1]}, clay=clay-{$resources_to_send[2]}, iron=iron-{$resources_to_send[3]}, crop=crop-{$resources_to_send[4]} WHERE kid={$row['kid']}");
-        }
+            $marketModel->sendResources(
+                $row['kid'],
+                $row['to_kid'],
+                $race,
+                $resourcesToSend[1],
+                $resourcesToSend[2],
+                $resourcesToSend[3],
+                $resourcesToSend[4],
+                $row['times'],
+                $row['time']
+            );
+            $db->query(
+                "UPDATE vdata SET wood=wood-{$resourcesToSend[1]}, clay=clay-{$resourcesToSend[2]},
+                    iron=iron-{$resourcesToSend[3]}, crop=crop-{$resourcesToSend[4]} WHERE kid={$row['kid']}"
+            );
+            $advance();
+        });
     }
 
     public function cleanupServer()
@@ -891,10 +1132,9 @@ class Automation
             $globalDB->query("UPDATE gameServers SET registerClosed=1 WHERE id=" . getWorldUniqueId());
         }
         $db = DB::getInstance();
-        $result = $db->query("SELECT * FROM notificationQueue LIMIT 100");
+        $result = $db->query("SELECT id FROM notificationQueue ORDER BY id ASC LIMIT 100");
         while ($row = $result->fetch_assoc()) {
-            $db->query("DELETE FROM notificationQueue WHERE id={$row['id']}");
-            Notification::notifyReal($row['message']);
+            $this->processNotificationTask((int)$row['id']);
         }
         if (time() > $config->game->start_time) {
             $interval = getCustom("activationReminderInterval");
@@ -904,10 +1144,29 @@ class Automation
                         "worldUniqueId") . "  LIMIT 20");
                 $view = new PHPBatchView("mail/activationReminder");
                 while ($row = $result->fetch_assoc()) {
-                    $globalDB->query("UPDATE activation SET reminded=1 WHERE id={$row['id']}");
-                    $view->vars['name'] = $row['name'];
-                    $view->vars['activationCode'] = $row['activationCode'];
-                    Mailer::sendEmail($row['email'], T("Mail", "Email verification reminder"), $view->output());
+                    if (!$globalDB->begin_transaction()) {
+                        throw new \RuntimeException('Unable to begin activation reminder transaction.');
+                    }
+                    try {
+                        $view->vars['name'] = $row['name'];
+                        $view->vars['activationCode'] = $row['activationCode'];
+                        if (!Mailer::sendEmail(
+                            $row['email'],
+                            T("Mail", "Email verification reminder"),
+                            $view->output(),
+                            0,
+                            'activation-reminder:' . getWorldUniqueId() . ':' . $row['id']
+                        )) {
+                            throw new \RuntimeException('Unable to queue activation reminder.');
+                        }
+                        $globalDB->query("UPDATE activation SET reminded=1 WHERE id={$row['id']}");
+                        if (!$globalDB->commit()) {
+                            throw new \RuntimeException('Unable to commit activation reminder.');
+                        }
+                    } catch (\Throwable $e) {
+                        $globalDB->rollback();
+                        throw $e;
+                    }
                 }
             }
             $interval = getCustom("activationProgressReminderInterval");
@@ -915,13 +1174,30 @@ class Automation
                 $result = $db->query("SELECT * FROM activation WHERE time>0 AND reminded=0 AND (" . time() . "-IF(time <= $startTime, $startTime, time) >= $interval) LIMIT 20");
                 $view = new PHPBatchView("mail/activationProgressReminder");
                 while ($row = $result->fetch_assoc()) {
-                    $db->query("UPDATE activation SET reminded=1 WHERE id={$row['id']}");
                     $view->vars['name'] = $row['name'];
                     $view->vars['token'] = $row['token'];
-                    Mailer::sendEmail($row['email'], T("Mail", "Activation progress reminder"), $view->output());
+                    if (!Mailer::sendEmail(
+                        $row['email'],
+                        T("Mail", "Activation progress reminder"),
+                        $view->output(),
+                        0,
+                        'activation-progress-reminder:' . getWorldUniqueId() . ':' . $row['id']
+                    )) {
+                        throw new \RuntimeException('Unable to queue activation progress reminder.');
+                    }
+                    if (!$db->query("UPDATE activation SET reminded=1 WHERE id={$row['id']}")) {
+                        throw new \RuntimeException('Unable to mark activation progress reminder.');
+                    }
                 }
             }
         }
+    }
+
+    public function processNotificationTask(int $taskId): bool
+    {
+        return TransactionalTask::consume('notificationQueue', $taskId, function (array $row): void {
+            Notification::notifyReal($row['message'], Notification::deliveryKey((int)$row['id']));
+        });
     }
 
     public function postService()

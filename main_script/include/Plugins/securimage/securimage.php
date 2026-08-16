@@ -323,6 +323,15 @@ class Securimage
     /*%*********************************************************************%*/
     // Properties
 
+    /** @var string */
+    public $code_entered = '';
+
+    /** @var bool */
+    public $correct_code = false;
+
+    /** @var mixed */
+    public $gdnoisecolor;
+
     /**
      * The width of the captcha image
      * @var int
@@ -2199,7 +2208,7 @@ class Securimage
             $length = strlen($code['display']);
 
             for($i = 0; $i < $length; ++$i) {
-                $letter    = $code['display']{$i};
+                $letter    = $code['display'][$i];
                 $letters[] = $letter;
             }
         }
@@ -2893,7 +2902,7 @@ class Securimage
                                        $letter_file,
                                        $this->getSoxEffectChain());
 
-                    $data = `$sox_cmd`;
+                    $data = shell_exec($sox_cmd);
 
                     $l = new WavFile();
                     $l->setIgnoreChunkSizes(true);
@@ -3158,7 +3167,7 @@ class Securimage
                        $steps[$selSteps[1]],
                        $sweep1[1]
                        );
-        $data = `$cmd`;
+        $data = shell_exec($cmd);
 
         return $data;
     }
@@ -3172,7 +3181,7 @@ class Securimage
     protected function wavToMp3($data)
     {
         if (!file_exists(self::$lame_binary_path) || !is_executable(self::$lame_binary_path)) {
-            throw new Exception('Lame binary "' . $this->lame_binary_path . '" does not exist or is not executable');
+            throw new Exception('Lame binary "' . self::$lame_binary_path . '" does not exist or is not executable');
         }
 
         // size of wav data input

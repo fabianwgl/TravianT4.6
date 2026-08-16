@@ -90,7 +90,7 @@
 							"currentStep" => 0,
 							"stepCount" => 1,
 							"steps" => ["stepId" => 0,"type" => "reward"],
-							"answersLink" => "http://t4.answers.travian.com/index.php?aid=%%achievementQuests.achQuestReward_01_answer (en)%%#go2answer",
+							"answersLink" => "/docs/index.php?aid=%%achievementQuests.achQuestReward_01_answer (en)%%#go2answer",
 						];
 					}
 					if(!$quest['reward2Done'] && $total_points >= 50){
@@ -102,7 +102,7 @@
 							"currentStep" => 0,
 							"stepCount" => 1,
 							"steps" => ["stepId" => 0,"type" => "reward"],
-							"answersLink" => "http://t4.answers.travian.com/index.php?aid=%%achievementQuests.achQuestReward_02_answer (en)%%#go2answer",
+							"answersLink" => "/docs/index.php?aid=%%achievementQuests.achQuestReward_02_answer (en)%%#go2answer",
 						];
 					}
 					if(!$quest['reward3Done'] && $total_points >= 75){
@@ -114,7 +114,7 @@
 							"currentStep" => 0,
 							"stepCount" => 1,
 							"steps" => ["stepId" => 0,"type" => "reward"],
-							"answersLink" => "http://t4.answers.travian.com/index.php?aid=%%achievementQuests.achQuestReward_03_answer (en)%%#go2answer",
+							"answersLink" => "/docs/index.php?aid=%%achievementQuests.achQuestReward_03_answer (en)%%#go2answer",
 						];
 					}
 					if(!$quest['reward4Done'] && $total_points >= 100){
@@ -126,7 +126,7 @@
 							"currentStep" => 0,
 							"stepCount" => 1,
 							"steps" => ["stepId" => 0,"type" => "reward"],
-							"answersLink" => "http://t4.answers.travian.com/index.php?aid=%%achievementQuests.achQuestReward_04_answer (en)%%#go2answer",
+							"answersLink" => "/docs/index.php?aid=%%achievementQuests.achQuestReward_04_answer (en)%%#go2answer",
 						];
 					}
 				}

@@ -1,5 +1,3 @@
-<script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
-
 <h4 class="round"><?= T("Statistics", "General.Players"); ?></h4>
 
 <table cellpadding="1" cellspacing="1" id="world_player"
@@ -77,47 +75,24 @@
     <?= $vars['world_misc']; ?>
     </tbody>
 </table>
-<?php if (true || $vars['hasPlus']): ?>
-    <script type="text/javascript">
-        // Load the Visualization API and the corechart package.
-        google.charts.load('current', {'packages': ['corechart', 'bar']});
-
-        // Set a callback to run when the Google Visualization API is loaded.
-        google.charts.setOnLoadCallback(drawChart);
-
-        // Callback that creates and populates a data table,
-        // instantiates the pie chart, passes in the data and
-        // draws it.
-        function drawChart() {
-
-            // Create the data table.
-            var data = new google.visualization.DataTable();
-
-
-            data.addColumn('date', 'Date');
-            data.addColumn('number', '<?= T("Statistics", "General.Attacks"); ?>');
-            data.addColumn('number', '<?= T("Statistics", "General.Casualties"); ?>');
-
-            data.addRows([
-                <?php foreach($vars['casualtiesData'] as $row):?>
-                [new Date(<?=$row['time'] * 1000;?>), <?=$row['attacks'];?>, <?=$row['casualties'];?>],
-                <?php endforeach;?>
-            ]);
-            // Set chart options
-            var options = {
-                chartArea: {},
-                vAxis: {
-                    format: 'dd.MM',
-                    ticks: data.getDistinctValues(0)
-                },
-            };
-            // Instantiate and draw our chart, passing in some options.
-            var chart = new google.visualization.BarChart(document.getElementById('casualties_chart'));
-            chart.draw(data, options);
-        }
-    </script>
+<?php if (!empty($vars['casualtiesData'])): ?>
     <h4 class="round spacer"><?= T("Statistics", "General.Attacks and casualties"); ?></h4>
-    <div id="casualties_chart" style="overflow: hidden;"></div>
+    <table cellpadding="1" cellspacing="1" class="world">
+        <thead><tr class="hover">
+            <td><?= T("Statistics", "General.Date"); ?></td>
+            <td><?= T("Statistics", "General.Attacks"); ?></td>
+            <td><?= T("Statistics", "General.Casualties"); ?></td>
+        </tr></thead>
+        <tbody>
+        <?php foreach ($vars['casualtiesData'] as $row): ?>
+            <tr class="hover">
+                <td><?= date('Y-m-d', (int)$row['time']); ?></td>
+                <td><?= (int)$row['attacks']; ?></td>
+                <td><?= (int)$row['casualties']; ?></td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
 <?php endif; ?>
 <?php if (getDisplay("showCountryFlagsInGeneralStatistics")): ?>
     <style type="text/css">

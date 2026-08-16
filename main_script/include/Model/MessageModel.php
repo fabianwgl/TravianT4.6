@@ -239,7 +239,7 @@ class MessageModel
         return $md5_checksum;
     }
 
-    public function checkLastMessage($uid, $banned, $to_uid = FALSE, $subject, $text)
+    public function checkLastMessage($uid, $banned, $to_uid, $subject, $text)
     {
         if ($to_uid !== FALSE && $to_uid <= 2) {
             return TRUE;
@@ -357,4 +357,4 @@ class MessageModel
         }
         return $insertId;
     }
-} 
+}

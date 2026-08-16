@@ -50,6 +50,7 @@ class NoticeHelper
     const SURROUNDING_VILLAGE_CONQUER = 7;
     const SURROUNDING_VILLAGE_LOST = 8;
     const SURROUNDING_VILLAGE_RENAME = 9;
+    const SURROUNDING_VILLAGE_DESTROYED = 10;
 
     //TODO: add new village founding on player registration
     public static function getSurroundingStyle($type)
@@ -64,6 +65,7 @@ class NoticeHelper
                    'villageConquer',
                    'villageLost',
                    'villageRename',
+                   'villageLost',
                ][$type - 1];
     }
 
@@ -75,7 +77,7 @@ class NoticeHelper
         }
         $params = $db->real_escape_string($params);
         $kid = Formulas::xy2kid($x, $y);
-        $db->query("INSERT INTO surrounding (`kid`, `x`, `y`, `type`, `params`, `time`) VALUES ($kid, $x, $y, $type, '$params', $time)");
+        return $db->query("INSERT INTO surrounding (`kid`, `x`, `y`, `type`, `params`, `time`) VALUES ($kid, $x, $y, $type, '$params', $time)");
     }
 
     public static function addNotice($aid, $uid, $kid, $to_kid, $type, $bounty, $data, $happenTime, $isEnforcement = FALSE, $losses = 0, $non_deletable = false)

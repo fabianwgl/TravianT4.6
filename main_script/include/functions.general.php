@@ -2,11 +2,13 @@
 
 use Core\Caching\Caching;
 use Core\Config;
+use Core\Clock;
 use Core\ErrorHandler;
 use Core\Helper\ReCaptcha;
 use Core\Helper\TimezoneHelper;
 use Core\Helper\WebService;
 use Core\Locale;
+use Core\Random;
 use Core\Session;
 use Model\DailyQuestModel;
 use Model\Quest;
@@ -63,7 +65,7 @@ function shuffle_assoc($list)
 function getGameElapsedSeconds()
 {
     $config = Config::getInstance();
-    return time() - $config->game->start_time;
+    return Clock::now() - $config->game->start_time;
 }
 
 function getGameElapsedMiliSeconds()
@@ -124,9 +126,7 @@ function clean_string_from_white($string)
 
 function make_seed()
 {
-    list($usec, $sec) = explode(' ', microtime());
-
-    return (float)$sec + ((float)$usec * 100000);
+    return Random::seed();
 }
 
 function calculate_dailyquest_bonus($x, $type)
@@ -204,16 +204,12 @@ function getDirection()
 
 function getAnswersUrl()
 {
-    global $globalConfig;
-    $url = $globalConfig['staticParameters']['answersUrl'] . "?lang=" . Session::getInstance()->getLanguage() . '&';
-    return $url;
+    return '/docs/?lang=' . rawurlencode(Session::getInstance()->getLanguage()) . '&';
 }
 
 function getForumUrl()
 {
-    $config = Config::getInstance();
-    $url = ($config->settings->availableLanguages->{$config->settings->selectedLang}->ForumUrl);
-    return $url;
+    return '/docs/';
 }
 
 function getGameSpeed()
@@ -255,7 +251,7 @@ function generate_guid($trim = true)
     }
 
     // Fallback (PHP 4.2+)
-    mt_srand((double)microtime() * 10000);
+    mt_srand((float)microtime() * 10000);
     $charid = strtolower(md5(uniqid(rand(), true)));
     $hyphen = chr(45);                  // "-"
     $lbrace = $trim ? "" : chr(123);    // "{"
@@ -322,8 +318,8 @@ function multiply_packages($rate, $type = 7)
  */
 function miliseconds($fixed = false)
 {
-    if ($fixed) {
-        return time() * 1000;
+    if ($fixed || Clock::isFrozen()) {
+        return Clock::milliseconds();
     }
     $microtime = microtime();
     $comps = explode(' ', $microtime);
@@ -338,6 +334,10 @@ function getDifMilisecondsToSeconds($miliseconds)
 
 function nanoseconds()
 {
+    if (Clock::isFrozen()) {
+        return Clock::nanoseconds();
+    }
+
     /*if (function_exists('exec')) {
         exec('date +%s%N', $nano);
         return trim($nano[0]);
@@ -566,7 +566,7 @@ function secondsToString($seconds, $isTrainingTime = false)
             return milisecondsToString($seconds);
         }
     }
-    if ($seconds == time()) {
+    if ($seconds == Clock::now()) {
         return TimezoneHelper::date("H:i:s");
     }
     $h = (int)floor($seconds / 3600);
@@ -612,38 +612,18 @@ function is_lowres()
 
 function get_gpack_cdn_base_url()
 {
-    return '//gpack' . '.' . WebService::getRealDomain();
+    return rtrim(Config::getProperty('settings', 'indexUrl'), '/') . '/gpack/';
 }
 
 function get_gpack_cdn_base_url_with_protocol()
 {
-    return 'http://gpack' . '.' . WebService::getRealDomain();
+    return get_gpack_cdn_base_url();
 }
 
 function get_gpack_version($default = false)
 {
     global $globalConfig;
-    $gpack_version = $globalConfig['staticParameters']['gpacks']['default'];
-
-    return $gpack_version;
-    if (!$default) {
-        $gpackList = $globalConfig['staticParameters']['gpacks']['list'];
-        if (isset($_COOKIE['travian_gpack_hash'])) {
-            if (isset($gpackList[$_COOKIE['travian_gpack_hash']])) {
-                $gpack_version = $_COOKIE['travian_gpack_hash'];
-            }
-        }
-    }
-    return $gpack_version;
-}
-
-function set_gpack_version($gpack_version)
-{
-    global $globalConfig;
-    $gpackList = $globalConfig['staticParameters']['gpacks']['list'];
-    if ($gpackList[$gpack_version]) {
-        setcookie('travian_gpack_hash', $gpack_version, time() + 365 * 86400);
-    }
+    return $globalConfig['staticParameters']['gpacks']['default'];
 }
 
 function get_gpack_cdn_url($default = false)
@@ -653,8 +633,8 @@ function get_gpack_cdn_url($default = false)
 
 function get_gpack_cdn_mainPage_url($default = false)
 {
-    return get_gpack_cdn_base_url() . 'a17a8f72/mainPage/';
-    return get_gpack_cdn_base_url() . get_gpack_version($default) . '/mainPage/';
+    global $globalConfig;
+    return get_gpack_cdn_base_url() . $globalConfig['staticParameters']['gpacks']['mainPage'] . '/mainPage/';
 }
 
 function redirect($url, $code = 302)

@@ -8,9 +8,9 @@ use Core\Database\GlobalDB;
 use Core\Helper\TimezoneHelper;
 use Core\Helper\WebService;
 use Core\Session;
+use Core\Security\Password;
 use Game\Formulas;
 use Core\Locale;
-use function get_gpack_version;
 use Model\InfoBoxModel;
 use Model\OptionModel;
 use resources\View\GameView;
@@ -55,12 +55,6 @@ class OptionCtrl extends GameCtrl
             $this->Game();
         } else if ($selectedTab == 2) {
             $this->Account();
-            if (isset($_POST['gpackNew'])) {
-                if (trim($_POST['gpackNew']) != get_gpack_version()) {
-                    set_gpack_version(trim($_POST['gpackNew']));
-                    $this->redirect("options.php?s=2");
-                }
-            }
         } else if ($selectedTab == 3) {
             $this->Sitter();
         } else if ($selectedTab == 4 && Config::getProperty("game", "vacationDays") > 0) {
@@ -182,7 +176,7 @@ class OptionCtrl extends GameCtrl
                     if (empty($newName) || empty($_POST['account_rename_password_confirmation'])) {
                         $view->vars['error'] = T("Options",
                             "Please enter a new account name and confirmation password");
-                    } else if (sha1($_POST['account_rename_password_confirmation']) != $_SESSION[WebService::fixSessionPrefix('pw')]) {
+                    } else if (!Password::verify($_POST['account_rename_password_confirmation'], $_SESSION[WebService::fixSessionPrefix('pw')])) {
                         $view->vars['error'] = T("Options", "Confirmation password does not match");
                     } else {
                         $error = $m->doesNameMeetRequirements(Session::getInstance()->getName(), $newName);
@@ -239,17 +233,18 @@ class OptionCtrl extends GameCtrl
                 }
             }
             if (isset($_POST['pw1']) && isset($_POST['pw2']) && isset($_POST['pw3']) && !empty($_POST['pw1']) && !empty($_POST['pw2']) && !empty($_POST['pw3'])) {
-                if (sha1($_POST['pw1']) != $_SESSION[WebService::fixSessionPrefix('pw')]) {
+                if (!Password::verify($_POST['pw1'], $_SESSION[WebService::fixSessionPrefix('pw')])) {
                     $view->vars['error'] = T("Options", "password wrong");
                 } else if ($_POST['pw2'] != $_POST['pw3']) {
                     $view->vars['error'] = T("Options", "Confirmation password does not match");
                 } else {
-                    $m->changePassword(Session::getInstance()->getPlayerId(), $_POST['pw2']);
+                    $_SESSION[WebService::fixSessionPrefix('pw')] =
+                        $m->changePassword(Session::getInstance()->getPlayerId(), $_POST['pw2']);
                 }
             }
             if (isset($_POST['del_pw']) && isset($_POST['del']) && !empty($_POST['del_pw']) && $_POST['del'] == 1) {
                 if (!$m->getLatestPayment(Session::getInstance()->getPlayerId())) {
-                    if (sha1($_POST['del_pw']) != $_SESSION[WebService::fixSessionPrefix('pw')]) {
+                    if (!Password::verify($_POST['del_pw'], $_SESSION[WebService::fixSessionPrefix('pw')])) {
                         $view->vars['error'] = T("Options", "password wrong");
                     } else if (!$m->isDeletion(Session::getInstance()->getPlayerId())) {
                         if (Session::getInstance()->isInVacationMode()) {
@@ -261,6 +256,20 @@ class OptionCtrl extends GameCtrl
                     }
                 }
             }
+            $cancelEmailChange = isset($_POST['cancelEmailChange']) && $_POST['cancelEmailChange'] === '1';
+            $cancelDeletion = isset($_POST['cancelDeletion']) && $_POST['cancelDeletion'] === '1';
+            if (($cancelEmailChange || $cancelDeletion) && Session::validateChecker()) {
+                if ($cancelEmailChange) {
+                    $m->cancelEmailChange(Session::getInstance()->getPlayerId());
+                }
+                if ($cancelDeletion) {
+                    if (Config::getInstance()->dynamic->serverFinished) {
+                        $this->innerRedirect("InGameWinnerPage");
+                    }
+                    $m->cancelDeletion(Session::getInstance()->getPlayerId());
+                    InfoBoxModel::invalidateUserInfoBoxCache(Session::getInstance()->getPlayerId());
+                }
+            }
             if (isset($_POST['newsletter_posted']) && $_POST['newsletter_posted'] == 1) {
                 if (isset($_POST['newsletter_4']) && $_POST['newsletter_4'] == 1) {
                     $m->subscribeNewsletter(Session::getInstance()->getEmail());
@@ -269,14 +278,6 @@ class OptionCtrl extends GameCtrl
                 }
             }
             Session::getInstance()->changeChecker();
-        } else if (isset($_GET['email_abbrechen']) && $_GET['a'] == Session::getInstance()->getChecker()) {
-            $m->cancelEmailChange(Session::getInstance()->getPlayerId());
-        } else if (isset($_GET['a']) && $_GET['a'] == 1) {
-            if (Config::getInstance()->dynamic->serverFinished) {
-                $this->innerRedirect("InGameWinnerPage");
-            }
-            $m->cancelDeletion(Session::getInstance()->getPlayerId());
-            InfoBoxModel::invalidateUserInfoBoxCache(Session::getInstance()->getPlayerId());
         }
         $this->view->vars['content'] .= $view->output();
     }
@@ -286,55 +287,67 @@ class OptionCtrl extends GameCtrl
         $view = new PHPBatchView("options/Sitters");
         $m = new OptionModel();
         $db = DB::getInstance();
-        if (WebService::isPost() && $_REQUEST['a'] == Session::getInstance()->getChecker()) {
-            $sitter1 = $this->mergeSitter(1);
-            $sitter2 = $this->mergeSitter(0);
-            if (!empty($sitter1['name'])) {
-                $uid = $m->getUserByName($sitter1['name']);
-                if ($uid && ($uid != $this->session->getPlayerId()) && ($uid != $this->session->getSittersId(2) || $this->session->getSittersId(2) == 0)) {
-                    if ($this->getTotalSitterCount($uid, $this->session->getPlayerId()) < 2) {
-                        $db->query("UPDATE users SET sit1Uid=$uid, sit1Permissions='{$sitter1['perm']}' WHERE id=" . $this->session->getPlayerId());
-                        $this->session->setSittersId(1, $uid);
-                        $this->session->setSittersPermissions(1, $sitter1['perm']);
-                    } else {
-                        $view->vars['error'] = T("Options", "This player is sitter for 2 players");
+        $removeSitterType = 0;
+        $removeSitterId = 0;
+        if (isset($_POST['removeSitter1'])) {
+            $removeSitterType = 1;
+            $removeSitterId = abs((int)$_POST['removeSitter1']);
+        } else if (isset($_POST['removeSitter2'])) {
+            $removeSitterType = 2;
+            $removeSitterId = abs((int)$_POST['removeSitter2']);
+        }
+        if (WebService::isPost()
+            && isset($_POST[Session::getCheckerName()])
+            && Session::validateChecker()) {
+            if ($removeSitterType > 0 && $removeSitterId > 0) {
+                if ($removeSitterType == 1) {
+                    $id = $removeSitterId;
+                    if ($this->session->getSittersId(1) == $id) {
+                        $db->query("UPDATE users SET sit1Uid=0, sit1Permissions=87 WHERE id=" . $this->session->getPlayerId());
+                        $this->session->setSittersId(1, 0);
+                        $this->session->setSittersPermissions(1, 87);
+                    } else if ($this->session->getSittersId(2) == $id) {
+                        $db->query("UPDATE users SET sit2Uid=0, sit2Permissions=87 WHERE id=" . $this->session->getPlayerId());
+                        $this->session->setSittersId(2, 0);
+                        $this->session->setSittersPermissions(2, 87);
                     }
-                }
-            }
-            if (!empty($sitter2['name'])) {
-                $uid = $m->getUserByName($sitter2['name']);
-                if ($uid && ($uid != $this->session->getPlayerId()) && ($uid != $this->session->getSittersId(1) || $this->session->getSittersId(1) == 0)) {
-                    if ($this->getTotalSitterCount($uid, $this->session->getPlayerId()) < 2) {
-                        $db->query("UPDATE users SET sit2Uid=$uid, sit2Permissions='{$sitter2['perm']}' WHERE id=" . $this->session->getPlayerId());
-                        $this->session->setSittersId(2, $uid);
-                        $this->session->setSittersPermissions(2, $sitter2['perm']);
-                    } else {
-                        $view->vars['error'] = T("Options", "This player is sitter for 2 players");
-                    }
-                }
-            }
-            $this->session->changeChecker();
-        } else if (isset($_GET['id']) && isset($_GET['type']) && $_GET['a'] == $this->session->getChecker()) {
-            $this->session->changeChecker();
-            $id = abs((int)$_GET['id']);
-            if ($_GET['type'] == 1) {
-                if ($this->session->getSittersId(1) == $id) {
-                    $db->query("UPDATE users SET sit1Uid=0, sit1Permissions=87 WHERE id=" . $this->session->getPlayerId());
-                    $this->session->setSittersId(1, 0);
-                    $this->session->setSittersPermissions(1, 87);
-                } else if ($this->session->getSittersId(2) == $id) {
-                    $db->query("UPDATE users SET sit2Uid=0, sit2Permissions=87 WHERE id=" . $this->session->getPlayerId());
-                    $this->session->setSittersId(2, 0);
-                    $this->session->setSittersPermissions(2, 87);
-                }
-            } else if ($_GET['type'] == 2) {
-                $uid = $this->session->getPlayerId();
-                $db->query("UPDATE users SET
-                sit1Uid=IF(sit1Uid=$uid, 0, sit1Uid),
-                sit2Uid=IF(sit2Uid=$uid, 0, sit2Uid),
+                } else if ($removeSitterType == 2) {
+                    $id = $removeSitterId;
+                    $uid = $this->session->getPlayerId();
+                    $db->query("UPDATE users SET
                 sit1Permissions=IF(sit1Uid=$uid, 87, sit1Permissions),
-                sit2Permissions=IF(sit2Uid=$uid, 87, sit2Permissions)
+                sit2Permissions=IF(sit2Uid=$uid, 87, sit2Permissions),
+                sit1Uid=IF(sit1Uid=$uid, 0, sit1Uid),
+                sit2Uid=IF(sit2Uid=$uid, 0, sit2Uid)
                 WHERE id=$id");
+                }
+            } else if (isset($_POST['sitter_flag_posted'])) {
+                $sitter1 = $this->mergeSitter(1);
+                $sitter2 = $this->mergeSitter(0);
+                if (!empty($sitter1['name'])) {
+                    $uid = $m->getUserByName($sitter1['name']);
+                    if ($uid && ($uid != $this->session->getPlayerId()) && ($uid != $this->session->getSittersId(2) || $this->session->getSittersId(2) == 0)) {
+                        if ($this->getTotalSitterCount($uid, $this->session->getPlayerId()) < 2) {
+                            $db->query("UPDATE users SET sit1Uid=$uid, sit1Permissions='{$sitter1['perm']}' WHERE id=" . $this->session->getPlayerId());
+                            $this->session->setSittersId(1, $uid);
+                            $this->session->setSittersPermissions(1, $sitter1['perm']);
+                        } else {
+                            $view->vars['error'] = T("Options", "This player is sitter for 2 players");
+                        }
+                    }
+                }
+                if (!empty($sitter2['name'])) {
+                    $uid = $m->getUserByName($sitter2['name']);
+                    if ($uid && ($uid != $this->session->getPlayerId()) && ($uid != $this->session->getSittersId(1) || $this->session->getSittersId(1) == 0)) {
+                        if ($this->getTotalSitterCount($uid, $this->session->getPlayerId()) < 2) {
+                            $db->query("UPDATE users SET sit2Uid=$uid, sit2Permissions='{$sitter2['perm']}' WHERE id=" . $this->session->getPlayerId());
+                            $this->session->setSittersId(2, $uid);
+                            $this->session->setSittersPermissions(2, $sitter2['perm']);
+                        } else {
+                            $view->vars['error'] = T("Options", "This player is sitter for 2 players");
+                        }
+                    }
+                }
             }
         }
         $this->view->vars['content'] .= $view->output();
@@ -389,9 +402,8 @@ class OptionCtrl extends GameCtrl
         ];
         $remainingVacationDays = Formulas::maxVacationDays() - Session::getInstance()->getUsedVacationDays();
         if (WebService::isPost() && !Session::getInstance()->isInVacationMode()) {
-            $days = max(max((int)$_POST['days'], $remainingVacationDays), 1);
-            if (array_sum($view->vars['conditions']) == 9 && $remainingVacationDays >= $days) {
-                $m->enterVacationMode(Session::getInstance()->getPlayerId(), $days);
+            $days = OptionModel::vacationDaysToUse((int)$_POST['days'], $remainingVacationDays);
+            if ($days > 0 && array_sum($view->vars['conditions']) == 9 && $m->enterVacationMode(Session::getInstance()->getPlayerId(), $days)) {
                 Session::getInstance()->setVacationTill($days * 86400 + time());
                 Session::getInstance()->setVacationUsedDays(Session::getInstance()->getUsedVacationDays() + $days);
                 $this->showVacationActive();
@@ -409,4 +421,4 @@ class OptionCtrl extends GameCtrl
         $view->vars['vacationDays'] = max(1, ceil((Session::getInstance()->getVacationTil() - time()) / 86400));
         $this->view->vars['content'] .= $view->output();
     }
-} 
+}

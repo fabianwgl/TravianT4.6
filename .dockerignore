@@ -1,0 +1,7 @@
+.git
+.env
+project-improvements
+test-results
+**/*.log
+**/*.sqlite
+**/.DS_Store

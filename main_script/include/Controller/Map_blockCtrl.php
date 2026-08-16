@@ -317,17 +317,16 @@ class Map_blockCtrl extends AnyCtrl
 
     private function getZoomLevel($tx0, $ty0, $tx1, $ty1)
     {
-        function blockCount($x0, $x1)
-        {
-            $_c = 1;
-            while ($x0 <> $x1 && $_c <= 121) {
+        $blockCount = static function ($x0, $x1) {
+            $count = 1;
+            while ($x0 <> $x1 && $count <= 121) {
                 $x0 = Formulas::coordinateFixer($x0 + 1);
-                $_c++;
+                $count++;
             }
-            return $_c;
-        }
+            return $count;
+        };
 
-        $count = blockCount($tx0, $tx1) * blockCount($ty0, $ty1);
+        $count = $blockCount($tx0, $tx1) * $blockCount($ty0, $ty1);
         switch ($count) {
             case 100:
                 $this->tileSize = 60;

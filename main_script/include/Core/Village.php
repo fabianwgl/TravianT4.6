@@ -481,19 +481,9 @@ class Village
         return $this->village['celebration'];
     }
 
-    public function getFestival()
-    {
-        return $this->village['festival'];
-    }
-
     public function setCelebration($value)
     {
         $this->village['celebration'] = $value;
-    }
-
-    public function setFestival($value)
-    {
-        $this->village['festival'] = $value;
     }
 
     public function getCelebrationType()
@@ -526,13 +516,11 @@ class Village
     public function changeChecker()
     {
         if (getCustom("useSessionCheckerInsteadOfDB")) {
-            $_SESSION[WebService::fixSessionPrefix("VSESS_KEY")] = substr(sha1(uniqid() . miliseconds() . get_random_string(10)),
-                0,
-                mt_rand(6, 9));
+            $_SESSION[WebService::fixSessionPrefix("VSESS_KEY")] = bin2hex(random_bytes(16));
             return;
         }
         //village session key
-        $this->village['checker'] = substr(sha1(uniqid() . miliseconds() . get_random_string(10)), 0, mt_rand(6, 9));
+        $this->village['checker'] = bin2hex(random_bytes(16));
         $this->db->run("UPDATE vdata SET checker=? WHERE kid=?", [$this->getChecker(), $this->getKid()]);
     }
 
@@ -1324,7 +1312,7 @@ HTML;
 
     public function recalculateBuildingTimes(){
         usort($this->onLoadBuildings['normal'], function($a, $b){
-            return $a['id'] == $b['id'] ? 0 : $a['id'] > $b['id'] ? 1 : -1;
+            return $a['id'] == $b['id'] ? 0 : ($a['id'] > $b['id'] ? 1 : -1);
         });
         $tmp = [];
         $lastCommence = [

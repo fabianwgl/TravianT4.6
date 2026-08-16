@@ -1,12 +1,12 @@
 <?php
 namespace Controller\Build;
 use Controller\AnyCtrl;
-use Core\Database\DB;
 use Core\Helper\TimezoneHelper;
 use Core\Session;
 use Core\Village;
 use Game\Formulas;
 use Game\GoldHelper;
+use Model\BreweryModel;
 use function isServerFinished;
 use resources\View\PHPBatchView;
 class BreweryCtrl extends AnyCtrl
@@ -15,42 +15,41 @@ class BreweryCtrl extends AnyCtrl
     {
         parent::__construct();
 
+        $session = Session::getInstance();
+        $uid = $session->getPlayerId();
+        $kid = Village::getInstance()->getKid();
+        $breweryModel = new BreweryModel();
+        if (isset($_GET['z']) && $_GET['z'] == $session->getChecker()) {
+            if ($session->banned()) {
+                $this->innerRedirect("InGameBannedPage");
+            } else if (isServerFinished()) {
+                $this->innerRedirect("InGameWinnerPage");
+            } else if ($session->isInVacationMode()) {
+                $this->redirect('options.php?s=4');
+            } else {
+                $session->changeChecker();
+                $breweryModel->startFestival($uid, $kid);
+                $this->redirect('build.php?id=' . $index);
+            }
+        }
+
+        $status = $breweryModel->getFestivalStatus($uid);
         $this->view = new PHPBatchView("build/brewery");
         $this->view->vars['buildingIndex'] = $index;
         $this->view->vars['festivalDuration'] = Formulas::getFestivalDuration();
         $this->view->vars['festivalResources'] = Formulas::getFestivalResources();
-        if(!$this->isFestivalRunning() && isset($_GET['z']) && $_GET['z'] == Session::getInstance()->getChecker()) {
-            if(Session::getInstance()->banned()) {
-                $this->innerRedirect("InGameBannedPage");
-            } else if(isServerFinished()) {
-                $this->innerRedirect("InGameWinnerPage");
-            } else if(Session::getInstance()->isInVacationMode()) {
-                $this->redirect('options.php?s=4');
-            } else {
-                Session::getInstance()->changeChecker();
-                $cost = $this->view->vars['festivalResources'];
-                if(Village::getInstance()->isResourcesAvailable($cost)) {
-                    $db = DB::getInstance();
-                    if(Village::getInstance()->modifyResources($cost)){
-                        $festival = time() + $this->view->vars['festivalDuration'];
-                        $db->query("UPDATE vdata SET festival=$festival WHERE kid=" . Village::getInstance()->getKid());
-                        Village::getInstance()->setFestival($festival);
-                    }
-                }
-            }
-        }
-        $this->view->vars['isFestival'] = $this->isFestivalRunning();
+        $this->view->vars['isFestival'] = $status['active'];
         $this->view->vars['npcButton'] = (new GoldHelper())->getExchangeResourcesButtonByCost($this->view->vars['festivalResources']);
-        $this->view->vars['contractLinkButton'] = $this->getButton($index);
-        if($this->isFestivalRunning()) {
-            $this->view->vars['timeLeft'] = appendTimer(Village::getInstance()->getFestival() - time());
-            $this->view->vars['endat'] = TimezoneHelper::date("H:i", Village::getInstance()->getFestival());
+        $this->view->vars['contractLinkButton'] = $this->getButton($index, $status['active']);
+        if ($status['active']) {
+            $this->view->vars['timeLeft'] = appendTimer($status['endsAt'] - time());
+            $this->view->vars['endat'] = TimezoneHelper::date("H:i", $status['endsAt']);
         }
     }
 
-    private function getButton($id)
+    private function getButton($id, bool $festivalActive)
     {
-        if($this->isFestivalRunning()) {
+        if ($festivalActive) {
             return '<span class="errorMessage">' . T("inGame", "one celebration is running") . '</span>';
         }
         $cost = Formulas::getFestivalResources();
@@ -59,10 +58,5 @@ class BreweryCtrl extends AnyCtrl
         }
         $contract = Village::getInstance()->contractResourcesLink($cost);
         return $contract['text'];
-    }
-
-    private function isFestivalRunning()
-    {
-        return Village::getInstance()->getFestival() > time();
     }
 }

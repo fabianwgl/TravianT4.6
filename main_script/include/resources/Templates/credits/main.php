@@ -21,18 +21,13 @@
 </style>
 <!--email_off-->
 <div class="credits">
-    <h4 class="round">Development</h4>
-    <p>Developed by: <a href="mailto:chamirhossein@gmail.com">Amirhossein</a>.</p>
-    <h4 class="round">So many thanks to</h4>
+    <h4 class="round">Preservation and modernization</h4>
+    <p>OpenVillage is maintained as a community preservation project.</p>
+    <h4 class="round">Original contributors</h4>
     <ol>
         <li>Taha for translating the website to arabic.</li>
         <li>Mehdi Zbt who helped me during development of this version.</li>
     </ol>
-    <h4 class="round">Contact</h4>
-    <p>
-        If you want to get in touch with me send me, an email to <a href="mailto:chamirhossein@gmail.com">chamirhossein@gmail.com</a>.
-        <br />
-        I will answer all emails within an hour or so.
-    </p>
+    <p>See the repository contribution guide for current project contacts.</p>
 </div>
 <!--/email_off-->

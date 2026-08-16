@@ -9,7 +9,7 @@ if ($templateName == 'tpl/layout.tpl'): ?>
     <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
     <html>
     <head>
-        <title>ACP - Travian</title>
+        <title>OpenVillage administration</title>
         <!--
         <link href="gpack/travian_Travian_3.6_Mandarinenmaennchen/lang/en/compact.css?25795fbe" rel="stylesheet" type="text/css"/>
         <link href="gpack/travian_Travian_3.6_Mandarinenmaennchen/lang/en/lang.css?25795fbe" rel="stylesheet" type="text/css"/>-->
@@ -27,10 +27,7 @@ if ($templateName == 'tpl/layout.tpl'): ?>
             //window.addEvent('domready', start);
         </script>
 
-        <script
-                src="https://code.jquery.com/jquery-3.3.1.min.js"
-                integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8="
-                crossorigin="anonymous"></script>
+        <script src="js/default/jquery-3.2.1.min.js"></script>
 
         <style type="text/css">
             div#ltime,

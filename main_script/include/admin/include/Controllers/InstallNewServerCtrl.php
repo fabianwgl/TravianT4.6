@@ -226,36 +226,7 @@ class InstallNewServerCtrl
             TaskQueue::addTask(TaskQueue::TASK_FLUSH_TOKENS, [], 'Flush tokens (manual)');
             $this->vars['flushTokensQueued'] = true;
         } else if (isset($_GET['worldUniqueId'], $_GET['do']) && in_array($_GET['do'], ['loginMH', 'loginSP'])) {
-            $worldUniqueId = (int)$_GET['worldUniqueId'];
-            $stmt = $db->query("SELECT gameWorldUrl, configFileLocation FROM gameServers WHERE id=$worldUniqueId");
-            if ($stmt->num_rows) {
-                $server = $stmt->fetch_assoc();
-                try {
-                    $serverDB = ServerDB::getInstance($server['configFileLocation']);
-                    $api_token = $db->fetchScalar("SELECT loginToken FROM paymentConfig");
-                    if ($_GET['do'] == 'loginMH') {
-                        $password = $serverDB->fetchScalar('SELECT password FROM users WHERE id=2');
-                        $link = sprintf(
-                            '%slogin.php?action=multiLogin&hash=%s&token=%s',
-                            $server['gameWorldUrl'],
-                            sha1($password),
-                            $api_token
-                        );
-                    } else {
-                        $password = $serverDB->fetchScalar('SELECT password FROM users WHERE id=0');
-                        $link = sprintf(
-                            '%slogin.php?action=adminLogin&hash=%s&token=%s',
-                            $server['gameWorldUrl'],
-                            sha1($password),
-                            $api_token
-                        );
-                    }
-                    WebService::redirect($link);
-                } catch (Exception $e) {
-                }
-            } else {
-                $this->vars['errors'][] = 'Game world not found.';
-            }
+            $this->vars['errors'][] = 'Password-derived impersonation links are disabled.';
         } else if (isset($_GET['worldId'], $_GET['do']) && in_array($_GET['do'],
                 ['stopGameEngine', 'startGameEngine', 'restartGameEngine'])) {
             $user = basename(dirname(GLOBAL_CONFIG_FILE));

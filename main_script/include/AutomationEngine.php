@@ -6,48 +6,43 @@ declare(ticks=1);
 
 use Core\ErrorHandler;
 use Core\Jobs;
+use Core\Jobs\WorkerRegistry;
 
 require(__DIR__ . "/bootstrap.php");
 $automationLogFile = dirname(ERROR_LOG_FILE) . "/automation.log";
-global $PIDs, $loop;
-$PIDs = [];
-$autoPID = pcntl_fork();
-fclose(STDIN);
-fclose(STDOUT);
-fclose(STDERR);
-$STDIN = fopen('/dev/null', 'r');
-$STDOUT = fopen($automationLogFile, 'wb');
-$STDERR = fopen($automationLogFile, 'wb');
-if ($autoPID) {
-    exit(0);
-} elseif ($autoPID == -1) {
-    exit(1);
-} else {
-    $loop = TRUE;
-    $newSID = posix_setsid();
-    if ($newSID === -1) {
-        exit(1);
-    }
-    function sig_handler($signal)
-    {
-        global $PIDs, $loop;
-        $loop = FALSE;
-        foreach ($PIDs as $k => $v) {
-            try {
-                posix_kill($v, SIGTERM);
-                unset($PIDs[$k]);
-            } catch (\Exception $e) {
-                ErrorHandler::getInstance()->handleExceptions($e);
-            }
-        }
-        exit;
-    }
+global $workerRegistry, $loop;
+$workerRegistry = new WorkerRegistry();
+$loop = TRUE;
 
-    pcntl_signal(SIGTERM, "sig_handler");
-    pcntl_signal(SIGHUP, "sig_handler");
-    Jobs\Launcher::lunchJobs();
-
-    while ($loop) {
-        sleep(1);
+function sig_handler($signal)
+{
+    global $workerRegistry, $loop;
+    $loop = FALSE;
+    try {
+        $workerRegistry->signalAll(SIGTERM);
+    } catch (\Throwable $e) {
+        ErrorHandler::getInstance()->handleExceptions($e);
     }
 }
+
+pcntl_signal(SIGTERM, "sig_handler");
+pcntl_signal(SIGINT, "sig_handler");
+pcntl_signal(SIGHUP, "sig_handler");
+Jobs\Launcher::lunchJobs();
+
+while ($loop) {
+    sleep(1);
+    pcntl_signal_dispatch();
+    if (!$loop) {
+        break;
+    }
+    $exitedWorkers = $workerRegistry->reapExited();
+    if ($exitedWorkers) {
+        foreach ($exitedWorkers as $identity => $state) {
+            logError("Automation worker exited unexpectedly: $identity (PID {$state['pid']}).");
+        }
+        $loop = FALSE;
+        $workerRegistry->signalAll(SIGTERM);
+    }
+}
+$workerRegistry->shutdown(15);

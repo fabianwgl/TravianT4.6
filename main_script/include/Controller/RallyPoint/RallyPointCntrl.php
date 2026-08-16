@@ -5,6 +5,7 @@ namespace Controller\RallyPoint;
 use Controller\AnyCtrl;
 use Controller\BuildCtrl;
 use Core\Database\DB;
+use Core\Helper\WebService;
 use Core\Session;
 use Core\Village;
 use Game\Formulas;
@@ -35,10 +36,10 @@ class RallyPointCntrl extends AnyCtrl
         if (!$session->hasGoldClub() && $tt == 99) {
             $tt = 0;
         }
-        if (isset($_GET['kill'])/* && Session::validateChecker()*/) {
+        if (WebService::isPost() && isset($_POST['kill']) && Session::validateChecker()) {
             //delete trapped
             $db = DB::getInstance();
-            $id = (int)$_GET['kill'];
+            $id = (int)$_POST['kill'];
             $kid = Session::getInstance()->getKid();
             $result = $db->query("SELECT * FROM trapped WHERE kid={$kid} AND id={$id}");
             if ($result->num_rows) {
@@ -57,10 +58,10 @@ class RallyPointCntrl extends AnyCtrl
                 }
             }
         }
-        if (isset($_GET['free'])/* && Session::validateChecker()*/) {
+        if (WebService::isPost() && isset($_POST['free']) && Session::validateChecker()) {
             //delete trapped
             $db = DB::getInstance();
-            $id = (int)$_GET['free'];
+            $id = (int)$_POST['free'];
             $kid = Session::getInstance()->getKid();
             $find = $db->query("SELECT * FROM trapped WHERE to_kid=$kid AND id=$id");
             if ($find->num_rows) {
@@ -77,9 +78,9 @@ class RallyPointCntrl extends AnyCtrl
             }
         }
         $rallyPoint = new RallyPoint();
-        if (isset($_REQUEST['a']) && $_REQUEST['a'] == 4 && isset($_REQUEST['t']) && Session::validateChecker()) {
+        if (WebService::isPost() && isset($_POST['a']) && (int)$_POST['a'] === 4 && isset($_POST['t']) && Session::validateChecker()) {
             $m = new RallyPointModel();
-            $m->cancelTask((int)$_REQUEST['t']);
+            $m->cancelTask((int)$_POST['t']);
         }
         $x['tt'] = $tt;
         $x['content'] = '';
@@ -111,26 +112,16 @@ class RallyPointCntrl extends AnyCtrl
                 $l['evasionSaveButton'] = getButton(["type" => "submit", "class" => "green",], ["data" => ["type" => "submit", "value" => T("Global", "General.save"), "class" => "green",],], T("Global", "General.save"));
                 if (!$session->hasGoldClub()) {
                     $l['goldClubEvasionDesc'] = T("RallyPoint", "goldClubEvasionDesc");
-                    $l['goldClubButton'] = getButton(["type" => "button", "class" => "gold builder ", "title" => T("RallyPoint", "evasion in capital") . '||' . T("RallyPoint", "needClubToBeActive"),], ["data" => ["type" => "button", "class" => "gold builder ", "value" => T("RallyPoint", "goldclub"), "goldclubDialog" => ["featureKey" => "troopEscape", "infoIcon" => "http://t4.answers.travian.com/index.php?aid=Travian Answers#go2answer",],],], T("RallyPoint", "goldclub"));
+                    $l['goldClubButton'] = getButton(["type" => "button", "class" => "gold builder ", "title" => T("RallyPoint", "evasion in capital") . '||' . T("RallyPoint", "needClubToBeActive"),], ["data" => ["type" => "button", "class" => "gold builder ", "value" => T("RallyPoint", "goldclub"), "goldclubDialog" => ["featureKey" => "troopEscape", "infoIcon" => "/docs/index.php?aid=Travian Answers#go2answer",],],], T("RallyPoint", "goldclub"));
                 }
                 $view = new PHPBatchView('rallypoint/escape');
                 $view->vars = $l;
                 $x['content'] .= $view->output();
                 break;
             case 1:
-                function MergeSubFilters($id, $subFiltersArray)
-                {
-                    if ($subFiltersArray[$id]) {//filter is active link must deactivate it!
-                        $subFiltersArray[$id] = 0;
-                    } else {//key is not active! merge with current
-                        $subFiltersArray[$id] = 1;
-                    }
-                    return implodeActiveSubFilters($subFiltersArray);
-                }
-
                 $filter = isset($_REQUEST['filter']) && is_numeric($_REQUEST['filter']) && $_REQUEST['filter'] >= 1 && $_REQUEST['filter'] <= 4 ? $_REQUEST['filter'] : 0;
                 $subFiltersArray = $filter == 1 ? [1 => 1, 2 => 1, 3 => 0,] : [4 => 1, 5 => 1, 6 => 0];
-                function implodeActiveSubFilters($subFiltersArray)
+                $implodeActiveSubFilters = static function ($subFiltersArray)
                 {
                     $implode = [];
                     foreach ($subFiltersArray as $subFilterId => $subFilterActive) {
@@ -139,13 +130,13 @@ class RallyPointCntrl extends AnyCtrl
                         }
                     }
                     return implode(",", $implode);
-                }
+                };
 
                 if ($filter == 1 || $filter == 2) {
                     $subFiltersCookieName = 'active_rallypoint_sub_filters_' . $filter;
                     if (!isset($_COOKIE[$subFiltersCookieName])) {
-                        setcookie($subFiltersCookieName, implodeActiveSubFilters($subFiltersArray), time() + 86400 * 365 * 4); // 4years!
-                        $_COOKIE[$subFiltersCookieName] = implodeActiveSubFilters($subFiltersArray);
+                        setcookie($subFiltersCookieName, $implodeActiveSubFilters($subFiltersArray), time() + 86400 * 365 * 4); // 4years!
+                        $_COOKIE[$subFiltersCookieName] = $implodeActiveSubFilters($subFiltersArray);
                     }
                     $subFilters = isset($_REQUEST['subfilters']) && !empty($_REQUEST['subfilters']) ? $_REQUEST['subfilters'] : $_COOKIE[$subFiltersCookieName];
                     $subFilters = explode(",", $subFilters);
@@ -170,8 +161,8 @@ class RallyPointCntrl extends AnyCtrl
                             }
                         }
                     }
-                    setcookie($subFiltersCookieName, implodeActiveSubFilters($subFiltersArray), time() + 86400 * 365 * 4); // 4years!
-                    $_COOKIE[$subFiltersCookieName] = implodeActiveSubFilters($subFiltersArray);
+                    setcookie($subFiltersCookieName, $implodeActiveSubFilters($subFiltersArray), time() + 86400 * 365 * 4); // 4years!
+                    $_COOKIE[$subFiltersCookieName] = $implodeActiveSubFilters($subFiltersArray);
                 }
                 $l = ["filter" => $filter, "subFilters" => $subFiltersArray, "content" => '',];
                 $rallyPoint->procContent($l);
@@ -203,4 +194,4 @@ class RallyPointCntrl extends AnyCtrl
         $this->view = new PHPBatchView('rallypoint/main');
         $this->view->vars = $x;
     }
-} 
+}

@@ -9,7 +9,7 @@ class SendTestEmailCtrl
     public function __construct()
     {
         $dispatcher = Dispatcher::getInstance();
-        $params['email'] = isset($_POST['email']) ? $_POST['email'] : 'chamirhossein@gmail.com';
+        $params['email'] = isset($_POST['email']) ? $_POST['email'] : '';
         $params['message'] = isset($_POST['message']) ? $_POST['message'] : null;
         $params['subject'] = isset($_POST['subject']) ? $_POST['subject'] : null;
         $params['error'] = null;

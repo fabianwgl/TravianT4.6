@@ -5,9 +5,12 @@ use Core\Database\DB;
 use Core\Database\GlobalDB;
 use Core\Helper\Mailer;
 use Core\Helper\WebService;
+use Core\Security\Password;
 
 class LoginModel
 {
+    private $authenticatedPasswordHash;
+
 	public function findLogin($name)
 	{
         $db = DB::getInstance();
@@ -35,7 +38,6 @@ class LoginModel
 			if($activation !== FALSE) {
 				$LoginType = 3;
 				$userRow = $activation;
-				$userRow['password'] = sha1($userRow['password']);
 				break;
 			}
 			//index api
@@ -56,13 +58,16 @@ class LoginModel
 	}
 	public function addNewPassword($row)
 	{
-		$new_pass = substr(sha1(sha1(time() + mt_rand() + mt_rand())), 0, 7);
+		$new_pass = rtrim(strtr(base64_encode(random_bytes(18)), '+/', '-_'), '=');
 		$db = DB::getInstance();
-		$db->query("DELETE FROM newproc WHERE uid={$row['id']}");
+		$db->run("DELETE FROM newproc WHERE uid=?", [(int)$row['id']]);
 		$time = time();
-		$cpw = get_random_string(7);
-		$db->query("INSERT INTO newproc (uid, cpw, npw, time) VALUES ({$row['id']}, '$cpw', '$new_pass', $time)");
-		$link = WebService::get_base_url().'/password.php?cpw='.$cpw.'&npw='.$db->lastInsertId();
+		$cpw = bin2hex(random_bytes(15));
+		$db->run(
+            "INSERT INTO newproc (uid, cpw, npw, time) VALUES (?, ?, ?, ?)",
+            [(int)$row['id'], $cpw, $new_pass, $time]
+        );
+		$link = WebService::get_base_url().'/password.php?cpw='.$cpw.'&npw='.(int)$row['id'];
 		$html = vsprintf(T("Login", "pw_forgot_email"), [
 			$row['name'], $row['name'], $row['email'], $new_pass,
 			Config::getInstance()->settings->worldId, $link, $link,
@@ -130,18 +135,39 @@ class LoginModel
 	 */
 	public function checkLogin($password, $result)
 	{
-		if($result['row']['password'] == $password) {
+		if(Password::verify($password, $result['row']['password'])) {
+            $this->authenticatedPasswordHash = $result['row']['password'];
+            if ($result['type'] == 1 && Password::needsRehash($result['row']['password'])) {
+                $this->authenticatedPasswordHash = Password::hash($password);
+                DB::getInstance()->run(
+                    "UPDATE users SET password=? WHERE id=?",
+                    [$this->authenticatedPasswordHash, (int)$result['row']['id']]
+                );
+            }
 			return 0;
 		}
 		if($result['type'] == 1) {
-			if($result['row']['sit1Uid'] && $this->getSitterPassword($result['row']['sit1Uid']) == $password) {
-				return 1;
-			}
-			if($result['row']['sit2Uid'] && $this->getSitterPassword($result['row']['sit2Uid']) == $password) {
-				return 2;
-			}
+			if($result['row']['sit1Uid']) {
+                $sitterPassword = $this->getSitterPassword($result['row']['sit1Uid']);
+                if ($sitterPassword && Password::verify($password, $sitterPassword)) {
+                    $this->authenticatedPasswordHash = $sitterPassword;
+                    return 1;
+                }
+            }
+			if($result['row']['sit2Uid']) {
+                $sitterPassword = $this->getSitterPassword($result['row']['sit2Uid']);
+                if ($sitterPassword && Password::verify($password, $sitterPassword)) {
+                    $this->authenticatedPasswordHash = $sitterPassword;
+                    return 2;
+                }
+            }
 		}
 
 		return 3;
 	}
-} 
+
+    public function getAuthenticatedPasswordHash()
+    {
+        return $this->authenticatedPasswordHash;
+    }
+}

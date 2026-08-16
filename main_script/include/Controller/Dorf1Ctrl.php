@@ -159,7 +159,7 @@ class Dorf1Ctrl extends GameCtrl
                     "name"                  => '',
                     "onclick"               => '',
                     "confirm"               => '',
-                    'productionBoostDialog' => ['infoIcon' => 'http://t4.answers.travian.ir/index.php?aid=0#go2answer',],
+                    'productionBoostDialog' => ['infoIcon' => '/docs/index.php?aid=0#go2answer',],
                 ],
             ],
             '+25%');

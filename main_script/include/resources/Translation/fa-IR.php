@@ -372,6 +372,7 @@ $Definition['Auction']['showAccounting'] = 'نمایش جزئیات در مور�
 $Definition['Auction']['hideAccounting'] = 'عدم نمایش جزئیات در مورد سکه‌های نقره‌‎ی تراوین رزرو شده در حراجی‌ها.';
 $Definition['Auction']['noBooking'] = 'چیزی یافت نشد.';
 $Definition['Auction']['Adventure'] = 'ماجراجویی';
+$Definition['Auction']['Quest reward'] = 'پاداش مأموریت';
 $Definition['Auction']['sell x items of y'] = 'فروش %s مقدار از %s';
 $Definition['Auction']['buy x items of y'] = 'خرید %s مقدار از %s';
 $Definition['Auction']['currentBid'] = 'پیشنهاد فعلی';
@@ -1109,7 +1110,7 @@ $Definition['Global']['Footer']['Forum'] = 'فروم';
 $Definition['Global']['Footer']['Links'] = 'لینک ها';
 $Definition['Global']['Footer']['Terms'] = 'شرایط';
 $Definition['Global']['Footer']['Imprint'] = 'یادداشت ها';
-/*$Definition['Global']['SUPPORT_MESSAGE_EXTRA_THINGS'] = '<br /><br />-----------------------<br />[b]توجه:[/b] ما مايليم که شما را براي بهبود تيم پشتيباني خود به نظرسنجي دعوت کنيم!  <br />و اين بسيار عالي خواهد بود اگر شما بتوانيد چند دقيقه کوچکي از وقتتان را به پر کردن يک نظرسنجي کوتاه بدهيد!<br />به سمت نظرسنجي: <a target="_blank" href="http://goto.traviangames.com/t-com">http://goto.traviangames.com/t-com</a><br />-----<br /><br />T4/T4.4 پاسخ هاي تراوين : <a target="_blank" href="http://t4.answers.travian.com/">http://t4.answers.travian.com/</a><br />T2.5/T3 پاسخ هاي تراوين: <a target="_blank" href="http://t3.answers.travian.com/">http://t3.answers.travian.com/</a><br />وبسايت ما: <a target="_blank" href="http://www.travian.com/">http://www.travian.com/</a><br />ايميل ما: <a href="mailto:admin@' . WebService::getJustDomain() . '">admin@' . WebService::getJustDomain() . '</a><br /><br />--<br />Travian Games GmbH<br />Tehran, no32, corner of ZirakZadeh Alley<br />80807 München<br />Germany<br /><br /><a target="_blank" href="http://www.traviangames.com">http://www.traviangames.com</a><br /><br />مدير عامل: Iran Travian Team<br /><br />دادگاه ثبت شده: بازي آنلاين تراوين ثبت شده در بنياد ملي بازي هاي رايانه اي<br />شماره مجوز کسب و کار: HRB 173511<br /><br />آدرس فاکس: IR 246258085<br />–<br />اين ايميل ها و پيوست آن محرمانه  در نظر گرفته شده <br />صرفا براي جلب توجه شخص  به آنها پرداخته شده است.<br />و پاسخ به آن الزامي نيست<br /><br /> [b][i]با احترام تيم تراوين ايران*love*[/i][/b]  <br />–<br /><br /><br />---------------------<br /><br /><br />';$Language['CP'] = 'CP';
+/*$Definition['Global']['SUPPORT_MESSAGE_EXTRA_THINGS'] = '<br /><br />-----------------------<br />[b]توجه:[/b] ما مايليم که شما را براي بهبود تيم پشتيباني خود به نظرسنجي دعوت کنيم!  <br />و اين بسيار عالي خواهد بود اگر شما بتوانيد چند دقيقه کوچکي از وقتتان را به پر کردن يک نظرسنجي کوتاه بدهيد!<br />به سمت نظرسنجي: <a target="_blank" href="/docs/">/docs/</a><br />-----<br /><br />T4/T4.4 پاسخ هاي تراوين : <a target="_blank" href="/docs/">/docs/</a><br />T2.5/T3 پاسخ هاي تراوين: <a target="_blank" href="/docs/">/docs/</a><br />وبسايت ما: <a target="_blank" href="/docs/">/docs/</a><br />ايميل ما: <a href="mailto:admin@' . WebService::getJustDomain() . '">admin@' . WebService::getJustDomain() . '</a><br /><br />--<br />Travian Games GmbH<br />Tehran, no32, corner of ZirakZadeh Alley<br />80807 München<br />Germany<br /><br /><a target="_blank" href="/docs/">/docs/</a><br /><br />مدير عامل: Iran Travian Team<br /><br />دادگاه ثبت شده: بازي آنلاين تراوين ثبت شده در بنياد ملي بازي هاي رايانه اي<br />شماره مجوز کسب و کار: HRB 173511<br /><br />آدرس فاکس: IR 246258085<br />–<br />اين ايميل ها و پيوست آن محرمانه  در نظر گرفته شده <br />صرفا براي جلب توجه شخص  به آنها پرداخته شده است.<br />و پاسخ به آن الزامي نيست<br /><br /> [b][i]با احترام تيم تراوين ايران*love*[/i][/b]  <br />–<br /><br /><br />---------------------<br /><br /><br />';$Language['CP'] = 'CP';
 $Definition['Global']['SUPPORT_MESSAGE_EXTRA_THINGS_UNIQUE_FINDER'] = '[b]توجه:[/b] ما مايليم که شما را براي بهبود تيم پشتيباني خود به نظرسنجي دعوت کنيم!';
 */
 $Definition['Global']['SUPPORT_MESSAGE_EXTRA_THINGS'] = '<br><br>';
@@ -2184,7 +2185,7 @@ $Definition['inGame']['bannedClickPage'] = '
     <li>فحاشی به سایر بازیکنان</li>
     <li>تلاش برای هک کردن سیستم</li>
     <br>
-    <br>برای اطلاعات بیشتر با <a href="messages.php?t=1&id=4">مولتی هانترها</a> یا <a href="messages.php?t=1&id=1">پشتیبانی</a> تماس بگیرید و یا به ادمین از طریق <b>chamirhossein@gmail.com</b> ایمیل بفرستید
+    <br>برای اطلاعات بیشتر با <a href="messages.php?t=1&id=4">مولتی هانترها</a> یا <a href="messages.php?t=1&id=1">پشتیبانی</a> تماس بگیرید و یا به ادمین از طریق <b>in-game support</b> ایمیل بفرستید
     <br>
     <br>با تشکر</div>
 ';
@@ -3903,6 +3904,8 @@ $Definition['Reports'] = ["reportTypes" => [1 => 'پیروزی در حمله ب�
         'disabledCapitalOnZeroPop' => 'Village did not destroy because capital does not destroy on zero pop',
         'OnlyOneVillage' => 'Village did not destroy because player has only one village',
         'ArtifactExists' => 'Village did not destroy because the villge contains an artifact',
+        'OnePlusWW' => 'Village did not destroy because every remaining village is a World Wonder village',
+        'NoCapitalSuccessor' => 'Village did not destroy because no ordinary village can become the new capital',
     ],
 ];
 $Definition['Reports']['There was no village at target destination'] = 'دهکده ای در نقطه مقصد وجود نداشت.';
@@ -3929,6 +3932,7 @@ $Definition['Reports']['Tabs']['Spy'] = 'جاسوسی';
 $Definition['Reports']['Tabs']['Other'] = 'دیگر';
 $Definition['Reports']['needClub'] = 'برای استفاده از این قابلیت نیاز به کلوپ طلایی دارید.';
 $Definition['Reports']['village totally destroyed'] = 'دهکده کاملا نابود شد.';
+$Definition['Reports']['village x of player y was destroyed'] = 'دهکده %s بازیکن %s کاملا نابود شد.';
 $Definition['Reports']['adventureFailed'] = 'ماجراجویی با موفقیت آمیز نبود.';
 $Definition['Reports']['Silver'] = 'نقره';
 $Definition['Reports']['WWPlanCaptured'] = 'نقشه ساخت دزدیده شد.';
@@ -4095,6 +4099,7 @@ $Definition['ResidencePalace']['ChangeCapital'] = 'انتخاب این دهکد�
 $Definition['ResidencePalace']['Cant set ww as capital'] = 'شما دهکده شگفتی جهان را نمی توانید به عنوان پایتخت خود انتخاب کنید.';
 $Definition['ResidencePalace']['Password'] = 'رمز عبور';
 $Definition['ResidencePalace']['wrongPass'] = 'رمز عبور اشتباه است.';
+$Definition['ResidencePalace']['capitalChangeFailed'] = 'پایتخت تغییر نکرد، زیرا وضعیت دهکده تغییر کرده یا دیگر واجد شرایط نیست.';
 $Definition['ResidencePalace']['ConfirmChangeCapital'] = 'آیا مطمئن هستید؟';
 $Definition['ResidencePalace']['This is your capital'] = 'این دهکده پایتخت شماست.';
 $Definition['ResidencePalace']['Date'] = 'تاریخ';
@@ -4745,6 +4750,7 @@ $Definition['EVerify'] = [
     'LOGIN_BEFORE_GAME_DESCRIPTION_VERIFY' => 'اکانت شما فعال شده و فعلا نیازی به تایید ایمیل نمی باشد. بعد از شروع بازی شما بلافاصله می توانید با استفاده از نام کاربری و رمز عبور خود وارد بازی شوید.',
 ];
 $Definition['Truce'] = [
+    'public_infobox' => 'آتش‌بس عمومی فعال است<br>شروع: %s<br>پایان: %s',
     'reasons' => [
         0 => 'معمولی',
         1 => 'کریسمس',

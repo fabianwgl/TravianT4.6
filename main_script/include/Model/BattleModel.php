@@ -138,6 +138,10 @@ class BattleModel
     private $isFarm = false;
     private $atkBonusRate = 1;
     private $defBonusRate = 1;
+    private $breweryEffects = [
+        'festivalActive' => false,
+        'breweryLevel' => 0,
+    ];
 
     protected $profile = [];
     protected $profilingEnabled = true;
@@ -162,6 +166,27 @@ class BattleModel
         if (!$this->profilingEnabled)
             return;
         $this->profile[$name] = (microtime(true) - $this->profile[$name]) * 1000;
+    }
+
+    private function lockVillageOwnerForDestructiveBattle(): void
+    {
+        if (
+            (int)$this->row['attack_type'] !== MovementsModel::ATTACKTYPE_NORMAL
+            || (empty($this->row['u7']) && empty($this->row['u8']))
+        ) {
+            return;
+        }
+
+        $db = DB::getInstance();
+        $kid = (int)$this->row['to_kid'];
+        $owner = (int)$db->fetchScalar("SELECT owner FROM vdata WHERE kid=$kid");
+        if ($owner <= 0) {
+            return;
+        }
+        $ownerResult = $db->query("SELECT id FROM users WHERE id=$owner FOR UPDATE");
+        if (!$ownerResult) {
+            throw new \RuntimeException("Unable to lock player $owner before destructive battle at village $kid.");
+        }
     }
 
     private function profileOutput()
@@ -191,9 +216,14 @@ class BattleModel
             $this->cataWorks = true;
         }
         $this->model = new BattleSetter();
+        $this->lockVillageOwnerForDestructiveBattle();
         $this->startProfile("assocAttacker");
         $this->assocAttacker();
         $this->endProfile("assocAttacker");
+        $this->breweryEffects = (new BreweryModel())->getBattleEffects(
+            (int)$this->attacker['uid'],
+            (int)$this->row['end_time_seconds']
+        );
 
         //Checking if there is a village or not
         if (!$this->model->getVillageState($this->row['to_kid'])) {
@@ -294,8 +324,7 @@ class BattleModel
         $this->endProfile('checkingTraps');
         $this->startProfile('FinalizingAtkDefBonus');
         $stone = 1 + $this->defender['stone'] / 10;
-        $brewery = (new VillageModel())->getCapBrewery($this->attacker['uid']);
-        $offense = $this->calc_offense($brewery);
+        $offense = $this->calc_offense($this->breweryEffects['breweryLevel']);
         if (isset($this->defender['uid']) && $this->defender['uid'] == 1) {
             if ($this->attacker['wave']['units']['num'][11] && isset($offense['n'])) {
                 $offense['b'] *= 1 + $offense['n'] / 100; // natarian horns
@@ -404,7 +433,7 @@ class BattleModel
         if ($this->isFarm() || ($this->attacker['wave']['units']['num'][8] && !$this->defender['isOasis'] && !$this->cataWorks)) {
             $info['cata_is_disabled'] = true;
         }
-        if (!$this->isFarm() && $this->attacker['wave']['units']['num'][8] && !$this->defender['isOasis'] && $this->cataWorks) {
+        if (!$this->isFarm() && empty($this->info['totally_destroyed']) && $this->attacker['wave']['units']['num'][8] && !$this->defender['isOasis'] && $this->cataWorks) {
             $targets = [[0, 0, 0]];
             $selected = [0];
             if ($this->row['ctar2'] <> 0) {
@@ -412,8 +441,8 @@ class BattleModel
                 $selected[] = 0;
             }
             $random_artifact = $this->model->randomTargetArtifact($this->defender['uid'], $this->row['to_kid']);
-            $village = new VillageModel();
-            $cap = $village->getCapBrewery($this->attacker['uid']);
+            $cap = $this->breweryEffects['festivalActive']
+                && $this->breweryEffects['breweryLevel'] > 0;
             for ($i = 0; $i < sizeof($targets); ++$i) {
                 if ($random_artifact) {
                     $ignore = $random_artifact < 3 ? [27, 40] : [40];
@@ -1319,6 +1348,7 @@ class BattleModel
             NoticeHelper::addSurrounding($xy['x'], $xy['y'], NoticeHelper::SURROUNDING_OASIS_RAID, null, $this->row['end_time_seconds']);
             $this->endProfile('finalize_attack:addSurrounding');
         }
+        $this->recordVillageFightSurrounding();
         if ($this->defender['isOasis']) {
             $db->query("UPDATE odata SET lastfarmed=$now WHERE kid={$this->row['to_kid']}");
         }
@@ -1330,6 +1360,28 @@ class BattleModel
             (new AccountDeleter())->deleteVillage($this->row['to_kid']);
             $this->endProfile('finalize_attack:deleteVillage');
         }
+    }
+
+    private function recordVillageFightSurrounding()
+    {
+        if ($this->defender['isOasis'] || !in_array(
+            (int)$this->row['attack_type'],
+            [MovementsModel::ATTACKTYPE_NORMAL, MovementsModel::ATTACKTYPE_RAID],
+            true
+        )) {
+            return;
+        }
+
+        $this->startProfile('finalize_attack:recordVillageFightSurrounding');
+        $xy = Formulas::kid2xy((int)$this->row['to_kid']);
+        NoticeHelper::addSurrounding(
+            $xy['x'],
+            $xy['y'],
+            NoticeHelper::SURROUNDING_FIGHT,
+            [$this->defender['uid'], $this->defender['player']['name'], $this->row['to_kid']],
+            $this->row['end_time_seconds']
+        );
+        $this->endProfile('finalize_attack:recordVillageFightSurrounding');
     }
 
     private function finalize_attacker_states($off_losses)
@@ -1741,8 +1793,14 @@ class BattleModel
                 $slots = max(0, floor(($heroMansion - 5) / 5)) - $oasesCount;
                 if ($this->row['attack_type'] == MovementsModel::ATTACKTYPE_RAID) {
                     if ($slots > 0 && !$this->defender['isOccupied']) {
-                        $this->info['oasisCapture'] = 0;
-                        OasesModel::captureOasis($this->row['to_kid'], $this->attacker['uid'], $this->row['kid']);
+                        if (OasesModel::captureOasis(
+                            $this->row['to_kid'],
+                            $this->attacker['uid'],
+                            $this->row['kid'],
+                            $this->row['end_time_seconds']
+                        )) {
+                            $this->info['oasisCapture'] = 0;
+                        }
                     } else if ($slots <= 0 && !$this->defender['isOccupied']) {
                         $this->info['oasisCapture'] = -1;
                     }
@@ -1755,8 +1813,19 @@ class BattleModel
                         } else {
                             $loyaltyChange = max(0, min(floor(100 / max(1, min(3, (4 - $oasesCount)))), $oasis['loyalty']));
                             if ($loyaltyChange >= $oasis['loyalty']) {
-                                OasesModel::releaseOasis($this->row['to_kid'], $oasis['did']);
-                                OasesModel::captureOasis($this->row['to_kid'], $this->attacker['uid'], $this->row['kid']);
+                                if (!OasesModel::releaseOasis(
+                                    $this->row['to_kid'],
+                                    $oasis['did'],
+                                    $this->row['end_time_seconds'],
+                                    false
+                                ) || !OasesModel::captureOasis(
+                                    $this->row['to_kid'],
+                                    $this->attacker['uid'],
+                                    $this->row['kid'],
+                                    $this->row['end_time_seconds']
+                                )) {
+                                    throw new \RuntimeException('Unable to complete oasis ownership transfer.');
+                                }
                                 $this->info['oasisCapture'] = 0;
                             } else {
                                 $this->info['oasisCapture'] = [
@@ -1850,11 +1919,7 @@ class BattleModel
                 $af = $this->administrator_effect[$this->row['race']];
                 $moral_bonus = $no_morale ? 1 : $this->model->common_morale($pop_ratio);
                 $ld = (!$this->model->is_great_celebration_running($this->row['kid']) ? 0 : 5) - (!$this->model->is_great_celebration_running($this->row['to_kid']) ? 0 : 5);
-                $B = false;
-                if ($this->row['race'] == 2) {
-                    $p = new VillageModel();
-                    $B = $p->getCapBrewery($this->attacker['uid']) > 0;
-                }
+                $B = $this->breweryEffects['festivalActive'];
                 $c = $moral_bonus / ($B ? 2 : 1);
                 $loy = [
                     round(($af[0] + $ld) * $c),
@@ -2218,13 +2283,52 @@ class BattleModel
 
     private function checkIfVillageIsDestroyed()
     {
+        if (!empty($this->info['totally_destroyed'])) {
+            return;
+        }
+
         $db = DB::getInstance();
-        $pop = $db->fetchScalar("SELECT pop FROM vdata WHERE kid={$this->row['to_kid']}");
-        if ($pop > 0) return;
+        $kid = (int)$this->row['to_kid'];
+        $owner = (int)$this->defender['uid'];
+        $ownerResult = $db->query("SELECT id FROM users WHERE id=$owner FOR UPDATE");
+        if (!$ownerResult) {
+            throw new \RuntimeException("Unable to lock player $owner before village destruction.");
+        }
+        if (!$ownerResult->num_rows) {
+            return;
+        }
+
+        $villageResult = $db->query("SELECT owner, name, pop FROM vdata WHERE kid=$kid FOR UPDATE");
+        if (!$villageResult) {
+            throw new \RuntimeException("Unable to lock village $kid before destruction.");
+        }
+        if (!$villageResult->num_rows) {
+            return;
+        }
+
+        $village = $villageResult->fetch_assoc();
+        if ((int)$village['pop'] > 0 || (int)$village['owner'] !== $owner) {
+            return;
+        }
+
         $deleter = new AccountDeleter();
-        $reason = $deleter->isVillageDestroyAble($this->attacker['uid'], $this->row['to_kid'], $this->defender['uid']);
+        $reason = $deleter->isVillageDestroyAble($this->attacker['uid'], $kid, $this->defender['uid']);
         if (true === $reason) {
-            $deleter->deleteVillage($this->row['to_kid'], false);
+            if ($deleter->deleteVillage($kid, false) !== true) {
+                throw new \RuntimeException("Village $kid disappeared during destruction.");
+            }
+
+            $xy = Formulas::kid2xy($kid);
+            if (!NoticeHelper::addSurrounding(
+                $xy['x'],
+                $xy['y'],
+                NoticeHelper::SURROUNDING_VILLAGE_DESTROYED,
+                [$village['owner'], $this->defender['player']['name'], $kid, $village['name']],
+                $this->row['end_time_seconds']
+            )) {
+                throw new \RuntimeException("Unable to record destruction of village $kid.");
+            }
+
             $this->info['totally_destroyed'] = true;
         } else {
             $this->info['not_destroyed_reason'] = $reason;

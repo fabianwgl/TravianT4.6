@@ -76,21 +76,17 @@ class BuildingAction
             }
             $max += ($big ? Formulas::bigStoreCAP($nextLevel) : Formulas::storeCAP($nextLevel));
             $db->query("UPDATE vdata SET {$type}=$max WHERE kid={$kid}");
-        } else if ($item_id == 40 && ($level + $levels) >= 100) {
-            $finish = true;
         } else if ($item_id == 40) {
             (new SummaryModel())->setFirstWWUser($db->fetchScalar('SELECT name FROM users WHERE id=' . $villageRow['owner']));
             $to_level = $level + $levels;
-            if ($to_level > 95) {
-                $WonderOfTheWorld = new WonderOfTheWorldModel();
-                for ($i = 1; $i <= $levels; ++$i) {
-                    $WonderOfTheWorld->attackWWVillage($kid, $to_level);
-                }
-            } else if ($to_level % 5 == 0) {
-                $WonderOfTheWorld = new WonderOfTheWorldModel();
-                $WonderOfTheWorld->attackWWVillage($kid, $to_level);
+            $wonderOfTheWorld = new WonderOfTheWorldModel();
+            foreach (WonderOfTheWorldModel::attackLevelsBetween($level, $to_level) as $attackLevel) {
+                $wonderOfTheWorld->attackWWVillage($kid, $attackLevel);
             }
             $db->query("UPDATE fdata SET lastWWUpgrade=" . miliseconds() . " WHERE kid={$kid}");
+            if ($to_level >= 100) {
+                $finish = true;
+            }
         }
         if (in_array($item_id, [1, 2, 3, 4, 5, 6, 7, 8, 9, 45])) {
             ResourcesHelper::updateVillageResources($kid, false);
@@ -147,7 +143,7 @@ class BuildingAction
         $db->query("UPDATE fdata SET embassy=$embassy WHERE kid=$kid");
     }
 
-    public static function downgrade($kid, $building_field, $levels, $complete = false)
+    public static function downgrade($kid, $building_field, $levels, $complete = false, $removeDemolition = true)
     {
         $m = new AutomationModel();
         $master = new MasterBuilder();
@@ -178,7 +174,9 @@ class BuildingAction
                 $db->query("UPDATE fdata SET f{$building_field}=0 WHERE kid = " . $kid);
             }
         }
-        $db->query("DELETE FROM demolition WHERE kid=$kid AND building_field=$building_field");
+        if ($removeDemolition) {
+            $db->query("DELETE FROM demolition WHERE kid=$kid AND building_field=$building_field");
+        }
         if($item_id == 37){
             $newLevel = $complete ? 0 : ($level - $levels);
             $db->query("UPDATE fdata SET heroMansion=$newLevel WHERE kid=$kid");

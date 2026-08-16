@@ -1,20 +1,5 @@
 <?php
-function MergeSubFilters($id, $subFiltersArray)
-{
-    if($subFiltersArray[$id]) {//filter is active link must deactivate it!
-        $subFiltersArray[$id] = 0;
-    } else {//key is not active! merge with current
-        $subFiltersArray[$id] = 1;
-    }
-
-    return implodeActiveSubFilters($subFiltersArray);
-}
-
-$filter = isset($_REQUEST['filter']) && is_numeric($_REQUEST['filter']) && $_REQUEST['filter'] >= 1 && $_REQUEST['filter'] <= 4 ? $_REQUEST['filter'] : 0;
-$subFiltersArray = $filter == 1 ? [
-    1 => 1, 2 => 1, 3 => 0,
-] : [4 => 1, 5 => 1, 6 => 0];
-function implodeActiveSubFilters($subFiltersArray)
+$implodeActiveSubFilters = static function ($subFiltersArray)
 {
     $implode = [];
     foreach($subFiltersArray as $subFilterId => $subFilterActive) {
@@ -24,7 +9,22 @@ function implodeActiveSubFilters($subFiltersArray)
     }
 
     return implode(",", $implode);
-}
+};
+$mergeSubFilters = static function ($id, $subFiltersArray) use ($implodeActiveSubFilters)
+{
+    if($subFiltersArray[$id]) {//filter is active link must deactivate it!
+        $subFiltersArray[$id] = 0;
+    } else {//key is not active! merge with current
+        $subFiltersArray[$id] = 1;
+    }
+
+    return $implodeActiveSubFilters($subFiltersArray);
+};
+
+$filter = isset($_REQUEST['filter']) && is_numeric($_REQUEST['filter']) && $_REQUEST['filter'] >= 1 && $_REQUEST['filter'] <= 4 ? $_REQUEST['filter'] : 0;
+$subFiltersArray = $filter == 1 ? [
+    1 => 1, 2 => 1, 3 => 0,
+] : [4 => 1, 5 => 1, 6 => 0];
 
 if( $vars['filter'] > 0 and $vars['filter'] < 3):?>
     <div class="filter subFilterContainer">
@@ -43,33 +43,33 @@ if( $vars['filter'] > 0 and $vars['filter'] < 3):?>
                     <?php if( $vars['filter'] == 1):?>
                         <button type="button" class="iconFilter <?=$vars['subFilters'][1] > 0 ? "iconFilterActive" : '';?>"
                                 title="<?=T("RallyPoint", "SubFilters.1");?>"
-                                onclick="window.location.href = '?gid=16&amp;tt=1&amp;filter=1&amp;subfilters=<?=MergeSubFilters(1, $vars['subFilters']);?>'; return false;">
+                                onclick="window.location.href = '?gid=16&amp;tt=1&amp;filter=1&amp;subfilters=<?=$mergeSubFilters(1, $vars['subFilters']);?>'; return false;">
                             <img src="img/x.gif" class="filterCategory subFilterCategory1"
                                  alt="filterCategory subFilterCategory1"/></button>
                         <button type="button" class="iconFilter <?=$vars['subFilters'][2] > 0 ? "iconFilterActive" : '';?>"
                                 title="<?=T("RallyPoint", "SubFilters.2");?>"
-                                onclick="window.location.href = '?gid=16&amp;tt=1&amp;filter=1&amp;subfilters=<?=MergeSubFilters(2, $vars['subFilters']);?>'; return false;">
+                                onclick="window.location.href = '?gid=16&amp;tt=1&amp;filter=1&amp;subfilters=<?=$mergeSubFilters(2, $vars['subFilters']);?>'; return false;">
                             <img src="img/x.gif" class="filterCategory subFilterCategory2"
                                  alt="filterCategory subFilterCategory2"/></button>
                         <button type="button" class="iconFilter <?=$vars['subFilters'][3] > 0 ? "iconFilterActive" : '';?>"
                                 title="<?=T("RallyPoint", "SubFilters.3");?>"
-                                onclick="window.location.href = '?gid=16&amp;tt=1&amp;filter=1&amp;subfilters=<?=MergeSubFilters(3, $vars['subFilters']);?>'; return false;">
+                                onclick="window.location.href = '?gid=16&amp;tt=1&amp;filter=1&amp;subfilters=<?=$mergeSubFilters(3, $vars['subFilters']);?>'; return false;">
                             <img src="img/x.gif" class="filterCategory subFilterCategory3"
                                  alt="filterCategory subFilterCategory3"/></button>
                     <?php else:?>
                         <button type="button" class="iconFilter <?=$vars['subFilters'][4] > 0 ? "iconFilterActive" : '';?>"
                                 title="<?=T("RallyPoint", "SubFilters.4");?>"
-                                onclick="window.location.href = '?gid=16&amp;tt=1&amp;filter=2&amp;subfilters=<?=MergeSubFilters(4, $vars['subFilters']);?>'; return false;">
+                                onclick="window.location.href = '?gid=16&amp;tt=1&amp;filter=2&amp;subfilters=<?=$mergeSubFilters(4, $vars['subFilters']);?>'; return false;">
                             <img src="img/x.gif" class="filterCategory subFilterCategory4"
                                  alt="filterCategory subFilterCategory4"/></button>
                         <button type="button" class="iconFilter <?=$vars['subFilters'][5] > 0 ? "iconFilterActive" : '';?>"
                                 title="<?=T("RallyPoint", "SubFilters.5");?>"
-                                onclick="window.location.href = '?gid=16&amp;tt=1&amp;filter=2&amp;subfilters=<?=MergeSubFilters(5, $vars['subFilters']);?>'; return false;">
+                                onclick="window.location.href = '?gid=16&amp;tt=1&amp;filter=2&amp;subfilters=<?=$mergeSubFilters(5, $vars['subFilters']);?>'; return false;">
                             <img src="img/x.gif" class="filterCategory subFilterCategory5"
                                  alt="filterCategory subFilterCategory5"/></button>
                         <button type="button" class="iconFilter <?=$vars['subFilters'][6] > 0 ? "iconFilterActive" : '';?>"
                                 title="<?=T("RallyPoint", "SubFilters.6");?>"
-                                onclick="window.location.href = '?gid=16&amp;tt=1&amp;filter=2&amp;subfilters=<?=MergeSubFilters(6, $vars['subFilters']);?>'; return false;">
+                                onclick="window.location.href = '?gid=16&amp;tt=1&amp;filter=2&amp;subfilters=<?=$mergeSubFilters(6, $vars['subFilters']);?>'; return false;">
                             <img src="img/x.gif" class="filterCategory subFilterCategory6"
                                  alt="filterCategory subFilterCategory6"/></button>
                     <?php endif;?>

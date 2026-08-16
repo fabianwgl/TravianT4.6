@@ -52,7 +52,7 @@ class TimezoneHelper
         $match_date = \DateTime::createFromFormat("Y.m.d H:i", date("Y.m.d H:i", $time));
         $match_date->setTime(0, 0, 0); // reset time part, to prevent partial comparison
         $diff = $today->diff($match_date);
-        return (integer)$diff->format("%R%a");
+        return (int)$diff->format("%R%a");
     }
 
     public static function strtotime($format, $dateFormat = 'Y-m-d H:i')

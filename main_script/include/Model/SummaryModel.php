@@ -70,12 +70,6 @@ class SummaryModel
         $result['registered'] = ($result['active'] + $result['activating'] + $result['not_activated']);
         $result['online'] = $result['real_online'];
         $result['real_players'] = $result['active'] - $result['fakeCount'];
-        if (!isServerFinished()) {
-            $result['online'] += mt_rand(40, 60);
-            if ($result['online'] >= $result['active']) {
-                $result['online'] *= 0.65;
-            }
-        }
         $result['online'] = min(floor($result['online']), $result['active']);
         $memcached->add("Statistics:General:Players", $result, 60);
         return $result;
@@ -100,4 +94,4 @@ class SummaryModel
         $memcached->delete("Statistics:General:Players");
         $memcached->delete("Statistics:General:Tribes");
     }
-} 
+}

@@ -3,6 +3,7 @@
 namespace Model;
 
 use Core\Database\DB;
+use Core\Security\Password;
 use Game\Formulas;
 use const INCLUDE_PATH;
 use function json_decode;
@@ -1509,18 +1510,19 @@ class InstallerModel
             $dst_y++;
             ++$i;
         }
+        return true;
     }
 
     public function finalize($password)
     {
         $db = DB::getInstance();
         $register = new RegisterModel();
-        $register->addUser("Support", sha1($password), '', 0, 0, TRUE, false, true);
-        $random_multihunter_password = substr(sha1(get_random_string(12)), 0, 12);
+        $register->addUser("Support", Password::hash($password), '', 0, 0, TRUE, false, true);
+        $random_multihunter_password = bin2hex(random_bytes(16));
         $natar_kid = Formulas::xy2kid(0, 0);
 
         $natars = $register->addUser(T("Global", "NatarsName"),
-            sha1(time() . get_random_string(5)),
+            Password::hash(bin2hex(random_bytes(16))),
             '',
             5,
             $natar_kid,
@@ -1530,7 +1532,7 @@ class InstallerModel
         $db->query("UPDATE users SET protection=0, kid=$natar_kid, desc1='[#natars]' WHERE id=$natars");
 
         $multihunter = $register->addUser("Multihunter",
-            sha1($random_multihunter_password),
+            Password::hash($random_multihunter_password),
             '',
             1,
             Formulas::xy2kid(1, 0),

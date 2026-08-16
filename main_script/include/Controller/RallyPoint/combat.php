@@ -272,7 +272,7 @@ class combat
                 ],
                 "waves"          => [],
             ];
-            function add_xxxx_111($race, $row)
+            $addDefenderWave = static function ($race, $row)
             {
                 $battle = ["r" => $race - 1, "u" => [], "U" => [], "side" => "def"];
                 foreach ($row['units'] as $k => $v) {
@@ -280,10 +280,10 @@ class combat
                     $battle['U'][] = $v['level'];
                 }
                 return $battle;
-            }
+            };
 
             foreach ($this->output['defender']['races'] as $rab => $abc) {
-                $data['waves'][] = add_xxxx_111($rab, $abc);
+                $data['waves'][] = $addDefenderWave($rab, $abc);
             }
             $battle = [
                 "r"    => $this->output['attacker']['race'] - 1,
@@ -400,4 +400,4 @@ class combat
     {
         return $this->output;
     }
-} 
+}

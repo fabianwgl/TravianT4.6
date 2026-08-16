@@ -227,7 +227,7 @@ class GoldHelper
                             'data'              => [
                                 'cmd'      => 'finishNowPopup',
                                 'context'  => 'finishNow',
-                                'infoIcon' => 'http://t4.answers.travian.com/index.php?aid=372#go2answer',
+                                'infoIcon' => '/docs/index.php?aid=372#go2answer',
                             ],
                             'preventFormSubmit' => true,
                         ],
@@ -636,7 +636,7 @@ class GoldHelper
                             'cmd'        => 'demolishNowPopup',
                             'additional' => ['gidCallback' => 'getGid'],
                             'context'    => 'demolishNow',
-                            'infoIcon'   => 'http:\/\/t4.answers.travian.com\/index.php?aid=%%answers.demolishNow (en)%%#go2answer',
+                            'infoIcon'   => '/docs/index.php?aid=%%answers.demolishNow (en)%%#go2answer',
                         ],
                         'preventFormSubmit' => true,
                     ],
@@ -725,12 +725,45 @@ class GoldHelper
                 ["data" => ["type" => "button"]],
                 T("Buildings", "construct_with_master_builder"));
         }
-        foreach ($village->onLoadBuildings['master'] as $k => $v) {
+        $currentLevel = (int)$village->getField($fieldId)['level'];
+        $projectedLevel = (int)$lvl;
+        foreach ($village->onLoadBuildings['master'] as $v) {
             if ($fieldId == $v['building_field']) {
-                $lvl++;
+                ++$projectedLevel;
             }
         }
-        $needUpgradeType = $village->checkDependencies($item_id, $lvl);
+        $maxLevel = Formulas::buildingMaxLvl($item_id, $village->isCapital());
+        if ($currentLevel >= $maxLevel) {
+            $text = "<span class=\"warning\">" . T("Buildings", $item_id . ".title") . " " . T("Buildings",
+                    "upgradeNotices.reachedMaxLvL") . "</span>";
+
+            return getButton([
+                "type"    => "button",
+                "class"   => "$class builder disabled",
+                "onClick" => "if(jQuery(this).hasClass('disabled')){event.stopPropagation(); return false;} else {}",
+                "coins"   => $gold,
+                "title"   => htmlspecialchars($text),
+            ],
+                ["data" => ["type" => "button"]],
+                T("Buildings", "construct_with_master_builder"));
+        }
+        if ($projectedLevel >= $maxLevel) {
+            $text = "<span class=\"warning\">" . sprintf(T("Buildings", "upgradeNotices.currentlyReachingMaxLevel"),
+                    T("Buildings", $item_id . ".title")) . "</span>";
+
+            return getButton([
+                "type"    => "button ",
+                "class"   => "$class builder disabled",
+                "onClick" => "if(jQuery(this).hasClass('disabled')){event.stopPropagation(); return false;} else {}",
+                "coins"   => $gold,
+                "title"   => htmlspecialchars($text),
+            ],
+                ["data" => ["type" => "button"]],
+                T("Buildings", "construct_with_master_builder"));
+        }
+
+        $nextLevel = $projectedLevel + 1;
+        $needUpgradeType = $village->checkDependencies($item_id, $nextLevel);
         if ($needUpgradeType <> 0) {
             switch ($needUpgradeType) {
                 case 1:
@@ -763,33 +796,7 @@ class GoldHelper
                 ["data" => ["type" => "button"]],
                 T("Buildings", "construct_with_master_builder"));
         }
-        if ($lvl >= Formulas::buildingMaxLvl($item_id, $village->isCapital())) {
-            $text = "<span class=\"warning\">" . T("Buildings", $item_id . ".title") . " " . T("Buildings",
-                    "upgradeNotices.reachedMaxLvL") . "</span>";
-
-            return getButton([
-                "type"    => "button",
-                "class"   => "$class builder disabled",
-                "onClick" => "if(jQuery(this).hasClass('disabled')){event.stopPropagation(); return false;} else {}",
-                "coins"   => $gold,
-                "title"   => htmlspecialchars($text),
-            ],
-                ["data" => ["type" => "button"]],
-                T("Buildings", "construct_with_master_builder"));
-        } else if ($lvl >= Formulas::buildingMaxLvl($item_id, $village->isCapital())) {
-            $text = "<span class=\"warning\">" . sprintf(T("Buildings", "upgradeNotices.currentlyReachingMaxLevel"),
-                    T("Buildings", $item_id . ".title")) . "</span>";
-
-            return getButton([
-                "type"    => "button ",
-                "class"   => "$class builder disabled",
-                "onClick" => "if(jQuery(this).hasClass('disabled')){event.stopPropagation(); return false;} else {}",
-                "coins"   => $gold,
-                "title"   => htmlspecialchars($text),
-            ],
-                ["data" => ["type" => "button"]],
-                T("Buildings", "construct_with_master_builder"));
-        } else if ($village->getOnDemolishBuildingFieldId() == $fieldId) {
+        if ($village->getOnDemolishBuildingFieldId() == $fieldId) {
             $text = "<span class=\"warning\">" . T("Buildings", "upgradeNotices.buildingIsOnDemolition") . "</span>";
 
             return getButton([

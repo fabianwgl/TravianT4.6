@@ -6,6 +6,7 @@ use Core\Config;
 use Core\Database\DB;
 use Game\Formulas;
 use Game\Map\Map;
+use Game\NoticeHelper;
 use function array_filter_units;
 use Game\ResourcesHelper;
 use function getGameElapsedSeconds;
@@ -279,25 +280,134 @@ class OasesModel
         return min($percent, 150);
     }
 
-    public static function captureOasis($kid, $uid, $did)
+    public static function captureOasis($kid, $uid, $did, $time = null)
     {
+        $kid = (int)$kid;
+        $uid = (int)$uid;
+        $did = (int)$did;
+        $time = $time === null ? time() : (int)$time;
         $db = DB::getInstance();
-        if(getCustom('removeVillageFromFarmListOnCapture')){
-            $db->query("DELETE FROM raidlist WHERE kid=$kid");
+        if (!$db->begin_transaction()) {
+            throw new \RuntimeException('Unable to begin oasis capture transaction.');
         }
-        $db->query("UPDATE odata SET did=$did, owner=$uid, loyalty=100, conquered_time=" . time() . ", last_loyalty_update=" . time() . " WHERE kid=$kid");
-        $db->query("UPDATE wdata SET occupied=1 WHERE id=$kid");
+        try {
+            $villageResult = $db->query("SELECT owner FROM vdata WHERE kid=$did FOR UPDATE");
+            if (!$villageResult || !$villageResult->num_rows) {
+                $db->rollback();
+                return false;
+            }
+            $village = $villageResult->fetch_assoc();
+            if ((int)$village['owner'] !== $uid) {
+                $db->rollback();
+                return false;
+            }
+            $result = $db->query(
+                "SELECT o.owner, o.did, w.occupied, w.x, w.y
+                 FROM odata o JOIN wdata w ON w.id=o.kid
+                 WHERE o.kid=$kid FOR UPDATE"
+            );
+            if (!$result || !$result->num_rows) {
+                $db->rollback();
+                return false;
+            }
+            $oasis = $result->fetch_assoc();
+            if ((int)$oasis['owner'] !== 0 || (int)$oasis['did'] !== 0 || (int)$oasis['occupied'] !== 0) {
+                $db->rollback();
+                return false;
+            }
+            $playerName = $db->fetchScalar("SELECT name FROM users WHERE id=$uid");
+            if ($playerName === false) {
+                $db->rollback();
+                return false;
+            }
+            if(getCustom('removeVillageFromFarmListOnCapture')){
+                $db->query("DELETE FROM raidlist WHERE kid=$kid");
+            }
+            $db->query(
+                "UPDATE odata SET did=$did, owner=$uid, loyalty=100, conquered_time=$time, last_loyalty_update=$time
+                 WHERE kid=$kid AND owner=0 AND did=0"
+            );
+            if ($db->affectedRows() !== 1) {
+                throw new \RuntimeException('Oasis ownership changed before capture could be applied.');
+            }
+            $db->query("UPDATE wdata SET occupied=1 WHERE id=$kid AND occupied=0");
+            if ($db->affectedRows() !== 1) {
+                throw new \RuntimeException('Oasis map occupancy could not be claimed.');
+            }
+            ResourcesHelper::updateVillageResources($did, false);
+            NoticeHelper::addSurrounding(
+                (int)$oasis['x'],
+                (int)$oasis['y'],
+                NoticeHelper::SURROUNDING_OASIS_OCCUPY,
+                [$uid, $playerName],
+                $time
+            );
+            if (!$db->commit()) {
+                throw new \RuntimeException('Unable to commit oasis capture transaction.');
+            }
+        } catch (\Throwable $e) {
+            $db->rollback();
+            throw $e;
+        }
         Map::OccupyOrLeaveOasisCacheRemove($kid);
-        ResourcesHelper::updateVillageResources($did, false);
+        return true;
     }
 
-    public static function releaseOasis($kid, $did)
+    public static function releaseOasis($kid, $did, $time = null, $emitAbandon = true)
     {
+        $kid = (int)$kid;
+        $did = (int)$did;
+        $time = $time === null ? time() : (int)$time;
         $db = DB::getInstance();
-        $db->query("UPDATE odata SET owner=0, did=0, lasttrain=" . time() . ", last_loyalty_update=" . time() . " WHERE kid=$kid");
-        $db->query("UPDATE wdata SET occupied=0 WHERE id=$kid");
+        if (!$db->begin_transaction()) {
+            throw new \RuntimeException('Unable to begin oasis release transaction.');
+        }
+        try {
+            $result = $db->query(
+                "SELECT o.owner, o.did, w.occupied, w.x, w.y
+                 FROM odata o JOIN wdata w ON w.id=o.kid
+                 WHERE o.kid=$kid FOR UPDATE"
+            );
+            if (!$result || !$result->num_rows) {
+                $db->rollback();
+                return false;
+            }
+            $oasis = $result->fetch_assoc();
+            if ((int)$oasis['owner'] === 0 || (int)$oasis['did'] !== $did || (int)$oasis['occupied'] !== 1) {
+                $db->rollback();
+                return false;
+            }
+            $owner = (int)$oasis['owner'];
+            $db->query(
+                "UPDATE odata SET owner=0, did=0, lasttrain=$time, last_loyalty_update=$time
+                 WHERE kid=$kid AND owner=$owner AND did=$did"
+            );
+            if ($db->affectedRows() !== 1) {
+                throw new \RuntimeException('Oasis ownership changed before release could be applied.');
+            }
+            $db->query("UPDATE wdata SET occupied=0 WHERE id=$kid AND occupied=1");
+            if ($db->affectedRows() !== 1) {
+                throw new \RuntimeException('Oasis map occupancy could not be released.');
+            }
+            ResourcesHelper::updateVillageResources($did, false);
+            if ($emitAbandon) {
+                NoticeHelper::addSurrounding(
+                    (int)$oasis['x'],
+                    (int)$oasis['y'],
+                    NoticeHelper::SURROUNDING_OASIS_ABANDON,
+                    null,
+                    $time
+                );
+            }
+            if (!$db->commit()) {
+                throw new \RuntimeException('Unable to commit oasis release transaction.');
+            }
+        } catch (\Throwable $e) {
+            $db->rollback();
+            throw $e;
+        }
         Map::OccupyOrLeaveOasisCacheRemove($kid);
-        ResourcesHelper::updateVillageResources($did, false);
+        return true;
     }
 
     public function updateResources($kid)
@@ -352,4 +462,4 @@ class OasesModel
     }
 
 
-} 
+}

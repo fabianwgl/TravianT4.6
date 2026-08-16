@@ -100,7 +100,7 @@ class MedalsBBCode
 
             4 => 'off1.png',
             5 => 'off2.png',
-            8 => 'def1.png',
+            6 => 'off3.png',
             7 => 'off4.png',
 
             8 => 'def1.png',
@@ -375,7 +375,7 @@ class AllianceBBCode
         }
         $aid = $find->fetch_assoc()['id'];
         $stats = $db->query("SELECT * FROM alistats WHERE aid=$aid ORDER BY time DESC LIMIT 7");
-        $HTML = '<h4 class="chartHeadline">' . sprintf(T("BBCode", "Losses compared to alliance"), $name) . '</h4>';
+        $HTML = '<h4 class="chartHeadline">' . sprintf(T("BBCode", "Losses compared to alliance"), $tag) . '</h4>';
         $dates = $bars = '';
         $results = [];
         $size = $stats->num_rows;
@@ -398,9 +398,10 @@ class AllianceBBCode
             }
             $results[] = $row;
         }
+        $referenceTime = $results[0]['time'] ?? time();
         for ($i = 6; $i >= 0; --$i) {
             if (!isset($results[$i])) {
-                $dates .= '<td>' . TimezoneHelper::date("d.m", $results[0]['time'] - $i * 86400) . '. </td>';
+                $dates .= '<td>' . TimezoneHelper::date("d.m", $referenceTime - $i * 86400) . '. </td>';
                 $bars .= '<td class="bar positive">
 							<div class="wrapper">
 								<div class="stackedWrapper left" style="height: 0%;">
@@ -425,7 +426,7 @@ class AllianceBBCode
                 $total_percent = min($compare_alliance_gain_troops_percent + $compare_alliance_gain_resource_percent,
                     100);
                 $compare_alliance_killed_of = $max_killed_of == 0 ? 0 : ($results[$i]['killed_of'] / $max_killed_of * 100);
-                $compare_alliance_stolen_of = $max_stolen_of == 0 ? 0 : ($results[$i]['stolen_ofs'] / $max_stolen_of * 100);
+                $compare_alliance_stolen_of = $max_stolen_of == 0 ? 0 : ($results[$i]['stolen_of'] / $max_stolen_of * 100);
                 $total_percent2 = min($compare_alliance_killed_of + $compare_alliance_stolen_of, 100);
                 $bars .= '<td class="bar positive">
 							<div class="wrapper">
@@ -452,13 +453,13 @@ class AllianceBBCode
         $HTML .= '<tr>' . $bars . '</tr>';
         $HTML .= '<tr><td colspan="7" class="legend"><div class="legend tomato"></div>&nbsp;' . sprintf(T("BBCode",
                 "troops destroyed by alliance Ally"),
-                $name) . '<br><div class="legend red"></div>&nbsp;' . sprintf(T("BBCode",
+                $tag) . '<br><div class="legend red"></div>&nbsp;' . sprintf(T("BBCode",
                 "resources stolen by alliance Ally"),
-                $name) . '<br><div class="legend cornflowerblue"></div>&nbsp;' . sprintf(T("BBCode",
+                $tag) . '<br><div class="legend cornflowerblue"></div>&nbsp;' . sprintf(T("BBCode",
                 "troops destroyed of alliance Ally"),
-                $name) . '<br><div class="legend blue"></div>&nbsp;' . sprintf(T("BBCode",
+                $tag) . '<br><div class="legend blue"></div>&nbsp;' . sprintf(T("BBCode",
                 "resources stolen of alliance Ally"),
-                $name) . '<br><div class="clear"></div></td></tr>';
+                $tag) . '<br><div class="clear"></div></td></tr>';
         $HTML .= '</body></table><br />';
         return $HTML;
     }
@@ -930,4 +931,4 @@ class BBCode
         }
         return '<span style="color: ' . $color . '">' . $text . '</span>';
     }
-} 
+}

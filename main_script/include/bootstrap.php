@@ -5,8 +5,12 @@ use Core\Config;
 use Core\Database\DB;
 use Core\Database\GlobalDB;
 use Core\Helper\WebService;
+
 if (!function_exists("geoip_country_code_by_name")) {
-    die("Geoip extension not available.");
+    function geoip_country_code_by_name($hostname)
+    {
+        return false;
+    }
 }
 if (!extension_loaded("redis")) {
     die("Redis extension not available.");
@@ -15,12 +19,17 @@ $start_time = microtime(true);
 if (php_sapi_name() != 'cli') {
     set_time_limit(120);
     ob_start();
+    ini_set('session.use_strict_mode', '1');
+    ini_set('session.cookie_httponly', '1');
+    ini_set('session.cookie_samesite', 'Lax');
+    ini_set('session.cookie_secure',
+        (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? '1' : '0');
     if (!session_start()) {
         logError("Could not start session.");
         die("Couldn't start session.");
     }
 }
-define("GLOBAL_CACHING_KEY", get_current_user());
+define("GLOBAL_CACHING_KEY", getenv('CACHE_NAMESPACE') ?: 'openvillage');
 define("ROOT_PATH", dirname(__DIR__) . DIRECTORY_SEPARATOR);
 define("PUBLIC_INTERNAL_PATH", dirname(__DIR__) . "copyable/public/");
 define("INCLUDE_PATH", __DIR__ . DIRECTORY_SEPARATOR);

@@ -33,15 +33,28 @@ class InfoBoxModel
     public function addInfo($uid, $forAll, $type, $params, $showFrom, $showTo)
     {
         $db = DB::getInstance();
-        $params = $db->real_escape_string($params);
+        $uid = (int)$uid;
+        $type = (int)$type;
+        $showFrom = (int)$showFrom;
+        $showTo = (int)$showTo;
+        $params = $db->real_escape_string((string)$params);
         $forAll = (int)$forAll;
         $db->query("INSERT INTO infobox (uid, forAll, type, params, showFrom, showTo) VALUES ($uid, $forAll, $type, '$params', $showFrom, $showTo)");
+        if ($forAll) {
+            self::invalidateAllUsersPrivateInfoBox();
+        } else {
+            self::invalidateUserInfoBoxCache((int)$uid);
+        }
+
+        return $db->affectedRows() === 1;
     }
 
     public function deleteInfoByTypeInServer($type)
     {
+        $type = (int)$type;
         $db = DB::getInstance();
         $db->query("DELETE FROM infobox WHERE type=$type");
+        self::invalidateAllUsersPrivateInfoBox();
     }
 
     public function deletePublicInfoBoxById($infoId)
@@ -54,8 +67,11 @@ class InfoBoxModel
 
     public function deleteInfoByType($uid, $type)
     {
+        $uid = (int)$uid;
+        $type = (int)$type;
         $db = DB::getInstance();
         $db->query("DELETE FROM infobox WHERE uid=$uid AND type=$type");
+        self::invalidateUserInfoBoxCache((int)$uid);
     }
 
     public function hasInfoByType($uid, $type)
@@ -218,4 +234,4 @@ class InfoBoxModel
 
         return $db->fetchScalar("SELECT COUNT(id) FROM infobox_delete WHERE infoId=$activeId AND uid=$uid") > 0;
     }
-} 
+}

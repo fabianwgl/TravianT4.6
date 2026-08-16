@@ -1,19 +1,3 @@
-<script type="text/javascript">
-    Element.implement({
-        showOrHide: function (imgid) {
-            if (this.getStyle('display') == 'none') {
-                if (imgid != '') {
-                    $(imgid).className = 'open';
-                }
-            } else {
-                if (imgid != '') {
-                    $(imgid).className = 'close';
-                }
-            }
-            this.toggleClass('hide');
-        }
-    });
-</script>
 <div class="outerLoginBox <?=$vars['captcha'] ? 'withCaptcha' : ''; ?>">
     <h2><?=$vars['WelcomeText']; ?></h2>
     <noscript>
@@ -31,7 +15,7 @@
                 <tr class="account">
                     <td class="accountNameOrEmailAddress"><?=T("Login", "accountNameOrEmailAddress"); ?>:</td>
                     <td>
-                        <input type="text" name="name" value="<?=$vars['name']; ?>" class="text">
+                        <input type="text" name="name" value="<?=htmlspecialchars($vars['name'], ENT_QUOTES); ?>" class="text">
 
                         <div class="error <?=getDirection(); ?>"><?=$vars['userError']; ?></div>
                     </td>
@@ -41,7 +25,7 @@
                 <tr class="pass">
                     <td><?=T("Login", "pass"); ?></td>
                     <td>
-                        <input type="password" maxlength="20" name="password" value="<?=$vars['password']; ?>" class="text"><br>
+                        <input type="password" maxlength="128" name="password" value="" class="text"><br>
 
                         <div class="error <?=getDirection(); ?>"><?=$vars['pwError']; ?></div>
                     </td>
@@ -84,7 +68,7 @@
                 <tr>
                     <td>
                     </td>
-                    <td>testing</td>
+                    <td></td>
                     <td>
                         <button type="submit" value="<?=T("Login", "Login"); ?>" name="s1" id="s1"
                                 class="green "

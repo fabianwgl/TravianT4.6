@@ -59,4 +59,3 @@
         </a>
     <?php endif;?>
 <?php endif;?>
-

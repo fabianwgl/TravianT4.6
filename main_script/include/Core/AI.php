@@ -25,6 +25,7 @@ class AI_MAIN
     const SKIP_WORKERS = TRUE;
 
     private $village             = [];
+    private $buildings           = [];
     private $user                = [];
     private $researches          = [];
     private $smithy              = [];

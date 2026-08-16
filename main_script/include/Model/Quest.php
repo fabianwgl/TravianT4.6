@@ -48,7 +48,7 @@ class Quest
                     "stepDescription" => "questV2.tutorial_01_step_01_layoutdescription",
                 ],
             ],
-            "answersLink"        => "http://t4.answers.travian.com/index.php?aid=332#go2answer",
+            "answersLink"        => "/docs/index.php?aid=332#go2answer",
             'highlightSelectors' => [
                 [
                     [
@@ -87,7 +87,7 @@ class Quest
                 ],
                 ["stepId" => 3, "type" => 'reward'],
             ],
-            "answersLink"        => 'http://t4.answers.travian.com/index.php?aid=332#go2answer',
+            "answersLink"        => '/docs/index.php?aid=332#go2answer',
             'highlightSelectors' => [
                 0 => [
                     [
@@ -142,7 +142,7 @@ class Quest
                 ],
                 ["stepId" => 2, "type" => "reward"],
             ],
-            "answersLink"        => "http://t4.answers.travian.com/index.php?aid=334#go2answer",
+            "answersLink"        => "/docs/index.php?aid=334#go2answer",
             'highlightSelectors' => [
                 0 => [
                     [
@@ -187,7 +187,7 @@ class Quest
                 ],
                 ["stepId" => 2, "type" => "reward"],
             ],
-            "answersLink"        => "http://t4.answers.travian.com/index.php?aid=335#go2answer",
+            "answersLink"        => "/docs/index.php?aid=335#go2answer",
             'highlightSelectors' => [
                 0 => [
                     [
@@ -236,7 +236,7 @@ class Quest
                 ],
                 ["stepId" => 2, "type" => "reward"],
             ],
-            "answersLink"        => "http://t4.answers.travian.com/index.php?aid=335#go2answer",
+            "answersLink"        => "/docs/index.php?aid=335#go2answer",
             'highlightSelectors' => [
                 0 => [
                     [
@@ -281,7 +281,7 @@ class Quest
                 ],
                 ["stepId" => 2, "type" => "reward"],
             ],
-            "answersLink"        => "http://t4.answers.travian.com/index.php?aid=335#go2answer",
+            "answersLink"        => "/docs/index.php?aid=335#go2answer",
             'highlightSelectors' => [
                 0 => [
                     [
@@ -322,7 +322,7 @@ class Quest
                     "stepDescription" => "questV2.tutorial_07_step_01_layoutdescription",
                 ],
             ],
-            "answersLink"        => "http://t4.answers.travian.com/index.php?aid=335#go2answer",
+            "answersLink"        => "/docs/index.php?aid=335#go2answer",
             'highlightSelectors' => [
                 0 => [
                     [
@@ -356,7 +356,7 @@ class Quest
                 ],
                 ["stepId" => 2, "type" => "reward",],
             ],
-            "answersLink"        => "http://t4.answers.travian.com/index.php?aid=335#go2answer",
+            "answersLink"        => "/docs/index.php?aid=335#go2answer",
             'highlightSelectors' => [
                 0 => [
                     [
@@ -421,7 +421,7 @@ class Quest
                 ],
                 ["stepId" => 2, "type" => "reward",],
             ],
-            "answersLink"        => "http://t4.answers.travian.com/index.php?aid=335#go2answer",
+            "answersLink"        => "/docs/index.php?aid=335#go2answer",
             'highlightSelectors' => [
                 0 => [
                     [
@@ -473,7 +473,7 @@ class Quest
                 ],
                 ["stepId" => 1, "type" => "reward",],
             ],
-            "answersLink"        => "http://t4.answers.travian.com/index.php?aid=335#go2answer",
+            "answersLink"        => "/docs/index.php?aid=335#go2answer",
             'highlightSelectors' => [
                 0 => [
                     [
@@ -507,7 +507,7 @@ class Quest
                 ],
                 ["stepId" => 1, "type" => "reward",],
             ],
-            "answersLink"        => "http://t4.answers.travian.com/index.php?aid=335#go2answer",
+            "answersLink"        => "/docs/index.php?aid=335#go2answer",
             'highlightSelectors' => [
                 0 => [
                     [
@@ -550,7 +550,7 @@ class Quest
                 ],
                 ["stepId" => 2, "type" => "reward",],
             ],
-            "answersLink"        => "http://t4.answers.travian.com/index.php?aid=335#go2answer",
+            "answersLink"        => "/docs/index.php?aid=335#go2answer",
             'highlightSelectors' => [
                 0 => [
                     [
@@ -588,7 +588,7 @@ class Quest
                 ],
                 ["stepId" => 2, "type" => "reward",],
             ],
-            "answersLink"        => "http://t4.answers.travian.com/index.php?aid=335#go2answer",
+            "answersLink"        => "/docs/index.php?aid=335#go2answer",
             'highlightSelectors' => [
                 0 => [
                     [
@@ -626,7 +626,7 @@ class Quest
                 ],
                 ["stepId" => 1, "type" => "reward",],
             ],
-            "answersLink"        => "http://t4.answers.travian.com/index.php?aid=335#go2answer",
+            "answersLink"        => "/docs/index.php?aid=335#go2answer",
             'highlightSelectors' => [
                 0 => [
                     [
@@ -645,7 +645,7 @@ class Quest
             "currentStep"        => 0,
             "stepCount"          => 1,
             "steps"              => [["stepId" => 0, "type" => "task",]],
-            "answersLink"        => "http://t4.answers.travian.com/index.php?aid=335#go2answer",
+            "answersLink"        => "/docs/index.php?aid=335#go2answer",
             'highlightSelectors' => [[],],
         ],
         'Tutorial_15a' => [
@@ -656,7 +656,7 @@ class Quest
             'currentStep'        => 0,
             "stepCount"          => 1,
             "steps"              => [["stepId" => 0, "type" => 'reward'],],
-            "answersLink"        => 'http://t4.answers.travian.com/index.php?aid=332#go2answer',
+            "answersLink"        => '/docs/index.php?aid=332#go2answer',
             'highlightSelectors' => [0 => []],
         ],
     ];

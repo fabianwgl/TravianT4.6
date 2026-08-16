@@ -358,7 +358,6 @@ class HeroAuctionCtrl extends GameCtrl
 
     private function sell($canTakePlaceInAuction)
     {
-        //TODO: sellHorse.
         $session = Session::getInstance();
         if (!$canTakePlaceInAuction) {
             $this->view->vars['content'] .= '<div class="auctionAdventureBarText">' . T("Auction",
@@ -385,7 +384,12 @@ class HeroAuctionCtrl extends GameCtrl
                     $m->addItemToUser($session->getPlayerId(), $auction['btype'], $auction['type'], $auction['num']);
                 }
             }
-        } else if ($canTakePlaceInAuction && isset($_REQUEST['id']) && isset($_REQUEST['a']) && $_REQUEST['a'] == $session->getChecker() && isset($_REQUEST['amount']) && $_REQUEST['amount'] > 0) {
+        } else if ($canTakePlaceInAuction
+            && WebService::isPost()
+            && isset($_POST['sellHorse'])
+            && (int)$_POST['sellHorse'] === 1
+            && isset($_POST['id'], $_POST['a'])
+            && hash_equals((string)$session->getChecker(), (string)$_POST['a'])) {
             if (Config::getInstance()->dynamic->serverFinished) {
                 $this->innerRedirect("InGameWinnerPage");
             } elseif ($session->banned()) {
@@ -393,11 +397,32 @@ class HeroAuctionCtrl extends GameCtrl
             } else if ($session->isInVacationMode()) {
                 $this->redirect("options.php?s=4");
             }
+            $session->changeChecker();
+            if ($m->exchangeFirstHorseForSilver($session->getPlayerId(), (int)$_POST['id'])) {
+                $session->setSilver($session->getAvailableSilver() + AuctionModel::FIRST_HORSE_SILVER);
+            }
+        } else if ($canTakePlaceInAuction
+            && WebService::isPost()
+            && isset($_POST['id'], $_POST['a'], $_POST['amount'])
+            && hash_equals((string)$session->getChecker(), (string)$_POST['a'])
+            && (int)$_POST['amount'] > 0) {
+            if (Config::getInstance()->dynamic->serverFinished) {
+                $this->innerRedirect("InGameWinnerPage");
+            } elseif ($session->banned()) {
+                $this->innerRedirect("InGameBannedPage");
+            } else if ($session->isInVacationMode()) {
+                $this->redirect("options.php?s=4");
+            }
+            $session->changeChecker();
             if ($m->getMyRunningAuctionsCount($session->getPlayerId()) < $maxAuctions) {
-                $item = $db->query("SELECT * FROM items WHERE id=" . (int)$_REQUEST['id']);
+                $item = $db->query(
+                    "SELECT * FROM items WHERE id=" . (int)$_POST['id'] .
+                    " AND uid=" . (int)$session->getPlayerId() .
+                    " AND proc=0"
+                );
                 if ($item->num_rows) {
                     $item = $item->fetch_assoc();
-                    $amount = abs((int)$_REQUEST['amount']);
+                    $amount = abs((int)$_POST['amount']);
                     if ($amount > $item['num']) {
                         $amount = $item['num'];
                     }
@@ -449,6 +474,7 @@ class HeroAuctionCtrl extends GameCtrl
         $view->vars['noMoreAuctions'] = sprintf(T("Auction", "You can only have x auctions at a time"), $maxAuctions);
         $view->vars['auctions'] = '';
         $view->vars['checker'] = $session->getChecker();
+        $view->vars['firstHorseSilver'] = AuctionModel::FIRST_HORSE_SILVER;
         $view->vars['itemsToSale'] = '';
         $view->vars['ajaxItemsToSale'] = '';
         $heroItems = new HeroItems();
@@ -461,7 +487,19 @@ class HeroAuctionCtrl extends GameCtrl
                         <div class="amount">' . number_format_x($row['num']) . '</div>
                     </div>
                 </div>';
-            $view->vars['ajaxItemsToSale'] .= "\t\t" . 'jQuery(\'#item_' . $row['id'] . '\').on(\'click\', function() { $this.sellItem(jQuery(this).find(\'.item\'), ' . $row['id'] . ' ,' . $row['type'] . ',' . $row['num'] . '); });' . "\n";
+            if ((int)$row['btype'] === 6 && (int)$row['type'] === AuctionModel::FIRST_HORSE_TYPE) {
+                $handler = $m->canExchangeFirstHorseForSilver(
+                    $session->getPlayerId(),
+                    (int)$row['id']
+                ) ? '$this.horseForSilver(jQuery(this).find(\'.item\'), ' . (int)$row['id'] . ');'
+                    : '$this.horseCanNotSell(jQuery(this).find(\'.item\'));';
+            } else {
+                $handler = '$this.sellItem(jQuery(this).find(\'.item\'), ' .
+                    (int)$row['id'] . ',' . (int)$row['type'] . ',' . (int)$row['num'] . ');';
+            }
+            $view->vars['ajaxItemsToSale'] .= "\t\t" .
+                'jQuery(\'#item_' . (int)$row['id'] . '\').on(\'click\', function() { ' .
+                $handler . ' });' . "\n";
         }
         $running = $m->getMyRunningAuctions($session->getPlayerId());
         if ($running->num_rows == 0) {
@@ -652,6 +690,8 @@ class HeroAuctionCtrl extends GameCtrl
                 $view->vars['latestBookings'] .= '<td class="cause">';
                 if ($row['cause'] === '1') {
                     $view->vars['latestBookings'] .= T("Auction", "Adventure");
+                } else if ($row['cause'] === AuctionModel::BOOKING_CAUSE_QUEST_REWARD) {
+                    $view->vars['latestBookings'] .= T("Auction", "Quest reward");
                 } else {
                     $cause = explode(",", $row['cause']);
                     $item = $heroItems->getHeroItemProperties($cause[1], $cause[2]);

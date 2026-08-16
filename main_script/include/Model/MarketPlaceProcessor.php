@@ -3,6 +3,7 @@
 namespace Model;
 
 use Core\Database\DB;
+use Core\Jobs\TransactionalTask;
 use Game\Formulas;
 use Game\NoticeHelper;
 use Game\ResourcesHelper;
@@ -11,12 +12,14 @@ class MarketPlaceProcessor
 {
     public function processRow($row)
     {
-        $this->deleteProcess($row['id']);
-        if ($row['mode'] == 1) {
-            $this->processReturn($row);
-            return;
-        }
-        $this->processGo($row);
+        return TransactionalTask::consume('send', (int)$row['id'], function (array $lockedRow): void {
+            if ((int)$lockedRow['mode'] === 1) {
+                $this->processReturn($lockedRow);
+
+                return;
+            }
+            $this->processGo($lockedRow);
+        });
     }
 
     private function processGo($row)
@@ -90,12 +93,6 @@ class MarketPlaceProcessor
     {
         $db = DB::getInstance();
         $db->query("INSERT INTO send (`kid`, `to_kid`, `wood`, `clay`, `iron`, `crop`, `x`, `mode`, `end_time`) VALUES ($kid, $to_kid, $r1, $r2, $r3, $r4,$x2, $mode, $end_time)");
-    }
-
-    private function deleteProcess($id)
-    {
-        $db = DB::getInstance();
-        $db->query("DELETE FROM send WHERE id=$id");
     }
 
     private function processReturn($row)

@@ -250,7 +250,7 @@
                         "plusDialog": false,
                         "goldclubDialog": {
                             "featureKey": "raidList",
-                            "infoIcon": "http:\/\/t4.answers.travian.com\/index.php?aid=Travian Answers#go2answer"
+                            "infoIcon": "/docs/index.php?aid=Travian Answers#go2answer"
                         },
                         "containerId": "",
                         "buttonIdentifier": "<?=$vars['tabs'][99]['id'];?>"
