@@ -319,13 +319,7 @@ class FarmListModel
 
     public function modifyUnits($kid, $units)
     {
-        $db = DB::getInstance();
-        $modify = [];
-        foreach ($units as $m => $v) {
-            $modify[] = "u{$m}=u{$m}-$v";
-        }
-        $query = $db->query("UPDATE units SET " . implode(",", $modify) . " WHERE kid=$kid");
-        return $query && $db->affectedRows() > 0;
+        return Units::debitIfAvailable((int)$kid, (array)$units);
     }
 
     public function getTournamentSqLvl($kid)
@@ -460,25 +454,27 @@ class FarmListModel
                 $modified_units[$i] += $v;
                 $speeds[] = Formulas::uSpeed(nrToUnitId($i, $race));
             }
-            ++$success;
             $calc->setTo($row['kid']);
             $calc->setMinSpeed($speeds);
-            if ($result = Units::modifyUnits($kid, $modified_units)) {
-                $result = $move->addMovement($kid,
-                    $row['kid'],
-                    $race,
-                    $unitsToSend,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    MovementsModel::ATTACKTYPE_RAID,
-                    $miliseconds,
-                    $miliseconds + 1000 * $calc->calc());
-            }
-            if (!$result) {
-                --$success;
+            $result = $move->addMovementWithSourceMutation(
+                static function () use ($kid, $modified_units): bool {
+                    return Units::debitIfAvailable((int)$kid, $modified_units);
+                },
+                $kid,
+                $row['kid'],
+                $race,
+                $unitsToSend,
+                0,
+                0,
+                0,
+                0,
+                0,
+                MovementsModel::ATTACKTYPE_RAID,
+                $miliseconds,
+                $miliseconds + 1000 * $calc->calc()
+            );
+            if ($result) {
+                ++$success;
             }
         }
         Log::addLog($owner,

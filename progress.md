@@ -119,6 +119,9 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
 - Converted sitter assignment and removal controls to checker-protected POST
   actions, removed the legacy GET mutation links, and added focused static and
   authenticated smoke coverage.
+- Made manual sends, farm-list raids, settler dispatch, and reinforcement
+  withdrawals atomically debit their source state and queue their movement,
+  with rollback and concurrent-send regression coverage.
 
 ## Current work
 

@@ -269,6 +269,63 @@ class RallyPointModel
         return $db->affectedRows() > 0;
     }
 
+    public static function debitEnforcementIfAvailable(int $id, array $units): bool
+    {
+        if ($id <= 0) {
+            return false;
+        }
+
+        $modify = [];
+        $available = [];
+        $empty = [];
+        for ($i = 1; $i <= 11; ++$i) {
+            $value = $units[$i] ?? 0;
+            $amount = filter_var($value, FILTER_VALIDATE_INT);
+            if ($amount === false || $amount < 0) {
+                return false;
+            }
+            if ($amount > 0) {
+                $modify[] = "u{$i}=u{$i}-$amount";
+                $available[] = "u{$i}>=$amount";
+            }
+            $empty[] = "u{$i}=0";
+        }
+        if ($modify === []) {
+            return false;
+        }
+
+        $db = DB::getInstance();
+        if (!$db->begin_transaction()) {
+            return false;
+        }
+
+        try {
+            $updated = $db->query(
+                "UPDATE enforcement SET " . implode(',', $modify) .
+                " WHERE id=$id AND " . implode(' AND ', $available)
+            );
+            if (!$updated || $db->affectedRows() !== 1) {
+                $db->rollback();
+
+                return false;
+            }
+            if (!$db->query("DELETE FROM enforcement WHERE id=$id AND " . implode(' AND ', $empty))) {
+                $db->rollback();
+
+                return false;
+            }
+            if (!$db->commit()) {
+                throw new \RuntimeException('Unable to commit reinforcement debit.');
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            $db->rollback();
+
+            throw $e;
+        }
+    }
+
     public function getUnits($kid)
     {
         $db = DB::getInstance();

@@ -383,11 +383,11 @@ class sendTroops extends RallyPointHTML
             } else if (isset($_POST['troopsSent'])) {
                 //do troops send :( and remove proc
                 if ($this->removeA2b($a2b['timestamp'], $a2b['timestamp_checksum'])) {
-                    if ($db->mysqli->begin_transaction()) {
+                    if ($db->begin_transaction()) {
                         if ($this->sendTroops($a2b)) {
-                            $db->mysqli->commit();
+                            $db->commit();
                         } else {
-                            $db->mysqli->rollback();
+                            $db->rollback();
                         }
                     }
                 }
@@ -990,11 +990,11 @@ class sendTroops extends RallyPointHTML
             $insert['ctar2'] = 0;
         }
         $move = new MovementsModel();
-        $stmtSuccess = Units::modifyUnits($session->getKid(), $units);
-        if (!$stmtSuccess) {
-            return false;
-        }
-        $success = $move->addMovement($village->getKid(),
+        $success = $move->addMovementWithSourceMutation(
+            static function () use ($session, $units): bool {
+                return Units::debitIfAvailable((int)$session->getKid(), $units);
+            },
+            $village->getKid(),
             $kid,
             $session->getRace(),
             $units,
@@ -1005,10 +1005,14 @@ class sendTroops extends RallyPointHTML
             0,
             $insert['attack_type'],
             $now,
-            $now + 1000 * $neededTime);
+            $now + 1000 * $neededTime
+        );
         Log::addLog($session->getPlayerId(),
             "rallypoint:movement:" . $attack_type,
             sprintf("Troops: %s, Result: %s", implode(",", array_values($units)), $success > 0));
+        if (!$success) {
+            return false;
+        }
         if ($isOasis) {
             Quest::getInstance()->setQuestBitwise('battle', 7, Quest::QUEST_FINISHED);
         }

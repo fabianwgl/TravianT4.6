@@ -18,6 +18,7 @@ use Model\ArtefactsModel;
 use Model\FarmListModel;
 use Model\MovementsModel;
 use Model\RallyPoint\RallyPointModel;
+use Model\Units;
 use resources\View\PHPBatchView;
 
 class raidList extends AjaxBase
@@ -372,13 +373,16 @@ class raidList extends AjaxBase
                 $modified_units[$i] += $v;
                 $speeds[] = Formulas::uSpeed(nrToUnitId($i, Session::getInstance()->getRace()));
             }
-            if (array_sum($modified_units)) {
-                if (!$m->modifyUnits($list['kid'], $modified_units)) continue;
+            if (!array_sum($modified_units)) {
+                continue;
             }
-            $sentCount++;
             $speedCalculate->setTo($row['kid']);
             $speedCalculate->setMinSpeed($speeds);
-            $move->addMovement($list['kid'],
+            $movementId = $move->addMovementWithSourceMutation(
+                static function () use ($list, $modified_units): bool {
+                    return Units::debitIfAvailable((int)$list['kid'], $modified_units);
+                },
+                $list['kid'],
                 $row['kid'],
                 Session::getInstance()->getRace(),
                 $unitsToSend,
@@ -389,7 +393,11 @@ class raidList extends AjaxBase
                 0,
                 MovementsModel::ATTACKTYPE_RAID,
                 miliseconds(),
-                miliseconds() + $speedCalculate->calc() * 1000);
+                miliseconds() + $speedCalculate->calc() * 1000
+            );
+            if ($movementId) {
+                ++$sentCount;
+            }
         }
         if ($sentCount > 0) {
             $m->setLastRaid($list['id'], $list['owner'], $list['kid'], time());

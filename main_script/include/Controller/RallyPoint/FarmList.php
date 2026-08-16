@@ -16,6 +16,7 @@ use Model\FarmListModel;
 use Model\MovementsModel;
 use Model\OasesModel;
 use Model\RallyPoint\RallyPointModel;
+use Model\Units;
 use resources\View\PHPBatchView;
 use Securimage;
 use const INCLUDE_PATH;
@@ -103,13 +104,16 @@ class FarmList
                                 $modified_units[$i] += $v;
                                 $speeds[] = Formulas::uSpeed(nrToUnitId($i, Session::getInstance()->getRace()));
                             }
-                            if (array_sum($modified_units)) {
-                                if (!$m->modifyUnits($list['kid'], $modified_units)) continue;
+                            if (!array_sum($modified_units)) {
+                                continue;
                             }
-                            $raids['num']++;
                             $calc->setTo($row['kid']);
                             $calc->setMinSpeed($speeds);
-                            $move->addMovement($list['kid'],
+                            $movementId = $move->addMovementWithSourceMutation(
+                                static function () use ($list, $modified_units): bool {
+                                    return Units::debitIfAvailable((int)$list['kid'], $modified_units);
+                                },
+                                $list['kid'],
                                 $row['kid'],
                                 Session::getInstance()->getRace(),
                                 $unitsToSend,
@@ -120,9 +124,15 @@ class FarmList
                                 0,
                                 MovementsModel::ATTACKTYPE_RAID,
                                 miliseconds(),
-                                miliseconds() + $calc->calc() * 1000);
+                                miliseconds() + $calc->calc() * 1000
+                            );
+                            if ($movementId) {
+                                ++$raids['num'];
+                            }
                         }
-                        $m->setLastRaid($list['id'], $list['owner'], $list['kid'], time());
+                        if ($raids['num'] > 0) {
+                            $m->setLastRaid($list['id'], $list['owner'], $list['kid'], time());
+                        }
                     } else {
                         $raids['err2'] = TRUE;
                     }

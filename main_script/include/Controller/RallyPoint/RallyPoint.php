@@ -19,6 +19,7 @@ use Model\MovementsModel;
 use Model\OasesModel;
 use Model\Quest;
 use Model\RallyPoint\RallyPointModel;
+use Model\Units;
 use Model\VillageModel;
 use Model\WonderOfTheWorldModel;
 use resources\View\PHPBatchView;
@@ -77,7 +78,6 @@ class RallyPoint extends RallyPointHTML
             //own reinforcements
             $speeds = [];
             $units = array_fill(1, 11, 0);
-            $wholeCount = 0;
             $units_id = [];
             for ($i = 1; $i <= 11; $i++) {
                 if (isset($_POST['t'][$i])) {
@@ -89,7 +89,6 @@ class RallyPoint extends RallyPointHTML
                 if ($units[$i] > $row['u' . $i]) {
                     $units[$i] = (int)$row['u' . $i];
                 }
-                $wholeCount += max($row['u' . $i], 0);
                 if ($i <= 10 && $units[$i]) {
                     $speeds[] = Formulas::uSpeed(nrToUnitId($i, $session->getRace()));
                     $units_id[] = nrToUnitId($i, $session->getRace());
@@ -123,37 +122,44 @@ class RallyPoint extends RallyPointHTML
             if (WebService::isPost()) {//withdraw
                 $total = array_sum($units);
                 if ($total) {
-                    //process here
                     $move = new MovementsModel();
-                    if (($wholeCount - $total) <= 0) {
-                        if ($m->enforcementExists($d) && $m->deleteEnforce($d)) {
-                            $move->addMovement($row['to_kid'], $row['kid'], $session->getRace(), $units, 0, 0, 0, 0, 1, MovementsModel::ATTACKTYPE_REINFORCEMENT, $miliseconds, $miliseconds + $timeTaken * 1000);
-                        }
-                    } else {
-                        $modify = [];
-                        for ($i = 1; $i <= 11; ++$i) {
-                            if ($units[$i]) {
-                                $modify[] = "u{$i}=u{$i}-" . $units[$i];
+                    $movementId = $move->addMovementWithSourceMutation(
+                        function () use ($db, $d, $row, $units): bool {
+                            if (!RallyPointModel::debitEnforcementIfAvailable((int)$d, $units)) {
+                                return false;
                             }
-                        }
-                        if ($m->enforcementExists($d) && $m->modifyEnforce($modify, $d)) {
-                            $move->addMovement($row['to_kid'], $row['kid'], $session->getRace(), $units, 0, 0, 0, 0, 1, MovementsModel::ATTACKTYPE_REINFORCEMENT, $miliseconds, $miliseconds + $timeTaken * 1000);
-                        }
-                    }
-                    if ($row['race'] <> 4) {
-                        $o = new OasesModel();
-                        {
+                            if ($row['race'] == 4) {
+                                return true;
+                            }
+
+                            $o = new OasesModel();
                             $isOasis = $o->isOasis($row['to_kid']);
                             $targetKid = $isOasis ? $o->getOasisCaptureKid($row['to_kid']) : $row['to_kid'];
                             $uid = $db->fetchScalar("SELECT owner FROM vdata WHERE kid=$targetKid");
                             $upkeep = ResourcesHelper::getTotalCropConsumption($row['race'], $units, VillageModel::getHDP($targetKid, $row['race']));
                             ResourcesHelper::modifyUpkeep($uid, $targetKid, $upkeep, 1);
-                        }
-                        $uid = $db->fetchScalar("SELECT owner FROM vdata WHERE kid={$row['kid']}");
-                        $upkeep = ResourcesHelper::getTotalCropConsumption($row['race'], $units, VillageModel::getHDP($row['kid'], $row['race']));
-                        ResourcesHelper::modifyUpkeep($uid, $row['kid'], $upkeep);
+                            $uid = $db->fetchScalar("SELECT owner FROM vdata WHERE kid={$row['kid']}");
+                            $upkeep = ResourcesHelper::getTotalCropConsumption($row['race'], $units, VillageModel::getHDP($row['kid'], $row['race']));
+                            ResourcesHelper::modifyUpkeep($uid, $row['kid'], $upkeep);
+
+                            return true;
+                        },
+                        $row['to_kid'],
+                        $row['kid'],
+                        $session->getRace(),
+                        $units,
+                        0,
+                        0,
+                        0,
+                        0,
+                        1,
+                        MovementsModel::ATTACKTYPE_REINFORCEMENT,
+                        $miliseconds,
+                        $miliseconds + $timeTaken * 1000
+                    );
+                    if ($movementId) {
+                        redirect("build.php?id=39&tt=1");
                     }
-                    redirect("build.php?id=39&tt=1");
                 }
             }
             $row = [
@@ -207,7 +213,6 @@ class RallyPoint extends RallyPointHTML
             }
             $speeds = [];
             $units = array_fill(1, 11, 0);
-            $wholeCount = 0;
             $units_id = [];
             for ($i = 1; $i <= 11; $i++) {
                 if ($i === 11 && $row['race'] == 4) {
@@ -222,7 +227,6 @@ class RallyPoint extends RallyPointHTML
                 if ($units[$i] > $row['u' . $i]) {
                     $units[$i] = (int)$row['u' . $i];
                 }
-                $wholeCount += (int)max($row['u' . $i], 0);
                 if ($i <= 10 && $units[$i]) {
                     $speeds[] = Formulas::uSpeed(nrToUnitId($i, $session->getRace()));
                     $units_id[] = nrToUnitId($i, $session->getRace());
@@ -259,37 +263,47 @@ class RallyPoint extends RallyPointHTML
             $timeTaken = $calculator->calc();
             if (strtolower($_SERVER['REQUEST_METHOD']) == 'post') {//withdraw
                 if ($total) {
-                    $move = new MovementsModel();
-                    //process here
-                    if (($wholeCount - $total) <= 0) {
-                        if ($m->deleteEnforce($d) && $row['race'] <> 4) {
-                            $move->addMovement($row['to_kid'], $row['kid'], $row['race'], $units, 0, 0, 0, 0, 1, MovementsModel::ATTACKTYPE_REINFORCEMENT, $miliseconds, $miliseconds + $timeTaken * 1000);
+                    if ($row['race'] == 4) {
+                        if (RallyPointModel::debitEnforcementIfAvailable((int)$d, $units)) {
+                            redirect("build.php?id=39&tt=1");
                         }
                     } else {
-                        $modify = [];
-                        for ($i = 1; $i <= 11; ++$i) {
-                            if (isset($units[$i]) && $units[$i]) {
-                                $modify[] = "u{$i}=u{$i}-" . $units[$i];
-                            }
-                        }
-                        if ($m->modifyEnforce($modify, $d) && $row['race'] <> 4) {
-                            $move->addMovement($row['to_kid'], $row['kid'], $row['race'], $units, 0, 0, 0, 0, 1, MovementsModel::ATTACKTYPE_REINFORCEMENT, $miliseconds, $miliseconds + $timeTaken * 1000);
+                        $move = new MovementsModel();
+                        $movementId = $move->addMovementWithSourceMutation(
+                            function () use ($db, $d, $row, $units): bool {
+                                if (!RallyPointModel::debitEnforcementIfAvailable((int)$d, $units)) {
+                                    return false;
+                                }
+
+                                $o = new OasesModel();
+                                $isOasis = $o->isOasis($row['to_kid']);
+                                $targetKid = $isOasis ? $o->getOasisCaptureKid($row['to_kid']) : $row['to_kid'];
+                                $uid = $db->fetchScalar("SELECT owner FROM vdata WHERE kid=$targetKid");
+                                $upkeep = ResourcesHelper::getTotalCropConsumption($row['race'], $units, VillageModel::getHDP($targetKid, $row['race']));
+                                ResourcesHelper::modifyUpkeep($uid, $targetKid, $upkeep, 1);
+                                $uid = $db->fetchScalar("SELECT owner FROM vdata WHERE kid={$row['kid']}");
+                                $upkeep = ResourcesHelper::getTotalCropConsumption($row['race'], $units, VillageModel::getHDP($row['kid'], $row['race']));
+                                ResourcesHelper::modifyUpkeep($uid, $row['kid'], $upkeep);
+
+                                return true;
+                            },
+                            $row['to_kid'],
+                            $row['kid'],
+                            $row['race'],
+                            $units,
+                            0,
+                            0,
+                            0,
+                            0,
+                            1,
+                            MovementsModel::ATTACKTYPE_REINFORCEMENT,
+                            $miliseconds,
+                            $miliseconds + $timeTaken * 1000
+                        );
+                        if ($movementId) {
+                            redirect("build.php?id=39&tt=1");
                         }
                     }
-                    if ($row['race'] <> 4) {
-                        $o = new OasesModel();
-                        {
-                            $isOasis = $o->isOasis($row['to_kid']);
-                            $targetKid = $isOasis ? $o->getOasisCaptureKid($row['to_kid']) : $row['to_kid'];
-                            $uid = $db->fetchScalar("SELECT owner FROM vdata WHERE kid=$targetKid");
-                            $upkeep = ResourcesHelper::getTotalCropConsumption($row['race'], $units, VillageModel::getHDP($targetKid, $row['race']));
-                            ResourcesHelper::modifyUpkeep($uid, $targetKid, $upkeep, 1);
-                        }
-                        $uid = $db->fetchScalar("SELECT owner FROM vdata WHERE kid={$row['kid']}");
-                        $upkeep = ResourcesHelper::getTotalCropConsumption($row['race'], $units, VillageModel::getHDP($row['kid'], $row['race']));
-                        ResourcesHelper::modifyUpkeep($uid, $row['kid'], $upkeep);
-                    }
-                    redirect("build.php?id=39&tt=1");
                 }
             }
             $trow = [
@@ -409,35 +423,60 @@ class RallyPoint extends RallyPointHTML
                 redirect("options.php?s=4");
                 return FALSE;
             }
-            $village->modifyResources($resources);
             $db = DB::getInstance();
-            $stmtSuccess = $db->query("UPDATE units SET u10=u10-3 WHERE kid=" . $village->getKid());
-            if ($stmtSuccess && $db->affectedRows() > 0) {
-                $move = new MovementsModel();
-                $units = array_fill(1, 10, 0);
-                $units[10] = 3;
-                $calc = new SpeedCalculator();
-                $calc->setFrom($village->getKid());
-                $calc->setTo($kid);
-                $calc->setMinSpeed(Formulas::uSpeed(nrToUnitId(10, Session::getInstance()->getRace())));
-                $time = $calc->calc();
-                $quest = Quest::getInstance();
-                $quest->setQuestBitwise('world', 16, 1);
-                $move->addMovement($village->getKid(),
-                    $a2b['to_kid'],
-                    Session::getInstance()->getRace(),
-                    $units,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    MovementsModel::ATTACKTYPE_SETTLERS,
-                    miliseconds(true),
-                    miliseconds(true) + $time * 1000);
-            } else {
+            $move = new MovementsModel();
+            $units = array_fill(1, 11, 0);
+            $units[10] = 3;
+            $calc = new SpeedCalculator();
+            $calc->setFrom($village->getKid());
+            $calc->setTo($kid);
+            $calc->setMinSpeed(Formulas::uSpeed(nrToUnitId(10, Session::getInstance()->getRace())));
+            $time = $calc->calc();
+            $startTime = miliseconds(true);
+            $sourceKid = (int)$village->getKid();
+            $movementId = $move->addMovementWithSourceMutation(
+                static function () use ($db, $resources, $sourceKid, $units): bool {
+                    $wood = (int)$resources[0];
+                    $clay = (int)$resources[1];
+                    $iron = (int)$resources[2];
+                    $crop = (int)$resources[3];
+                    $source = $db->query("SELECT kid FROM vdata WHERE kid=$sourceKid FOR UPDATE");
+                    if (!$source || !$source->num_rows) {
+                        return false;
+                    }
+                    ResourcesHelper::updateVillageResources($sourceKid);
+                    $resourceDebit = $db->query(
+                        "UPDATE vdata SET
+                            wood=wood-$wood, clay=clay-$clay, iron=iron-$iron, crop=crop-$crop
+                         WHERE kid=$sourceKid
+                           AND wood>=$wood AND clay>=$clay AND iron>=$iron AND crop>=$crop"
+                    );
+                    if (!$resourceDebit || $db->affectedRows() !== 1) {
+                        return false;
+                    }
+                    if (!Units::debitIfAvailable($sourceKid, $units)) {
+                        return false;
+                    }
+                    Quest::getInstance()->setQuestBitwise('world', 16, 1);
+
+                    return true;
+                },
+                $sourceKid,
+                $a2b['to_kid'],
+                Session::getInstance()->getRace(),
+                $units,
+                0,
+                0,
+                0,
+                0,
+                0,
+                MovementsModel::ATTACKTYPE_SETTLERS,
+                $startTime,
+                $startTime + $time * 1000
+            );
+            if (!$movementId) {
                 Notification::notify("Bug bug bug!",
-                    "Settlers () Troops double bug in player " . Session::getInstance()->getName());
+                    "Unable to dispatch settlers for player " . Session::getInstance()->getName());
             }
             redirect("build.php?id=39&tt=1");
             exit();

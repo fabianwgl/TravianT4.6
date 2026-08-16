@@ -34,6 +34,8 @@ use Model\MovementsModel;
 use Model\NatarsModel;
 use Model\OasesModel;
 use Model\OptionModel;
+use Model\RallyPoint\RallyPointModel;
+use Model\Units;
 use Model\VillageModel;
 use Model\WonderOfTheWorldModel;
 
@@ -889,6 +891,229 @@ try {
     $db->rollback();
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
     $db->query("ALTER TABLE movement AUTO_INCREMENT=$movementAutoIncrement");
+}
+
+$dispatchOwner = 2000000100;
+$dispatchSource = 2000000101;
+$dispatchTarget = 2000000102;
+$dispatchEnforcement = 2000000103;
+$dispatchFixtureCommitted = false;
+$dispatchWorkers = [];
+$dispatchBarrierFiles = [];
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id=$dispatchOwner"),
+        'movement-dispatch fixture user ID available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM vdata WHERE kid=$dispatchSource"),
+        'movement-dispatch fixture village ID available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM enforcement WHERE id=$dispatchEnforcement"),
+        'movement-dispatch fixture enforcement ID available'
+    );
+    expect_true($db->begin_transaction(), 'movement-dispatch fixture transaction started');
+    $nowMs = miliseconds();
+    $db->query("INSERT INTO users (id, uuid, name, password, email, race, kid, desc1, desc2, note)
+        VALUES ($dispatchOwner, 'ov-regression-dispatch', 'OVDispatch', 'x', '', 1, $dispatchSource, '', '', '')");
+    $db->query("INSERT INTO vdata
+        (kid, owner, fieldtype, name, capital, pop, cp, wood, clay, iron, woodp, clayp, ironp, maxstore,
+         crop, cropp, maxcrop, upkeep, lastmupdate, created, expandedfrom)
+        VALUES
+        ($dispatchSource, $dispatchOwner, 3, 'OV Dispatch Source', 1, 0, 0,
+         1000, 1000, 1000, 0, 0, 0, 1000000, 1000, 0, 1000000, 0, $nowMs, " . time() . ", 0)");
+    $db->query("INSERT INTO units (kid, race, u1) VALUES ($dispatchSource, 1, 5)");
+    $db->query("INSERT INTO enforcement (id, uid, kid, to_kid, race, u1)
+        VALUES ($dispatchEnforcement, $dispatchOwner, $dispatchSource, $dispatchTarget, 1, 3)");
+    expect_true($db->commit(), 'movement-dispatch fixture committed');
+    $dispatchFixtureCommitted = true;
+
+    expect_same(
+        false,
+        Units::debitIfAvailable($dispatchSource, [1 => 6]),
+        'troop debit rejects insufficient units'
+    );
+    expect_same(5, (int)$db->fetchScalar("SELECT u1 FROM units WHERE kid=$dispatchSource"), 'rejected troop debit changes nothing');
+    expect_same(
+        false,
+        Units::debitIfAvailable($dispatchSource, [1 => -1]),
+        'troop debit rejects negative counts'
+    );
+    expect_same(
+        false,
+        RallyPointModel::debitEnforcementIfAvailable($dispatchEnforcement, [1 => 4]),
+        'reinforcement debit rejects insufficient units'
+    );
+    expect_same(
+        3,
+        (int)$db->fetchScalar("SELECT u1 FROM enforcement WHERE id=$dispatchEnforcement"),
+        'rejected reinforcement debit changes nothing'
+    );
+
+    $movement = new MovementsModel();
+    $failingUnits = array_fill(1, 11, 0);
+    $failingUnits[1] = 2;
+    $failingMovement = $movement->addMovementWithSourceMutation(
+        static function () use ($db, $dispatchSource, $dispatchEnforcement, $failingUnits): bool {
+            $resourceDebit = $db->query(
+                "UPDATE vdata SET wood=wood-100, clay=clay-100, iron=iron-100, crop=crop-100
+                 WHERE kid=$dispatchSource AND wood>=100 AND clay>=100 AND iron>=100 AND crop>=100"
+            );
+            if (!$resourceDebit || $db->affectedRows() !== 1) {
+                return false;
+            }
+            if (!RallyPointModel::debitEnforcementIfAvailable($dispatchEnforcement, [1 => 1])) {
+                return false;
+            }
+
+            return Units::debitIfAvailable($dispatchSource, $failingUnits);
+        },
+        $dispatchSource,
+        $dispatchTarget,
+        1,
+        $failingUnits,
+        0,
+        0,
+        0,
+        0,
+        0,
+        MovementsModel::ATTACKTYPE_RAID,
+        $nowMs,
+        $nowMs + 1000,
+        str_repeat('x', 256)
+    );
+    expect_same(0, (int)$failingMovement, 'failed movement insert reports failure');
+    expect_same(
+        '5|1000|1000|1000|1000|3|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                u.u1, '|', FLOOR(v.wood), '|', FLOOR(v.clay), '|', FLOOR(v.iron), '|', FLOOR(v.crop), '|',
+                (SELECT u1 FROM enforcement WHERE id=$dispatchEnforcement), '|',
+                (SELECT COUNT(*) FROM movement WHERE kid=$dispatchSource)
+            ) FROM units u JOIN vdata v ON v.kid=u.kid WHERE u.kid=$dispatchSource"
+        ),
+        'failed movement insert rolls back troops, resources, and reinforcement state'
+    );
+
+    expect_true($db->begin_transaction(), 'full reinforcement-debit test transaction started');
+    expect_true(
+        RallyPointModel::debitEnforcementIfAvailable($dispatchEnforcement, [1 => 3]),
+        'full reinforcement debit succeeds'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM enforcement WHERE id=$dispatchEnforcement"),
+        'empty enforcement row removed'
+    );
+    expect_true($db->rollback(), 'full reinforcement-debit test rolled back');
+    expect_same(
+        3,
+        (int)$db->fetchScalar("SELECT u1 FROM enforcement WHERE id=$dispatchEnforcement"),
+        'reinforcement rollback restores source row'
+    );
+
+    $descriptorSpec = [
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ];
+    $barrierPath = tempnam(sys_get_temp_dir(), 'ov-dispatch-start-');
+    $firstReadyPath = tempnam(sys_get_temp_dir(), 'ov-dispatch-ready-');
+    $secondReadyPath = tempnam(sys_get_temp_dir(), 'ov-dispatch-ready-');
+    expect_true($barrierPath !== false, 'movement-dispatch start barrier created');
+    expect_true($firstReadyPath !== false, 'first movement-dispatch ready signal created');
+    expect_true($secondReadyPath !== false, 'second movement-dispatch ready signal created');
+    $dispatchBarrierFiles = [$barrierPath, $firstReadyPath, $secondReadyPath];
+    $readyPaths = [$firstReadyPath, $secondReadyPath];
+    for ($i = 0; $i < 2; ++$i) {
+        $pipes = [];
+        $process = proc_open(
+            [
+                'php',
+                '/app/tests/movement-dispatch-worker.php',
+                (string)$dispatchSource,
+                (string)$dispatchTarget,
+                $barrierPath,
+                $readyPaths[$i],
+            ],
+            $descriptorSpec,
+            $pipes
+        );
+        expect_true(is_resource($process), "movement-dispatch worker $i started");
+        $dispatchWorkers[] = ['process' => $process, 'pipes' => $pipes];
+    }
+
+    $readyDeadline = microtime(true) + 10;
+    while (
+        (@file_get_contents($firstReadyPath) !== 'ready' || @file_get_contents($secondReadyPath) !== 'ready')
+        && microtime(true) < $readyDeadline
+    ) {
+        usleep(1000);
+    }
+    expect_same('ready', @file_get_contents($firstReadyPath), 'first movement-dispatch worker ready');
+    expect_same('ready', @file_get_contents($secondReadyPath), 'second movement-dispatch worker ready');
+    expect_true(file_put_contents($barrierPath, 'go', LOCK_EX) !== false, 'movement-dispatch workers released together');
+
+    $dispatchOutcomes = [];
+    foreach ($dispatchWorkers as $i => &$worker) {
+        $stdout = stream_get_contents($worker['pipes'][1]);
+        $stderr = stream_get_contents($worker['pipes'][2]);
+        fclose($worker['pipes'][1]);
+        fclose($worker['pipes'][2]);
+        $exitCode = proc_close($worker['process']);
+        $worker['process'] = null;
+        $worker['pipes'] = [];
+        expect_same(0, $exitCode, "movement-dispatch worker $i exited successfully: $stderr");
+        $dispatchOutcomes[] = (int)$stdout;
+    }
+    unset($worker);
+    sort($dispatchOutcomes);
+    expect_same(0, $dispatchOutcomes[0], 'one concurrent movement dispatch rejected');
+    expect_true($dispatchOutcomes[1] > 0, 'one concurrent movement dispatch committed');
+    expect_same(
+        '1|1',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(u1, '|',
+                (SELECT COUNT(*) FROM movement
+                 WHERE kid=$dispatchSource AND to_kid=$dispatchTarget AND attack_type=" . MovementsModel::ATTACKTYPE_RAID . "))
+             FROM units WHERE kid=$dispatchSource"
+        ),
+        'concurrent dispatch cannot overdraw troops or duplicate movement'
+    );
+} finally {
+    foreach ($dispatchWorkers as &$worker) {
+        if (isset($worker['pipes']) && is_array($worker['pipes'])) {
+            foreach ($worker['pipes'] as $pipe) {
+                if (is_resource($pipe)) {
+                    fclose($pipe);
+                }
+            }
+        }
+        if (isset($worker['process']) && is_resource($worker['process'])) {
+            proc_terminate($worker['process']);
+            proc_close($worker['process']);
+        }
+    }
+    unset($worker);
+    foreach ($dispatchBarrierFiles as $path) {
+        if (is_string($path) && is_file($path)) {
+            unlink($path);
+        }
+    }
+    $db->rollback();
+    if ($dispatchFixtureCommitted) {
+        $db->query("DELETE FROM movement WHERE kid=$dispatchSource OR to_kid=$dispatchTarget");
+        $db->query("DELETE FROM enforcement WHERE id=$dispatchEnforcement");
+        $db->query("DELETE FROM units WHERE kid=$dispatchSource");
+        $db->query("DELETE FROM vdata WHERE kid=$dispatchSource");
+        $db->query("DELETE FROM users WHERE id=$dispatchOwner");
+    }
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE movement AUTO_INCREMENT=$movementAutoIncrement");
+    $db->query("ALTER TABLE enforcement AUTO_INCREMENT=$enforcementAutoIncrement");
 }
 
 $capitalOwner = 2000000050;

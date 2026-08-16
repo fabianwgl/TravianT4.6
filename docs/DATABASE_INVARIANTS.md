@@ -42,6 +42,10 @@ delete paths are covered by regression tests.
 - Unit counts in `units`, `movement`, `enforcement`, and `trapped` represent
   disjoint locations of the same armies and must never be duplicated by a
   transition.
+- Manual sends, farm-list raids, settler dispatch, and reinforcement withdrawal
+  conditionally debit the source and insert the resulting movement in one
+  transaction. A failed insert restores every source row, and concurrent
+  dispatches cannot overdraw the same troop balance.
 - `vdata.upkeep` is derived from home troops, relevant incoming/returning
   movements, reinforcements, trapped troops, Horse Drinking Trough effects,
   artifacts, and World Wonder rules. Any troop-location change must settle

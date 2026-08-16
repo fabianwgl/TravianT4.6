@@ -96,6 +96,9 @@
   stable delivery keys suppress duplicate global notices.
 - Activation reminder jobs now queue mail before marking reminders delivered;
   replayed reminders reuse a stable outbox key instead of duplicating mail rows.
+- Troop sends, farm-list raids, settler dispatch, and reinforcement withdrawals
+  now atomically debit their source state and queue movements, preventing
+  failed inserts or concurrent requests from losing or overdrawing units.
 - Winner and no-winner pages now preserve literal CSS percentages in translated
   markup instead of treating them as `vsprintf` format tokens.
 - Nullable database and resource values are normalized before PHP 8.3 string
