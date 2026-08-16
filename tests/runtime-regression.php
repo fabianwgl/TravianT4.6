@@ -3861,6 +3861,187 @@ try {
     $db->query("ALTER TABLE farmlist_last_reports AUTO_INCREMENT=$farmListLastReportsAutoIncrement");
 }
 
+$settlementRegressionUsers = [2000000070, 2000000071, 2000000072];
+$settlementRegressionKids = [];
+$settlementRegressionTasks = [];
+$settlementRegressionOriginalMap = [];
+$settlementRegressionWorkers = [];
+$settlementRegressionBarrierFiles = [];
+$settlementRegressionCommitted = false;
+$settlementRegressionTarget = 0;
+$settlementRegressionInvalidTarget = 0;
+$settlementRegressionSummary = $db->query(
+    'SELECT first_village_player_name, first_village_time FROM summary LIMIT 1'
+)->fetch_assoc();
+$settlementRegressionSurroundingFloor = (int)$db->fetchScalar('SELECT COALESCE(MAX(id), 0) FROM surrounding');
+try {
+    $availableFields = $db->query(
+        "SELECT w.id, w.fieldtype
+         FROM wdata w JOIN available_villages a ON a.kid=w.id
+         WHERE w.id>0 AND w.fieldtype>0 AND w.occupied=0 AND a.occupied=0 AND w.oasistype=0
+           AND ROUND(SQRT(POW(w.x, 2)+POW(w.y, 2)))>22
+           AND NOT EXISTS (SELECT 1 FROM vdata v WHERE v.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM movement m WHERE m.kid=w.id OR m.to_kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM marks m WHERE m.kid=w.id)
+         ORDER BY w.id DESC LIMIT 5"
+    );
+    expect_same(5, $availableFields->num_rows, 'settlement regression fixture fields available');
+    $fields = [];
+    while ($field = $availableFields->fetch_assoc()) {
+        $fields[] = ['id' => (int)$field['id'], 'fieldtype' => (int)$field['fieldtype']];
+    }
+    $settlementRegressionInvalidTarget = $fields[0]['id'];
+    $sourceA = $fields[1]['id'];
+    $sourceB = $fields[2]['id'];
+    $sourceC = $fields[3]['id'];
+    $settlementRegressionTarget = $fields[4]['id'];
+    $settlementRegressionKids = [$settlementRegressionInvalidTarget, $sourceA, $sourceB, $sourceC, $settlementRegressionTarget];
+    foreach ($settlementRegressionKids as $kid) {
+        $row = $db->query("SELECT occupied FROM wdata WHERE id=$kid")->fetch_assoc();
+        $available = $db->query("SELECT occupied FROM available_villages WHERE kid=$kid")->fetch_assoc();
+        $settlementRegressionOriginalMap[$kid] = [(int)$row['occupied'], (int)$available['occupied']];
+    }
+    foreach ($settlementRegressionUsers as $uid) {
+        expect_same(0, (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id=$uid"), "settlement fixture user $uid available");
+    }
+
+    $nowMs = miliseconds();
+    $db->begin_transaction();
+    $db->query("INSERT INTO users
+        (id, uuid, name, password, email, race, kid, total_pop, total_villages, cp, cp_prod, lastupdate,
+         desc1, desc2, note)
+        VALUES
+        ({$settlementRegressionUsers[0]}, 'ov-regression-settle-a', 'OVSettleA', 'x', '', 1, $sourceA, 100, 1, 1000000, 0, " . time() . ", '', '', ''),
+        ({$settlementRegressionUsers[1]}, 'ov-regression-settle-b', 'OVSettleB', 'x', '', 1, $sourceB, 100, 1, 1000000, 0, " . time() . ", '', '', ''),
+        ({$settlementRegressionUsers[2]}, 'ov-regression-settle-c', 'OVSettleC', 'x', '', 1, $sourceC, 100, 1, 1000000, 0, " . time() . ", '', '', '')");
+    foreach ([[$sourceA, 0], [$sourceB, 1], [$sourceC, 2]] as [$kid, $index]) {
+        $uid = $settlementRegressionUsers[$index];
+        $fieldtype = $fields[array_search($kid, array_column($fields, 'id'), true)]['fieldtype'];
+        $db->query("INSERT INTO vdata
+            (kid, owner, fieldtype, name, capital, pop, cp, wood, clay, iron, woodp, clayp, ironp, maxstore,
+             crop, cropp, maxcrop, upkeep, lastmupdate, created, expandedfrom)
+            VALUES ($kid, $uid, $fieldtype, 'OV Settlement Source', 1, 100, 0, 1000, 1000, 1000, 0, 0,
+                    0, 1000000, 1000, 0, 1000000, 0, $nowMs, " . time() . ", 0)");
+        $db->query("INSERT INTO fdata (kid) VALUES ($kid)");
+        $db->query("INSERT INTO units (kid, race) VALUES ($kid, 1)");
+    }
+    $db->query("UPDATE wdata SET occupied=1 WHERE id IN ($sourceA, $sourceB, $sourceC)");
+    $db->query("UPDATE available_villages SET occupied=1 WHERE kid IN ($sourceA, $sourceB, $sourceC)");
+    // Deliberately create the stale-map condition: world tile free, availability row occupied.
+    $db->query("UPDATE available_villages SET occupied=1 WHERE kid=$settlementRegressionInvalidTarget");
+    $settlers = array_fill(1, 11, 0);
+    $settlers[10] = 3;
+    $movement = new MovementsModel();
+    $settlementEventTime = (time() + 3600) * 1000;
+    $settlementRegressionTasks[] = (int)$movement->addMovement($sourceA, $settlementRegressionInvalidTarget, 1, $settlers, 0, 0, 0, 0, 0, MovementsModel::ATTACKTYPE_SETTLERS, $settlementEventTime, $settlementEventTime);
+    expect_true($settlementRegressionTasks[0] > 0, 'occupied available-villages settlement queued');
+    expect_true($db->commit(), 'settlement regression fixture committed');
+    $settlementRegressionCommitted = true;
+
+    $sourceResourcesBefore = (int)$db->fetchScalar("SELECT wood FROM vdata WHERE kid=$sourceA");
+    expect_true(Automation::getInstance()->processMovementTask($settlementRegressionTasks[0]), 'occupied available-villages settlement processed');
+    expect_same(0, (int)$db->fetchScalar("SELECT COUNT(*) FROM vdata WHERE kid=$settlementRegressionInvalidTarget"), 'occupied available-villages creates no village');
+    expect_same($sourceResourcesBefore + 750, (int)$db->fetchScalar("SELECT wood FROM vdata WHERE kid=$sourceA"), 'failed settlement returns resources');
+    expect_same(1, (int)$db->fetchScalar("SELECT COUNT(*) FROM movement WHERE kid=$settlementRegressionInvalidTarget AND to_kid=$sourceA AND mode=1 AND u10=3"), 'failed settlement queues settler return');
+
+    $settlementRegressionTasks = [];
+    $settlementRegressionTasks[] = (int)$movement->addMovement($sourceB, $settlementRegressionTarget, 1, $settlers, 0, 0, 0, 0, 0, MovementsModel::ATTACKTYPE_SETTLERS, $settlementEventTime, $settlementEventTime);
+    $settlementRegressionTasks[] = (int)$movement->addMovement($sourceC, $settlementRegressionTarget, 1, $settlers, 0, 0, 0, 0, 0, MovementsModel::ATTACKTYPE_SETTLERS, $settlementEventTime, $settlementEventTime);
+    expect_true($settlementRegressionTasks[0] > 0 && $settlementRegressionTasks[1] > 0, 'barrier settlement race movements queued');
+    $barrierPath = tempnam(sys_get_temp_dir(), 'ov-settle-start-');
+    $readyPaths = [tempnam(sys_get_temp_dir(), 'ov-settle-ready-'), tempnam(sys_get_temp_dir(), 'ov-settle-ready-')];
+    expect_true($barrierPath !== false && $readyPaths[0] !== false && $readyPaths[1] !== false, 'barrier settlement race files created');
+    $settlementRegressionBarrierFiles = array_merge([$barrierPath], $readyPaths);
+    $descriptorSpec = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+    foreach ($settlementRegressionTasks as $i => $task) {
+        $pipes = [];
+        $process = proc_open(['php', '/app/tests/movement-task-worker.php', (string)$task, $barrierPath, $readyPaths[$i]], $descriptorSpec, $pipes);
+        expect_true(is_resource($process), "barrier settlement worker $i started");
+        $settlementRegressionWorkers[] = ['process' => $process, 'pipes' => $pipes];
+    }
+    $deadline = microtime(true) + 10;
+    while (
+        (@file_get_contents($readyPaths[0]) !== 'ready' || @file_get_contents($readyPaths[1]) !== 'ready')
+        && microtime(true) < $deadline
+    ) {
+        usleep(1000);
+    }
+    expect_same('ready', @file_get_contents($readyPaths[0]), 'first barrier settlement worker ready');
+    expect_same('ready', @file_get_contents($readyPaths[1]), 'second barrier settlement worker ready');
+    expect_true(file_put_contents($barrierPath, 'go', LOCK_EX) !== false, 'barrier settlement workers released');
+    foreach ($settlementRegressionWorkers as $i => &$worker) {
+        $stdout = stream_get_contents($worker['pipes'][1]);
+        $stderr = stream_get_contents($worker['pipes'][2]);
+        fclose($worker['pipes'][1]);
+        fclose($worker['pipes'][2]);
+        $exit = proc_close($worker['process']);
+        expect_same(0, $exit, "barrier settlement worker $i exit: $stderr");
+        expect_same('', $stderr, "barrier settlement worker $i stderr");
+        expect_same('true', $stdout, "barrier settlement worker $i processed");
+    }
+    unset($worker);
+    $winner = (int)$db->fetchScalar("SELECT owner FROM vdata WHERE kid=$settlementRegressionTarget");
+    expect_true(in_array($winner, [$settlementRegressionUsers[1], $settlementRegressionUsers[2]], true), 'settlement race has one valid winner');
+    expect_same(1, (int)$db->fetchScalar("SELECT COUNT(*) FROM vdata WHERE kid=$settlementRegressionTarget"), 'settlement race creates exactly one village');
+    expect_same(1, (int)$db->fetchScalar("SELECT COUNT(*) FROM movement WHERE kid=$settlementRegressionTarget AND mode=1 AND u10=3"), 'settlement race has one losing return');
+    expect_same(1, (int)$db->fetchScalar("SELECT COUNT(*) FROM surrounding WHERE id>$settlementRegressionSurroundingFloor AND type=" . NoticeHelper::SURROUNDING_VILLAGE_FOUND . " AND params LIKE '%:$settlementRegressionTarget'"), 'settlement race records one found-village event');
+    expect_same(1, (int)$db->fetchScalar("SELECT COUNT(*) FROM ndata WHERE uid IN ({$settlementRegressionUsers[1]}, {$settlementRegressionUsers[2]})"), 'settlement race creates one success notice');
+} finally {
+    foreach ($settlementRegressionWorkers as &$worker) {
+        if (isset($worker['process']) && is_resource($worker['process'])) {
+            $status = proc_get_status($worker['process']);
+            if (!empty($status['running'])) {
+                proc_terminate($worker['process']);
+            }
+            foreach ($worker['pipes'] as $pipe) {
+                if (is_resource($pipe)) {
+                    fclose($pipe);
+                }
+            }
+            proc_close($worker['process']);
+        }
+    }
+    unset($worker);
+    foreach ($settlementRegressionBarrierFiles as $file) {
+        if (is_string($file) && file_exists($file)) {
+            unlink($file);
+        }
+    }
+    if (!$settlementRegressionCommitted) {
+        $db->rollback();
+    }
+    if ($settlementRegressionKids !== []) {
+        $kids = implode(',', array_map('intval', $settlementRegressionKids));
+        $uids = implode(',', array_map('intval', $settlementRegressionUsers));
+        $db->query("DELETE FROM movement WHERE kid IN ($kids) OR to_kid IN ($kids)");
+        $db->query("DELETE FROM ndata WHERE uid IN ($uids)");
+        $db->query("DELETE FROM surrounding WHERE id>$settlementRegressionSurroundingFloor AND type=" . NoticeHelper::SURROUNDING_VILLAGE_FOUND . " AND (params LIKE '%:$settlementRegressionInvalidTarget' OR params LIKE '%:$settlementRegressionTarget')");
+        $db->query("DELETE FROM units WHERE kid IN ($kids)");
+        $db->query("DELETE FROM fdata WHERE kid IN ($kids)");
+        $db->query("DELETE FROM tdata WHERE kid IN ($kids)");
+        $db->query("DELETE FROM smithy WHERE kid IN ($kids)");
+        $db->query("DELETE FROM vdata WHERE kid IN ($kids)");
+        $db->query("DELETE FROM users WHERE id IN ($uids)");
+        foreach ($settlementRegressionOriginalMap as $kid => $state) {
+            $db->query("UPDATE wdata SET occupied={$state[0]} WHERE id=$kid");
+            $db->query("UPDATE available_villages SET occupied={$state[1]} WHERE kid=$kid");
+        }
+    }
+    if (is_array($settlementRegressionSummary)) {
+        $firstVillageName = $db->real_escape_string((string)$settlementRegressionSummary['first_village_player_name']);
+        $firstVillageTime = (int)$settlementRegressionSummary['first_village_time'];
+        $db->query(
+            "UPDATE summary
+             SET first_village_player_name='$firstVillageName', first_village_time=$firstVillageTime"
+        );
+    }
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE movement AUTO_INCREMENT=$movementAutoIncrement");
+    $db->query("ALTER TABLE ndata AUTO_INCREMENT=$noticeAutoIncrement");
+    $db->query("ALTER TABLE surrounding AUTO_INCREMENT=$surroundingAutoIncrement");
+}
+
 $autoExtendOwner = 2000000060;
 $autoExtendTask = 2000000001;
 $secondAutoExtendTask = 2000000002;
