@@ -4,6 +4,7 @@ namespace Model;
 
 use function array_values;
 use Core\Database\DB;
+use Core\Jobs\QuarantineTaskException;
 use Game\Formulas;
 
 class AllianceBonusModel
@@ -62,13 +63,29 @@ class AllianceBonusModel
         $db->query("UPDATE users SET $column=0 WHERE id=$uid");
     }
 
-    public function levelUpBonus($aid, $type)
+    public function levelUpBonus($aid, $type): bool
     {
+        $aid = (int)$aid;
+        $type = (int)$type;
+        if (!isset(self::USER_UNLOCK_PENDING_ANIMATION[$type], self::LEVEL_PARAMS[$type])) {
+            throw new QuarantineTaskException("Malformed alliance bonus task: invalid bonus type $type.");
+        }
+
         $db = DB::getInstance();
         $pending = self::USER_UNLOCK_PENDING_ANIMATION[$type];
-        $type = self::LEVEL_PARAMS[$type];
-        $db->query("UPDATE alidata SET $type=$type+1 WHERE id=$aid");
-        $db->query("UPDATE users SET $pending=1 WHERE aid=$aid");
+        $level = self::LEVEL_PARAMS[$type];
+        $updated = $db->query("UPDATE alidata SET $level=$level+1 WHERE id=$aid");
+        if (!$updated) {
+            throw new \RuntimeException("Unable to update alliance $aid bonus type $type.");
+        }
+        if ($db->affectedRows() !== 1) {
+            throw new \RuntimeException("Alliance bonus target $aid does not exist.");
+        }
+        if (!$db->query("UPDATE users SET $pending=1 WHERE aid=$aid")) {
+            throw new \RuntimeException("Unable to notify alliance $aid members about bonus type $type.");
+        }
+
+        return true;
     }
 
     public function getMaxAllianceBonusLevel($aid)

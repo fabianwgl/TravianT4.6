@@ -6,6 +6,7 @@ use Core\Database\DB;
 use Core\Database\GlobalDB;
 use Core\Helper\Mailer;
 use Core\Helper\Notification;
+use Core\Jobs\QuarantineTaskException;
 use Core\Jobs\TransactionalTask;
 use Exception;
 use Game\AllianceBonus\AllianceBonus;
@@ -334,14 +335,41 @@ class Automation
 
     public function processResearchTask(int $taskId): bool
     {
-        return TransactionalTask::consume('research', $taskId, function (array $row): void {
+        return TransactionalTask::consume('research', $taskId, function (array $row) use ($taskId): void {
             $db = DB::getInstance();
             $kid = (int)$row['kid'];
             $nr = (int)$row['nr'];
-            if ((int)$row['mode'] === 1) {
-                $db->query("UPDATE tdata SET u$nr=1 WHERE kid=$kid");
+            $mode = (int)$row['mode'];
+            if ($mode === 1) {
+                if ($nr < 2 || $nr > 9) {
+                    throw new QuarantineTaskException("Malformed research task $taskId: invalid academy unit index $nr.");
+                }
+                $table = 'tdata';
             } else {
-                $db->query("UPDATE smithy SET u$nr=IF(u$nr+1>20, 20, u$nr+1) WHERE kid=$kid");
+                if ($mode !== 0) {
+                    throw new QuarantineTaskException("Malformed research task $taskId: invalid mode $mode.");
+                }
+                if ($nr < 1 || $nr > 8) {
+                    throw new QuarantineTaskException("Malformed research task $taskId: invalid smithy unit index $nr.");
+                }
+                $table = 'smithy';
+            }
+
+            $target = $db->query("SELECT kid FROM $table WHERE kid=$kid FOR UPDATE");
+            if (!$target) {
+                throw new \RuntimeException("Unable to lock research target $table row for village $kid.");
+            }
+            if (!$target->num_rows) {
+                throw new \RuntimeException("Research task $taskId target $table row for village $kid does not exist.");
+            }
+
+            if ($mode === 1) {
+                $updated = $db->query("UPDATE tdata SET u$nr=1 WHERE kid=$kid");
+            } else {
+                $updated = $db->query("UPDATE smithy SET u$nr=IF(u$nr+1>20, 20, u$nr+1) WHERE kid=$kid");
+            }
+            if (!$updated) {
+                throw new \RuntimeException("Unable to apply research task $taskId for village $kid.");
             }
         });
     }
@@ -487,34 +515,78 @@ class Automation
         $inviteGold = (int)Config::getProperty("gold", "invitePlayerGold");
         $refLimit = (int)Config::getAdvancedProperty("refLimit");
 
-        return TransactionalTask::mutate('player_references', $taskId, function (array $row) use ($inviteGold, $refLimit): void {
-            if ((int)$row['rewardGiven'] !== 0) {
-                return;
+        return TransactionalTask::mutate(
+            'player_references',
+            $taskId,
+            function (array $row) use ($inviteGold, $refLimit, $taskId): void {
+                if ((int)$row['rewardGiven'] !== 0) {
+                    return;
+                }
+                $db = DB::getInstance();
+                $userIds = array_unique([(int)$row['uid'], (int)$row['ref_uid']]);
+                sort($userIds, SORT_NUMERIC);
+                $lockedUsers = implode(',', $userIds);
+                $users = $db->query(
+                    "SELECT id, total_villages FROM users WHERE id IN ($lockedUsers) ORDER BY id FOR UPDATE"
+                );
+                if (!$users) {
+                    throw new \RuntimeException("Unable to lock users for referral task $taskId.");
+                }
+                $existingUsers = [];
+                while ($user = $users->fetch_assoc()) {
+                    $existingUsers[(int)$user['id']] = (int)$user['total_villages'];
+                }
+                $inviteeId = (int)$row['uid'];
+                $referrerId = (int)$row['ref_uid'];
+                if (!isset($existingUsers[$inviteeId])) {
+                    $deleted = $db->query("DELETE FROM player_references WHERE id={$row['id']}");
+                    if (!$deleted || $db->affectedRows() !== 1) {
+                        throw new \RuntimeException("Unable to remove orphaned referral task $taskId.");
+                    }
+                    return;
+                }
+                if (!isset($existingUsers[$referrerId])) {
+                    throw new \RuntimeException("Referral task $taskId target user $referrerId does not exist.");
+                }
+
+                $totalVillagesCount = $existingUsers[$inviteeId];
+                if (!$totalVillagesCount) {
+                    $deleted = $db->query("DELETE FROM player_references WHERE id={$row['id']}");
+                    if (!$deleted || $db->affectedRows() !== 1) {
+                        throw new \RuntimeException("Unable to remove ineligible referral task $taskId.");
+                    }
+                    return;
+                }
+                $countResult = $db->query(
+                    "SELECT COUNT(id) FROM player_references WHERE rewardGiven=1 AND ref_uid=$referrerId"
+                );
+                if (!$countResult) {
+                    throw new \RuntimeException("Unable to count completed rewards for referral task $taskId.");
+                }
+                $countTotal = (int)$countResult->fetch_row()[0];
+                if ($countTotal >= $refLimit) {
+                    $limited = $db->query(
+                        "UPDATE player_references SET rewardGiven=2 WHERE id={$row['id']} AND rewardGiven=0"
+                    );
+                    if (!$limited || $db->affectedRows() !== 1) {
+                        throw new \RuntimeException("Unable to mark referral task $taskId as limited.");
+                    }
+                    return;
+                }
+                if ($totalVillagesCount >= 2) {
+                    $granted = $db->query("UPDATE users SET gift_gold=gift_gold+$inviteGold WHERE id=$referrerId");
+                    if (!$granted || ($inviteGold !== 0 && $db->affectedRows() !== 1)) {
+                        throw new \RuntimeException("Unable to grant referral task $taskId reward to user $referrerId.");
+                    }
+                    $completed = $db->query(
+                        "UPDATE player_references SET rewardGiven=1 WHERE id={$row['id']} AND rewardGiven=0"
+                    );
+                    if (!$completed || $db->affectedRows() !== 1) {
+                        throw new \RuntimeException("Unable to mark referral task $taskId as rewarded.");
+                    }
+                }
             }
-            $db = DB::getInstance();
-            $userIds = array_unique([(int)$row['uid'], (int)$row['ref_uid']]);
-            sort($userIds, SORT_NUMERIC);
-            $lockedUsers = implode(',', $userIds);
-            if ($lockedUsers !== '') {
-                $db->query("SELECT id FROM users WHERE id IN ($lockedUsers) ORDER BY id FOR UPDATE");
-            }
-            $totalVillagesCount = $db->fetchScalar("SELECT total_villages FROM users WHERE id={$row['uid']}");
-            if (!$totalVillagesCount) {
-                $db->query("DELETE FROM player_references WHERE id={$row['id']}");
-                return;
-            }
-            $countTotal = $db->fetchScalar(
-                "SELECT COUNT(id) FROM player_references WHERE rewardGiven=1 AND ref_uid={$row['ref_uid']}"
-            );
-            if ($countTotal >= $refLimit) {
-                $db->query("UPDATE player_references SET rewardGiven=2 WHERE id={$row['id']}");
-                return;
-            }
-            if ($totalVillagesCount >= 2) {
-                $db->query("UPDATE player_references SET rewardGiven=1 WHERE id={$row['id']}");
-                $db->query("UPDATE users SET gift_gold=gift_gold+$inviteGold WHERE id={$row['ref_uid']}");
-            }
-        });
+        );
     }
 
     public function deleteOasisComplete()
@@ -555,24 +627,37 @@ class Automation
         }
     }
 
-    public function processTradeRouteTask(int $taskId, bool $usePeriodicTradeRoutes = false): bool
+    public function processTradeRouteTask(
+        int $taskId,
+        bool $usePeriodicTradeRoutes = false,
+        ?MarketModel $marketModel = null
+    ): bool
     {
-        return TransactionalTask::mutate('traderoutes', $taskId, function (array $row) use ($usePeriodicTradeRoutes): void {
+        $marketModel = $marketModel ?? new MarketModel();
+
+        return TransactionalTask::mutate('traderoutes', $taskId, function (array $row) use ($usePeriodicTradeRoutes, $marketModel): void {
             if ((int)$row['enabled'] !== 1 || (int)$row['time'] > time()) {
                 return;
             }
             $db = DB::getInstance();
             $nextTime = (int)$row['time'] + ($usePeriodicTradeRoutes ? (int)$row['start_hour'] : 86400);
             $advance = static function () use ($db, $row, $nextTime): void {
-                $db->query("UPDATE traderoutes SET time=$nextTime WHERE id={$row['id']}");
+                $advanced = $db->query("UPDATE traderoutes SET time=$nextTime WHERE id={$row['id']}");
+                if (!$advanced || $db->affectedRows() !== 1) {
+                    throw new \RuntimeException("Unable to advance trade route {$row['id']}.");
+                }
             };
             $ownerResult = $db->query("SELECT owner FROM vdata WHERE kid={$row['kid']} FOR UPDATE");
-            $uid = $ownerResult && $ownerResult->num_rows ? (int)$ownerResult->fetch_assoc()['owner'] : 0;
+            if (!$ownerResult) {
+                throw new \RuntimeException("Unable to lock trade route {$row['id']} source village.");
+            }
+            $uid = $ownerResult->num_rows ? (int)$ownerResult->fetch_assoc()['owner'] : 0;
             if ($uid === 0) {
-                $db->query("DELETE FROM traderoutes WHERE kid={$row['kid']} OR to_kid={$row['kid']}");
+                if (!$db->query("DELETE FROM traderoutes WHERE kid={$row['kid']} OR to_kid={$row['kid']}")) {
+                    throw new \RuntimeException("Unable to remove orphaned trade route {$row['id']}.");
+                }
                 return;
             }
-            $marketModel = new MarketModel();
             $race = $marketModel->getPlayerRace($uid);
             $market = $marketModel->getMarketAndTradeOfficeLevel($row['kid']);
             if (!$market[17]) {
@@ -619,7 +704,7 @@ class Automation
                 }
                 $resourcesToSend = $resourcesToGo;
             }
-            $marketModel->sendResources(
+            if (!$marketModel->sendResources(
                 $row['kid'],
                 $row['to_kid'],
                 $race,
@@ -629,11 +714,16 @@ class Automation
                 $resourcesToSend[4],
                 $row['times'],
                 $row['time']
-            );
-            $db->query(
+            )) {
+                throw new \RuntimeException("Unable to dispatch trade route {$row['id']}.");
+            }
+            $debited = $db->query(
                 "UPDATE vdata SET wood=wood-{$resourcesToSend[1]}, clay=clay-{$resourcesToSend[2]},
                     iron=iron-{$resourcesToSend[3]}, crop=crop-{$resourcesToSend[4]} WHERE kid={$row['kid']}"
             );
+            if (!$debited || $db->affectedRows() !== 1) {
+                throw new \RuntimeException("Unable to debit resources for trade route {$row['id']}.");
+            }
             $advance();
         });
     }

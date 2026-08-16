@@ -124,6 +124,12 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   with rollback and concurrent-send regression coverage.
 - Made outgoing movement cancellation atomic and idempotent, including exact
   settler resource refunds under stale, late, concurrent, and replayed requests.
+- Made scheduled research, alliance-bonus, referral, and trade-route consumers
+  validate their effect targets and writes, with idempotent/no-recipient cases,
+  rollback, retry, and terminal quarantine regressions.
+- Made manual marketplace sends and offer create, accept, and cancel actions
+  transactional across resource state, offer rows, and all merchant dispatches,
+  including injected single- and paired-dispatch failure regressions.
 
 ## Current work
 

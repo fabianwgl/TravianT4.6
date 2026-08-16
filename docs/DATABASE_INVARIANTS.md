@@ -103,6 +103,23 @@ payload and terminal attempt count. These short transactions use row locks, so
 a persistent lease would add stale-claim failure modes without improving
 exclusivity.
 
+Task effects must surface failed queries and missing required target rows before
+the queue transaction commits. A zero affected-row result is successful only
+when the consumer explicitly proves an idempotent state (such as already-applied
+research) or an optional empty recipient set (such as an alliance with no
+current members). Merchant dispatch, resource debit, and schedule advancement
+must all succeed before a recurring trade route is advanced.
+
+Marketplace resource mutation, offer mutation, and every merchant row belonging
+to one user action share the same database transaction. A failed direct send
+restores its debit; a failed offer acceptance restores the buyer's resources,
+the offer row, and either dispatch if the paired dispatch cannot also commit.
+The in-memory village resource state must be restored whenever that transaction
+rolls back.
+Marketplace mutation helpers require ownership of the outermost transaction;
+they reject an existing transaction rather than publishing in-memory resource
+state before an enclosing caller decides whether to commit.
+
 ## Clock units
 
 - Configuration, buildings, research, market sends, and most recurring jobs use

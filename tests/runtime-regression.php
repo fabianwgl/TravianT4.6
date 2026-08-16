@@ -292,6 +292,9 @@ $allianceBonusQueueAutoIncrement = (int)$db->fetchScalar(
 $sendAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='send'"
 );
+$marketAutoIncrement = (int)$db->fetchScalar(
+    "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='market'"
+);
 $buyGoldMessageAutoIncrement = (int)$db->fetchScalar(
     "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='buyGoldMessages'"
 );
@@ -346,6 +349,19 @@ $researchKid = 2000000020;
 $researchTask = 2000000001;
 $poisonResearchTask = 2000000002;
 $terminalResearchTask = 2000000003;
+$missingResearchTask = 2000000004;
+$idempotentResearchTask = 2000000005;
+$invalidResearchTask = 2000000006;
+$missingResearchKid = 2000000099;
+$researchEndTime = time() + 3600;
+$researchTaskIds = implode(',', [
+    $researchTask,
+    $poisonResearchTask,
+    $terminalResearchTask,
+    $missingResearchTask,
+    $idempotentResearchTask,
+    $invalidResearchTask,
+]);
 try {
     expect_same(
         0,
@@ -355,12 +371,12 @@ try {
     expect_same(
         0,
         (int)$db->fetchScalar(
-            "SELECT COUNT(*) FROM research WHERE id IN ($researchTask, $poisonResearchTask, $terminalResearchTask)"
+            "SELECT COUNT(*) FROM research WHERE id IN ($researchTaskIds)"
         ),
         'research fixture task IDs available'
     );
     $db->query("INSERT INTO smithy (kid) VALUES ($researchKid)");
-    $db->query("INSERT INTO research (id, kid, nr, mode, end_time) VALUES ($researchTask, $researchKid, 1, 0, 0)");
+    $db->query("INSERT INTO research (id, kid, nr, mode, end_time) VALUES ($researchTask, $researchKid, 1, 0, $researchEndTime)");
 
     try {
         TransactionalTask::consume('research', $researchTask, function () use ($db, $researchKid): void {
@@ -404,7 +420,68 @@ try {
         'successful research retry clears failure ledger'
     );
 
-    $db->query("INSERT INTO research (id, kid, nr, mode, end_time) VALUES ($poisonResearchTask, $researchKid, 2, 0, 0)");
+    $db->query("UPDATE smithy SET u2=20 WHERE kid=$researchKid");
+    $db->query(
+        "INSERT INTO research (id, kid, nr, mode, end_time)
+         VALUES ($idempotentResearchTask, $researchKid, 2, 0, $researchEndTime)"
+    );
+    expect_true(
+        $automation->processResearchTask($idempotentResearchTask),
+        'already-applied research task consumed idempotently'
+    );
+    expect_same(
+        '0|20',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM research WHERE id=$idempotentResearchTask), '|', u2
+             ) FROM smithy WHERE kid=$researchKid"
+        ),
+        'idempotent research completion preserves the maximum smithy level'
+    );
+
+    $db->query(
+        "INSERT INTO research (id, kid, nr, mode, end_time)
+         VALUES ($missingResearchTask, $missingResearchKid, 1, 0, $researchEndTime)"
+    );
+    try {
+        $automation->processResearchTask($missingResearchTask);
+        throw new RuntimeException('Missing research target was not rejected.');
+    } catch (RuntimeException $e) {
+        expect_same(
+            "Research task $missingResearchTask target smithy row for village $missingResearchKid does not exist.",
+            $e->getMessage(),
+            'missing research target rejected'
+        );
+    }
+    expect_same(
+        '1|1|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM research WHERE id=$missingResearchTask), '|', attempts, '|',
+                (SELECT COUNT(*) FROM smithy WHERE kid=$missingResearchKid)
+             ) FROM scheduled_task_failures
+               WHERE task_table='research' AND task_id=$missingResearchTask"
+        ),
+        'missing research target remains recoverable with failure metadata'
+    );
+
+    $db->query(
+        "INSERT INTO research (id, kid, nr, mode, end_time)
+         VALUES ($invalidResearchTask, $researchKid, 9, 0, $researchEndTime)"
+    );
+    expect_true($automation->processResearchTask($invalidResearchTask), 'invalid research task quarantined');
+    expect_same(
+        "0|5|Malformed research task $invalidResearchTask: invalid smithy unit index 9.",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM research WHERE id=$invalidResearchTask), '|', attempts, '|', last_error
+             ) FROM scheduled_task_failures
+               WHERE task_table='research' AND task_id=$invalidResearchTask"
+        ),
+        'invalid research task retains its payload and terminal error'
+    );
+
+    $db->query("INSERT INTO research (id, kid, nr, mode, end_time) VALUES ($poisonResearchTask, $researchKid, 2, 0, $researchEndTime)");
     for ($attempt = 1; $attempt <= 5; ++$attempt) {
         try {
             TransactionalTask::consume('research', $poisonResearchTask, function (): void {
@@ -425,7 +502,7 @@ try {
         'poison research task quarantined with recoverable payload after retry limit'
     );
 
-    $db->query("INSERT INTO research (id, kid, nr, mode, end_time) VALUES ($terminalResearchTask, $researchKid, 3, 0, 0)");
+    $db->query("INSERT INTO research (id, kid, nr, mode, end_time) VALUES ($terminalResearchTask, $researchKid, 3, 0, $researchEndTime)");
     expect_true(
         TransactionalTask::consume(
             'research',
@@ -464,9 +541,9 @@ try {
 } finally {
     $db->query(
         "DELETE FROM scheduled_task_failures
-         WHERE task_table='research' AND task_id IN ($researchTask, $poisonResearchTask, $terminalResearchTask)"
+         WHERE task_table='research' AND task_id IN ($researchTaskIds)"
     );
-    $db->query("DELETE FROM research WHERE id IN ($researchTask, $poisonResearchTask, $terminalResearchTask) OR kid=$researchKid");
+    $db->query("DELETE FROM research WHERE id IN ($researchTaskIds) OR kid=$researchKid");
     $db->query("DELETE FROM smithy WHERE kid=$researchKid");
     $db->query("ALTER TABLE research AUTO_INCREMENT=$researchAutoIncrement");
 }
@@ -476,6 +553,10 @@ $scheduledVillage = 2000000022;
 $scheduledAlliance = 2000000001;
 $trainingTask = 2000000001;
 $allianceBonusTask = 2000000001;
+$missingAllianceBonusTask = 2000000002;
+$emptyAllianceBonusTask = 2000000003;
+$missingAlliance = 2000000002;
+$emptyAlliance = 2000000003;
 $db->begin_transaction();
 try {
     expect_same(
@@ -495,12 +576,20 @@ try {
     );
     expect_same(
         0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM alidata WHERE id IN ($missingAlliance, $emptyAlliance)"),
+        'alliance-bonus edge fixture IDs available'
+    );
+    expect_same(
+        0,
         (int)$db->fetchScalar("SELECT COUNT(*) FROM training WHERE id=$trainingTask"),
         'training fixture task ID available'
     );
     expect_same(
         0,
-        (int)$db->fetchScalar("SELECT COUNT(*) FROM alliance_bonus_upgrade_queue WHERE id=$allianceBonusTask"),
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM alliance_bonus_upgrade_queue
+             WHERE id IN ($allianceBonusTask, $missingAllianceBonusTask, $emptyAllianceBonusTask)"
+        ),
         'alliance bonus fixture task ID available'
     );
     $db->query("INSERT INTO alidata (id, name, tag) VALUES ($scheduledAlliance, 'OV Scheduled', 'OVS')");
@@ -552,6 +641,52 @@ try {
         1,
         (int)$db->fetchScalar("SELECT training_bonus_level FROM alidata WHERE id=$scheduledAlliance"),
         'alliance bonus effect not duplicated'
+    );
+
+    $db->query(
+        "INSERT INTO alliance_bonus_upgrade_queue (id, aid, type, time)
+         VALUES ($missingAllianceBonusTask, $missingAlliance, 1, 0)"
+    );
+    try {
+        $automation->processAllianceBonusTask($missingAllianceBonusTask);
+        throw new RuntimeException('Missing alliance bonus target was not rejected.');
+    } catch (RuntimeException $e) {
+        expect_same(
+            "Alliance bonus target $missingAlliance does not exist.",
+            $e->getMessage(),
+            'missing alliance bonus target rejected'
+        );
+    }
+    expect_same(
+        '1|1',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM alliance_bonus_upgrade_queue WHERE id=$missingAllianceBonusTask), '|', attempts
+             ) FROM scheduled_task_failures
+               WHERE task_table='alliance_bonus_upgrade_queue' AND task_id=$missingAllianceBonusTask"
+        ),
+        'missing alliance bonus target remains queued with failure metadata'
+    );
+
+    $db->query("INSERT INTO alidata (id, name, tag) VALUES ($emptyAlliance, 'OV Empty Scheduled', 'OVE')");
+    $db->query(
+        "INSERT INTO alliance_bonus_upgrade_queue (id, aid, type, time)
+         VALUES ($emptyAllianceBonusTask, $emptyAlliance, 1, 0)"
+    );
+    expect_true(
+        $automation->processAllianceBonusTask($emptyAllianceBonusTask),
+        'alliance bonus with no current members processed'
+    );
+    expect_same(
+        '0|1|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM alliance_bonus_upgrade_queue WHERE id=$emptyAllianceBonusTask), '|',
+                training_bonus_level, '|',
+                (SELECT COUNT(*) FROM users WHERE aid=$emptyAlliance)
+             ) FROM alidata WHERE id=$emptyAlliance"
+        ),
+        'zero-recipient alliance bonus still advances exactly once'
     );
 } finally {
     $db->rollback();
@@ -4913,6 +5048,8 @@ $referenceOwner = 2000000012;
 $referenceInvitee = 2000000013;
 $referenceTask = 2000000001;
 $referenceCrashTask = 2000000002;
+$referenceMissingTargetTask = 2000000003;
+$missingReferenceTarget = 2000000098;
 $inviteGold = (int)Config::getProperty('gold', 'invitePlayerGold');
 $db->begin_transaction();
 try {
@@ -4923,7 +5060,10 @@ try {
     );
     expect_same(
         0,
-        (int)$db->fetchScalar("SELECT COUNT(*) FROM player_references WHERE id IN ($referenceTask, $referenceCrashTask)"),
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM player_references
+             WHERE id IN ($referenceTask, $referenceCrashTask, $referenceMissingTargetTask)"
+        ),
         'referral fixture tasks available'
     );
     $db->query("INSERT INTO users (id, uuid, name, password, email, race, kid, total_villages, desc1, desc2, note)
@@ -4977,8 +5117,59 @@ try {
         (int)$db->fetchScalar("SELECT gift_gold FROM users WHERE id=$referenceOwner"),
         'referral retry grants exactly once'
     );
+
+    $db->query(
+        "INSERT INTO player_references (id, ref_uid, uid)
+         VALUES ($referenceMissingTargetTask, $missingReferenceTarget, $referenceInvitee)"
+    );
+    for ($attempt = 1; $attempt <= 5; ++$attempt) {
+        try {
+            $automation->processReferenceTask($referenceMissingTargetTask);
+            throw new RuntimeException('Missing referral reward target was not rejected.');
+        } catch (RuntimeException $e) {
+            expect_same(
+                "Referral task $referenceMissingTargetTask target user $missingReferenceTarget does not exist.",
+                $e->getMessage(),
+                "missing referral target attempt $attempt rejected"
+            );
+        }
+    }
+    $missingReferenceFailure = $db->query(
+        "SELECT attempts, payload, last_error FROM scheduled_task_failures
+         WHERE task_table='player_references' AND task_id=$referenceMissingTargetTask"
+    )->fetch_assoc();
+    $missingReferencePayload = json_decode($missingReferenceFailure['payload'], true, 512, JSON_THROW_ON_ERROR);
+    expect_same(5, (int)$missingReferenceFailure['attempts'], 'missing referral target reaches retry limit');
+    expect_same(
+        $missingReferenceTarget,
+        (int)$missingReferencePayload['ref_uid'],
+        'missing referral target quarantine retains its payload'
+    );
+    expect_same(
+        "Referral task $referenceMissingTargetTask target user $missingReferenceTarget does not exist.",
+        $missingReferenceFailure['last_error'],
+        'missing referral target quarantine retains its error'
+    );
+    expect_same(
+        '0|' . ($inviteGold * 2),
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM player_references WHERE id=$referenceMissingTargetTask), '|', gift_gold
+             ) FROM users WHERE id=$referenceOwner"
+        ),
+        'missing referral target cannot mark a reward or change gold'
+    );
+    expect_same(
+        false,
+        $automation->processReferenceTask($referenceMissingTargetTask),
+        'quarantined referral task replay ignored'
+    );
 } finally {
-    $db->query("DELETE FROM scheduled_task_failures WHERE task_table='player_references' AND task_id IN ($referenceTask, $referenceCrashTask)");
+    $db->query(
+        "DELETE FROM scheduled_task_failures
+         WHERE task_table='player_references'
+           AND task_id IN ($referenceTask, $referenceCrashTask, $referenceMissingTargetTask)"
+    );
     $db->rollback();
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
     $db->query("ALTER TABLE player_references AUTO_INCREMENT=$playerReferenceAutoIncrement");
@@ -5298,6 +5489,7 @@ $tradeOrigin = 2000000029;
 $tradeDestination = 2000000030;
 $tradeTask = 2000000001;
 $tradeCrashTask = 2000000002;
+$tradeDispatchFailureTask = 2000000003;
 $tradeInitialTime = time() - 10;
 $db->begin_transaction();
 try {
@@ -5308,7 +5500,10 @@ try {
     );
     expect_same(
         0,
-        (int)$db->fetchScalar("SELECT COUNT(*) FROM traderoutes WHERE id IN ($tradeTask, $tradeCrashTask)"),
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM traderoutes
+             WHERE id IN ($tradeTask, $tradeCrashTask, $tradeDispatchFailureTask)"
+        ),
         'trade-route fixture tasks available'
     );
     $db->query("INSERT INTO users (id, uuid, name, password, email, race, kid, total_villages, desc1, desc2, note)
@@ -5325,7 +5520,8 @@ try {
         (id, kid, to_kid, r1, r2, r3, r4, enabled, start_hour, times, time)
         VALUES
         ($tradeTask, $tradeOrigin, $tradeDestination, 10, 20, 30, 40, 1, 3600, 1, $tradeInitialTime),
-        ($tradeCrashTask, $tradeOrigin, $tradeDestination, 10, 20, 30, 40, 1, 3600, 1, $tradeInitialTime)");
+        ($tradeCrashTask, $tradeOrigin, $tradeDestination, 10, 20, 30, 40, 1, 3600, 1, $tradeInitialTime),
+        ($tradeDispatchFailureTask, $tradeOrigin, $tradeDestination, 10, 20, 30, 40, 1, 3600, 1, $tradeInitialTime)");
 
     $automation = Automation::getInstance();
     expect_true($automation->processTradeRouteTask($tradeTask), 'trade route processed');
@@ -5379,12 +5575,430 @@ try {
         (int)$db->fetchScalar("SELECT COUNT(*) FROM send WHERE kid=$tradeOrigin AND to_kid=$tradeDestination AND mode=0"),
         'trade route retry dispatches exactly once'
     );
+
+    $db->query("DELETE FROM send WHERE kid=$tradeOrigin AND to_kid=$tradeDestination");
+    $db->query("UPDATE vdata SET wood=100, clay=100, iron=100, crop=100 WHERE kid=$tradeOrigin");
+    $failingMarketModel = new class extends \Model\MarketModel {
+        public function sendResources(
+            $kid,
+            $to_kid,
+            $race,
+            $r1,
+            $r2,
+            $r3,
+            $r4,
+            $repeat,
+            $time = -1
+        ): bool {
+            return false;
+        }
+    };
+    try {
+        $automation->processTradeRouteTask($tradeDispatchFailureTask, false, $failingMarketModel);
+        throw new RuntimeException('Failed trade-route dispatch was not rejected.');
+    } catch (RuntimeException $e) {
+        expect_same(
+            "Unable to dispatch trade route $tradeDispatchFailureTask.",
+            $e->getMessage(),
+            'failed trade-route dispatch propagated'
+        );
+    }
+    expect_same(
+        "100.0000|100.0000|100.0000|100.0000|$tradeInitialTime|0|1",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                wood, '|', clay, '|', iron, '|', crop, '|', traderoutes.time, '|',
+                (SELECT COUNT(*) FROM send WHERE kid=$tradeOrigin AND to_kid=$tradeDestination), '|',
+                (SELECT attempts FROM scheduled_task_failures
+                 WHERE task_table='traderoutes' AND task_id=$tradeDispatchFailureTask)
+             ) FROM traderoutes JOIN vdata ON traderoutes.kid=vdata.kid
+             WHERE traderoutes.id=$tradeDispatchFailureTask"
+        ),
+        'failed trade-route dispatch preserves resources and schedule with retry metadata'
+    );
+    expect_true(
+        $automation->processTradeRouteTask($tradeDispatchFailureTask),
+        'failed trade-route dispatch retries successfully'
+    );
+    expect_same(
+        '90.0000|80.0000|70.0000|60.0000|1|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                wood, '|', clay, '|', iron, '|', crop, '|',
+                (SELECT COUNT(*) FROM send WHERE kid=$tradeOrigin AND to_kid=$tradeDestination), '|',
+                (SELECT COUNT(*) FROM scheduled_task_failures
+                 WHERE task_table='traderoutes' AND task_id=$tradeDispatchFailureTask)
+             ) FROM vdata WHERE kid=$tradeOrigin"
+        ),
+        'trade-route retry commits one dispatch and clears failure metadata'
+    );
+
 } finally {
-    $db->query("DELETE FROM scheduled_task_failures WHERE task_table='traderoutes' AND task_id IN ($tradeTask, $tradeCrashTask)");
+    $db->query(
+        "DELETE FROM scheduled_task_failures
+         WHERE task_table='traderoutes'
+           AND task_id IN ($tradeTask, $tradeCrashTask, $tradeDispatchFailureTask)"
+    );
     $db->rollback();
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE market AUTO_INCREMENT=$marketAutoIncrement");
     $db->query("ALTER TABLE send AUTO_INCREMENT=$sendAutoIncrement");
     $db->query("ALTER TABLE traderoutes AUTO_INCREMENT=$tradeRouteAutoIncrement");
+}
+
+$manualMarketOwner = 2000000016;
+$manualMarketSource = 0;
+$manualMarketDestination = 0;
+$manualMarketFieldTypes = [];
+$manualMarketAvailableOccupancy = [];
+$manualMarketOffer = 2000000001;
+$manualMarketCommitted = false;
+$manualMarketWorkers = [];
+$manualMarketBarrierFiles = [];
+try {
+    expect_same(0, (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id=$manualMarketOwner"), 'manual-market fixture user available');
+    expect_same(0, (int)$db->fetchScalar("SELECT COUNT(*) FROM market WHERE id=$manualMarketOffer"), 'manual-market fixture offer available');
+    $manualMarketFields = $db->query(
+        "SELECT a.kid, a.fieldtype, a.occupied
+         FROM available_villages a
+         WHERE a.occupied=0
+           AND NOT EXISTS (SELECT 1 FROM vdata v WHERE v.kid=a.kid)
+         ORDER BY a.kid DESC
+         LIMIT 2"
+    );
+    expect_same(2, $manualMarketFields->num_rows, 'manual-market fixture fields available');
+    while ($field = $manualMarketFields->fetch_assoc()) {
+        $kid = (int)$field['kid'];
+        $manualMarketFieldTypes[$kid] = (int)$field['fieldtype'];
+        $manualMarketAvailableOccupancy[$kid] = (int)$field['occupied'];
+    }
+    $manualMarketKids = array_keys($manualMarketFieldTypes);
+    $manualMarketSource = $manualMarketKids[0];
+    $manualMarketDestination = $manualMarketKids[1];
+    $manualMarketKidList = implode(',', $manualMarketKids);
+    expect_true($db->begin_transaction(), 'manual-market fixture transaction started');
+    $db->query("INSERT INTO users (id, uuid, name, password, email, race, kid, total_villages, desc1, desc2, note)
+        VALUES ($manualMarketOwner, 'ov-regression-manual-market', 'OVManualMarket', 'x', '', 1,
+                $manualMarketSource, 2, '', '', '')");
+    $db->query("INSERT INTO vdata
+        (kid, owner, fieldtype, name, capital, pop, cp, wood, clay, iron, woodp, clayp, ironp, maxstore,
+         crop, cropp, maxcrop, upkeep, lastmupdate, created, expandedfrom)
+        VALUES
+        ($manualMarketSource, $manualMarketOwner, {$manualMarketFieldTypes[$manualMarketSource]}, 'OV Manual Market Source', 1, 0, 0,
+         100, 100, 100, 0, 0, 0, 1000000, 100, 0, 1000000, 0, $lastUpdate, " . time() . ", 0),
+        ($manualMarketDestination, $manualMarketOwner, {$manualMarketFieldTypes[$manualMarketDestination]}, 'OV Manual Market Destination', 0, 0, 0,
+         100, 100, 100, 0, 0, 0, 1000000, 100, 0, 1000000, 0, $lastUpdate, " . time() . ", $manualMarketSource)");
+    $db->query("UPDATE available_villages SET occupied=1 WHERE kid IN ($manualMarketKidList) AND occupied=0");
+    expect_same(2, $db->affectedRows(), 'manual-market fixture fields occupied');
+    expect_true($db->commit(), 'manual-market fixture committed');
+    $manualMarketCommitted = true;
+
+    $makeManualVillage = static function (int $kid) use ($db): \Core\Village {
+        $row = $db->query(
+            "SELECT kid, wood, clay, iron, crop, lastmupdate FROM vdata WHERE kid=$kid"
+        )->fetch_assoc();
+        $reflection = new ReflectionClass(\Core\Village::class);
+        /** @var \Core\Village $village */
+        $village = $reflection->newInstanceWithoutConstructor();
+        $village->village = $row;
+        return $village;
+    };
+    $manualVillage = $makeManualVillage($manualMarketSource);
+    expect_true($db->begin_transaction(), 'outer marketplace transaction test started');
+    expect_same(
+        false,
+        (new \Model\MarketModel())->performAtomicVillageMutation(
+            $manualVillage,
+            static function (): bool {
+                return true;
+            }
+        ),
+        'marketplace mutation rejects an enclosing transaction'
+    );
+    expect_true($db->rollback(), 'outer marketplace transaction test rolled back');
+    $failingManualMarketModel = new class extends \Model\MarketModel {
+        public function sendResources(
+            $kid,
+            $to_kid,
+            $race,
+            $r1,
+            $r2,
+            $r3,
+            $r4,
+            $repeat,
+            $time = -1
+        ): bool {
+            return false;
+        }
+    };
+    expect_same(
+        false,
+        $failingManualMarketModel->performAtomicVillageMutation(
+            $manualVillage,
+            function () use ($manualVillage, $failingManualMarketModel, $manualMarketSource, $manualMarketDestination): bool {
+                return $manualVillage->modifyResources([10, 20, 30, 40])
+                    && $failingManualMarketModel->sendResources(
+                        $manualMarketSource,
+                        $manualMarketDestination,
+                        1,
+                        10,
+                        20,
+                        30,
+                        40,
+                        1
+                    );
+            }
+        ),
+        'manual merchant send rejects failed dispatch'
+    );
+    expect_same(
+        '100.0000|100.0000|100.0000|100.0000|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(wood, '|', clay, '|', iron, '|', crop, '|',
+                (SELECT COUNT(*) FROM send WHERE kid=$manualMarketSource AND to_kid=$manualMarketDestination))
+             FROM vdata WHERE kid=$manualMarketSource"
+        ),
+        'failed manual merchant dispatch rolls back its resource debit'
+    );
+    expect_same(
+        [100.0, 100.0, 100.0, 100.0],
+        array_values(array_intersect_key($manualVillage->getResourceState(), array_flip(['wood', 'clay', 'iron', 'crop']))),
+        'failed manual merchant dispatch restores in-memory resources'
+    );
+
+    $manualMarketModel = new \Model\MarketModel();
+    expect_true(
+        $manualMarketModel->performAtomicVillageMutation(
+            $manualVillage,
+            function () use ($manualVillage, $manualMarketModel, $manualMarketSource, $manualMarketDestination): bool {
+                return $manualVillage->modifyResources([10, 20, 30, 40])
+                    && $manualMarketModel->sendResources(
+                        $manualMarketSource,
+                        $manualMarketDestination,
+                        1,
+                        10,
+                        20,
+                        30,
+                        40,
+                        1
+                    );
+            }
+        ),
+        'manual merchant dispatch commits atomically'
+    );
+    expect_same(
+        '90.0000|80.0000|70.0000|60.0000|1',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(wood, '|', clay, '|', iron, '|', crop, '|',
+                (SELECT COUNT(*) FROM send WHERE kid=$manualMarketSource AND to_kid=$manualMarketDestination))
+             FROM vdata WHERE kid=$manualMarketSource"
+        ),
+        'manual merchant resource debit and dispatch commit together'
+    );
+
+    $db->query("DELETE FROM send WHERE kid IN ($manualMarketSource, $manualMarketDestination)");
+    $db->query("UPDATE vdata SET wood=100, clay=100, iron=100, crop=100 WHERE kid=$manualMarketSource");
+    $manualVillage = $makeManualVillage($manualMarketSource);
+    $db->query("INSERT INTO market
+        (id, aid, kid, x, y, rate, needType, needValue, giveType, giveValue, maxtime)
+        VALUES ($manualMarketOffer, 0, $manualMarketDestination, 0, 0, 0.5, 1, 10, 2, 20, 0)");
+    $partialDispatchMarketModel = new class extends \Model\MarketModel {
+        private int $dispatches = 0;
+
+        public function sendResources(
+            $kid,
+            $to_kid,
+            $race,
+            $r1,
+            $r2,
+            $r3,
+            $r4,
+            $repeat,
+            $time = -1
+        ): bool {
+            ++$this->dispatches;
+            if ($this->dispatches === 2) {
+                return false;
+            }
+            return parent::sendResources($kid, $to_kid, $race, $r1, $r2, $r3, $r4, $repeat, $time);
+        }
+    };
+    $acceptOffer = static function (\Model\MarketModel $model) use (
+        $manualVillage,
+        $manualMarketOffer,
+        $manualMarketSource,
+        $manualMarketDestination
+    ): bool {
+        if (!$manualVillage->modifyResources([10, 0, 0, 0]) || !$model->deleteOffer($manualMarketOffer)) {
+            return false;
+        }
+        if (!$model->sendResources($manualMarketDestination, $manualMarketSource, 1, 0, 20, 0, 0, 1)) {
+            return false;
+        }
+        return $model->sendResources($manualMarketSource, $manualMarketDestination, 1, 10, 0, 0, 0, 1);
+    };
+    expect_same(
+        false,
+        $partialDispatchMarketModel->performAtomicVillageMutation(
+            $manualVillage,
+            function () use ($acceptOffer, $partialDispatchMarketModel): bool {
+                return $acceptOffer($partialDispatchMarketModel);
+            }
+        ),
+        'market offer rejects a partially failed pair of dispatches'
+    );
+    expect_same(
+        '100.0000|1|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(wood, '|',
+                (SELECT COUNT(*) FROM market WHERE id=$manualMarketOffer), '|',
+                (SELECT COUNT(*) FROM send WHERE kid IN ($manualMarketSource, $manualMarketDestination)))
+             FROM vdata WHERE kid=$manualMarketSource"
+        ),
+        'partial offer dispatch rolls back buyer debit, offer deletion, and first merchant'
+    );
+    expect_true(
+        $manualMarketModel->performAtomicVillageMutation(
+            $manualVillage,
+            function () use ($acceptOffer, $manualMarketModel): bool {
+                return $acceptOffer($manualMarketModel);
+            }
+        ),
+        'market offer retries atomically'
+    );
+    expect_same(
+        '90.0000|0|2',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(wood, '|',
+                (SELECT COUNT(*) FROM market WHERE id=$manualMarketOffer), '|',
+                (SELECT COUNT(*) FROM send WHERE kid IN ($manualMarketSource, $manualMarketDestination)))
+             FROM vdata WHERE kid=$manualMarketSource"
+        ),
+        'offer retry commits its debit, deletion, and both merchant dispatches once'
+    );
+
+    $runManualMarketRace = static function (string $mode) use (
+        &$manualMarketWorkers,
+        &$manualMarketBarrierFiles,
+        $manualMarketSource,
+        $manualMarketDestination
+    ): array {
+        $barrierPath = tempnam(sys_get_temp_dir(), 'ov-market-start-');
+        $firstReadyPath = tempnam(sys_get_temp_dir(), 'ov-market-ready-');
+        $secondReadyPath = tempnam(sys_get_temp_dir(), 'ov-market-ready-');
+        expect_true($barrierPath !== false, "$mode marketplace start barrier created");
+        expect_true($firstReadyPath !== false, "$mode marketplace first ready signal created");
+        expect_true($secondReadyPath !== false, "$mode marketplace second ready signal created");
+        array_push($manualMarketBarrierFiles, $barrierPath, $firstReadyPath, $secondReadyPath);
+        $descriptorSpec = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+        foreach ([$firstReadyPath, $secondReadyPath] as $readyPath) {
+            $pipes = [];
+            $process = proc_open(
+                [
+                    'php',
+                    '/app/tests/marketplace-mutation-worker.php',
+                    $mode,
+                    (string)$manualMarketSource,
+                    (string)$manualMarketDestination,
+                    $barrierPath,
+                    $readyPath,
+                ],
+                $descriptorSpec,
+                $pipes
+            );
+            expect_true(is_resource($process), "$mode marketplace worker started");
+            $manualMarketWorkers[] = ['process' => $process, 'pipes' => $pipes];
+        }
+        $readyDeadline = microtime(true) + 10;
+        while (
+            (@file_get_contents($firstReadyPath) !== 'ready' || @file_get_contents($secondReadyPath) !== 'ready')
+            && microtime(true) < $readyDeadline
+        ) {
+            usleep(1000);
+        }
+        expect_same('ready', @file_get_contents($firstReadyPath), "$mode marketplace first worker ready");
+        expect_same('ready', @file_get_contents($secondReadyPath), "$mode marketplace second worker ready");
+        expect_true(file_put_contents($barrierPath, 'go', LOCK_EX) !== false, "$mode marketplace workers released");
+
+        $outcomes = [];
+        $workerStart = count($manualMarketWorkers) - 2;
+        for ($i = $workerStart; $i < count($manualMarketWorkers); ++$i) {
+            $worker = &$manualMarketWorkers[$i];
+            $stdout = stream_get_contents($worker['pipes'][1]);
+            $stderr = stream_get_contents($worker['pipes'][2]);
+            fclose($worker['pipes'][1]);
+            fclose($worker['pipes'][2]);
+            $exitCode = proc_close($worker['process']);
+            $worker['process'] = null;
+            $worker['pipes'] = [];
+            expect_same(0, $exitCode, "$mode marketplace worker exited successfully: $stderr");
+            $outcomes[] = trim($stdout);
+        }
+        unset($worker);
+        sort($outcomes);
+        return $outcomes;
+    };
+
+    $db->query("DELETE FROM send WHERE kid IN ($manualMarketSource, $manualMarketDestination)");
+    $db->query("UPDATE vdata SET wood=100, clay=100, iron=100, crop=100 WHERE kid=$manualMarketSource");
+    expect_same(['true', 'true'], $runManualMarketRace('send'), 'concurrent direct sends both commit');
+    expect_same(
+        '80.0000|2',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(wood, '|',
+                (SELECT COUNT(*) FROM send WHERE kid=$manualMarketSource AND to_kid=$manualMarketDestination))
+             FROM vdata WHERE kid=$manualMarketSource"
+        ),
+        'concurrent direct sends each debit resources once'
+    );
+
+    $db->query("DELETE FROM send WHERE kid IN ($manualMarketSource, $manualMarketDestination)");
+    $db->query("DELETE FROM market WHERE kid=$manualMarketSource");
+    $db->query("UPDATE vdata SET wood=100, clay=100, iron=100, crop=100 WHERE kid=$manualMarketSource");
+    expect_same(['true', 'true'], $runManualMarketRace('offer'), 'concurrent offer creations both commit');
+    expect_same(
+        '80.0000|2',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(wood, '|', (SELECT COUNT(*) FROM market WHERE kid=$manualMarketSource))
+             FROM vdata WHERE kid=$manualMarketSource"
+        ),
+        'concurrent offer creations each debit resources once'
+    );
+} finally {
+    foreach ($manualMarketWorkers as &$worker) {
+        if (!isset($worker['process']) || !is_resource($worker['process'])) {
+            continue;
+        }
+        $status = proc_get_status($worker['process']);
+        if (!empty($status['running'])) {
+            proc_terminate($worker['process']);
+        }
+        foreach ($worker['pipes'] as $pipe) {
+            if (is_resource($pipe)) {
+                fclose($pipe);
+            }
+        }
+        proc_close($worker['process']);
+    }
+    unset($worker);
+    foreach ($manualMarketBarrierFiles as $barrierFile) {
+        if (is_string($barrierFile) && file_exists($barrierFile)) {
+            unlink($barrierFile);
+        }
+    }
+    if (!$manualMarketCommitted) {
+        $db->rollback();
+    }
+    $db->query("DELETE FROM market WHERE id=$manualMarketOffer OR kid IN ($manualMarketSource, $manualMarketDestination)");
+    $db->query("DELETE FROM send WHERE kid IN ($manualMarketSource, $manualMarketDestination) OR to_kid IN ($manualMarketSource, $manualMarketDestination)");
+    $db->query("DELETE FROM vdata WHERE kid IN ($manualMarketSource, $manualMarketDestination)");
+    $db->query("DELETE FROM users WHERE id=$manualMarketOwner");
+    foreach ($manualMarketAvailableOccupancy as $kid => $occupied) {
+        $db->query("UPDATE available_villages SET occupied=$occupied WHERE kid=" . (int)$kid);
+    }
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE market AUTO_INCREMENT=$marketAutoIncrement");
+    $db->query("ALTER TABLE send AUTO_INCREMENT=$sendAutoIncrement");
 }
 
 $notificationTask = 2000000001;

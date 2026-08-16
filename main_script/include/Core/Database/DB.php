@@ -193,6 +193,11 @@ class DB
         return true;
     }
 
+    public function inTransaction(): bool
+    {
+        return $this->transactionDepth > 0;
+    }
+
     public function commit()
     {
         if ($this->transactionDepth <= 1) {
