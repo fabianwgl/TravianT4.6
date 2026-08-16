@@ -122,6 +122,8 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
 - Made manual sends, farm-list raids, settler dispatch, and reinforcement
   withdrawals atomically debit their source state and queue their movement,
   with rollback and concurrent-send regression coverage.
+- Made outgoing movement cancellation atomic and idempotent, including exact
+  settler resource refunds under stale, late, concurrent, and replayed requests.
 
 ## Current work
 

@@ -1116,6 +1116,254 @@ try {
     $db->query("ALTER TABLE enforcement AUTO_INCREMENT=$enforcementAutoIncrement");
 }
 
+$settlerCancelOwner = 2000000110;
+$settlerCancelSource = 2000000111;
+$settlerCancelTarget = 2000000112;
+$settlerCancelFixtureCommitted = false;
+$settlerCancelMovementIds = [];
+$settlerCancelWorkers = [];
+$settlerCancelBarrierFiles = [];
+$settlerCancelLockHeld = false;
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id=$settlerCancelOwner"),
+        'settler-cancellation fixture user ID available'
+    );
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM vdata WHERE kid=$settlerCancelSource"),
+        'settler-cancellation fixture village ID available'
+    );
+    expect_true($db->begin_transaction(), 'settler-cancellation fixture transaction started');
+    $settlerCancelNow = miliseconds();
+    $db->query("INSERT INTO users (id, uuid, name, password, email, race, kid, desc1, desc2, note)
+        VALUES ($settlerCancelOwner, 'ov-regression-settler-cancel', 'OVSettlerCancel', 'x', '', 1,
+                $settlerCancelSource, '', '', '')");
+    $db->query("INSERT INTO vdata
+        (kid, owner, fieldtype, name, capital, pop, cp, wood, clay, iron, woodp, clayp, ironp, maxstore,
+         crop, cropp, maxcrop, upkeep, lastmupdate, created, expandedfrom)
+        VALUES
+        ($settlerCancelSource, $settlerCancelOwner, 3, 'OV Settler Cancellation', 1, 0, 0,
+         250, 250, 250, 0, 0, 0, 1000000, 250, 0, 1000000, 0, $settlerCancelNow, " . time() . ", 0)");
+    expect_true($db->commit(), 'settler-cancellation fixture committed');
+    $settlerCancelFixtureCommitted = true;
+
+    $settlerUnits = array_fill(1, 11, 0);
+    $settlerUnits[10] = 3;
+    $movement = new MovementsModel();
+    $tooLateMovement = (int)$movement->addMovement(
+        $settlerCancelSource,
+        $settlerCancelTarget,
+        1,
+        $settlerUnits,
+        0,
+        0,
+        0,
+        0,
+        0,
+        MovementsModel::ATTACKTYPE_SETTLERS,
+        $settlerCancelNow - 3600000,
+        $settlerCancelNow + 3600000
+    );
+    expect_true($tooLateMovement > 0, 'too-late settler movement created');
+    $settlerCancelMovementIds[] = $tooLateMovement;
+    expect_same(
+        false,
+        RallyPointModel::cancelTaskForVillage($tooLateMovement, $settlerCancelSource),
+        'settler cancellation outside the allowed window rejected'
+    );
+    expect_same(
+        "250|250|250|250|$settlerCancelSource|$settlerCancelTarget|0",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                FLOOR(v.wood), '|', FLOOR(v.clay), '|', FLOOR(v.iron), '|', FLOOR(v.crop), '|',
+                m.kid, '|', m.to_kid, '|', m.mode
+             ) FROM vdata v JOIN movement m ON m.id=$tooLateMovement
+               WHERE v.kid=$settlerCancelSource"
+        ),
+        'rejected late cancellation preserves resources and outgoing movement'
+    );
+
+    $staleMovement = (int)$movement->addMovement(
+        $settlerCancelSource,
+        $settlerCancelTarget,
+        1,
+        $settlerUnits,
+        0,
+        0,
+        0,
+        0,
+        0,
+        MovementsModel::ATTACKTYPE_SETTLERS,
+        $settlerCancelNow - 1000,
+        $settlerCancelNow + 60000
+    );
+    expect_true($staleMovement > 0, 'stale settler movement created');
+    $db->query("DELETE FROM movement WHERE id=$staleMovement");
+    expect_same(
+        false,
+        RallyPointModel::cancelTaskForVillage($staleMovement, $settlerCancelSource),
+        'consumed settler movement cannot be cancelled'
+    );
+    expect_same(
+        '250|250|250|250',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(FLOOR(wood), '|', FLOOR(clay), '|', FLOOR(iron), '|', FLOOR(crop))
+             FROM vdata WHERE kid=$settlerCancelSource"
+        ),
+        'stale cancellation does not refund resources'
+    );
+
+    $concurrentMovement = (int)$movement->addMovement(
+        $settlerCancelSource,
+        $settlerCancelTarget,
+        1,
+        $settlerUnits,
+        0,
+        0,
+        0,
+        0,
+        0,
+        MovementsModel::ATTACKTYPE_SETTLERS,
+        miliseconds() - 1000,
+        miliseconds() + 60000
+    );
+    expect_true($concurrentMovement > 0, 'concurrent settler movement created');
+    $settlerCancelMovementIds[] = $concurrentMovement;
+    expect_true($db->begin_transaction(), 'settler-cancellation race lock transaction started');
+    $settlerCancelLockHeld = true;
+    $lockedMovement = $db->query("SELECT id FROM movement WHERE id=$concurrentMovement FOR UPDATE");
+    expect_true($lockedMovement && $lockedMovement->num_rows === 1, 'settler-cancellation race movement locked');
+
+    $descriptorSpec = [
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ];
+    $barrierPath = tempnam(sys_get_temp_dir(), 'ov-settler-cancel-start-');
+    $firstReadyPath = tempnam(sys_get_temp_dir(), 'ov-settler-cancel-ready-');
+    $secondReadyPath = tempnam(sys_get_temp_dir(), 'ov-settler-cancel-ready-');
+    expect_true($barrierPath !== false, 'settler-cancellation start barrier created');
+    expect_true($firstReadyPath !== false, 'first settler-cancellation ready signal created');
+    expect_true($secondReadyPath !== false, 'second settler-cancellation ready signal created');
+    $settlerCancelBarrierFiles = [$barrierPath, $firstReadyPath, $secondReadyPath];
+    $readyPaths = [$firstReadyPath, $secondReadyPath];
+    for ($i = 0; $i < 2; ++$i) {
+        $pipes = [];
+        $process = proc_open(
+            [
+                'php',
+                '/app/tests/settler-cancel-worker.php',
+                (string)$concurrentMovement,
+                (string)$settlerCancelSource,
+                $barrierPath,
+                $readyPaths[$i],
+            ],
+            $descriptorSpec,
+            $pipes
+        );
+        expect_true(is_resource($process), "settler-cancellation worker $i started");
+        $settlerCancelWorkers[] = ['process' => $process, 'pipes' => $pipes];
+    }
+
+    $readyDeadline = microtime(true) + 10;
+    while (
+        (@file_get_contents($firstReadyPath) !== 'ready' || @file_get_contents($secondReadyPath) !== 'ready')
+        && microtime(true) < $readyDeadline
+    ) {
+        usleep(1000);
+    }
+    expect_same('ready', @file_get_contents($firstReadyPath), 'first settler-cancellation worker ready');
+    expect_same('ready', @file_get_contents($secondReadyPath), 'second settler-cancellation worker ready');
+    expect_true(file_put_contents($barrierPath, 'go', LOCK_EX) !== false, 'settler-cancellation workers released together');
+    $blockedWorkers = 0;
+    $blockedDeadline = microtime(true) + 10;
+    while ($blockedWorkers < 2 && microtime(true) < $blockedDeadline) {
+        $blockedWorkers = (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM information_schema.PROCESSLIST
+             WHERE ID<>CONNECTION_ID() AND DB=DATABASE() AND INFO LIKE '%movement%'
+               AND INFO LIKE '%id=$concurrentMovement%'"
+        );
+        if ($blockedWorkers < 2) {
+            usleep(1000);
+        }
+    }
+    expect_true($blockedWorkers >= 2, 'both settler-cancellation workers blocked on the same movement');
+    expect_true($db->commit(), 'settler-cancellation race lock released');
+    $settlerCancelLockHeld = false;
+
+    $settlerCancelOutcomes = [];
+    foreach ($settlerCancelWorkers as $i => &$worker) {
+        $stdout = stream_get_contents($worker['pipes'][1]);
+        $stderr = stream_get_contents($worker['pipes'][2]);
+        fclose($worker['pipes'][1]);
+        fclose($worker['pipes'][2]);
+        $exitCode = proc_close($worker['process']);
+        $worker['process'] = null;
+        $worker['pipes'] = [];
+        expect_same(0, $exitCode, "settler-cancellation worker $i exited successfully: $stderr");
+        $settlerCancelOutcomes[] = $stdout;
+    }
+    unset($worker);
+    sort($settlerCancelOutcomes);
+    expect_same(['false', 'true'], $settlerCancelOutcomes, 'exactly one concurrent settler cancellation committed');
+    expect_same(
+        "1000|1000|1000|1000|$settlerCancelTarget|$settlerCancelSource|1|1",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                FLOOR(v.wood), '|', FLOOR(v.clay), '|', FLOOR(v.iron), '|', FLOOR(v.crop), '|',
+                m.kid, '|', m.to_kid, '|', m.mode, '|',
+                (SELECT COUNT(*) FROM movement WHERE id=$concurrentMovement)
+             ) FROM vdata v JOIN movement m ON m.id=$concurrentMovement
+               WHERE v.kid=$settlerCancelSource"
+        ),
+        'concurrent settler cancellation refunds once and creates one return'
+    );
+    expect_same(
+        false,
+        RallyPointModel::cancelTaskForVillage($concurrentMovement, $settlerCancelSource),
+        'replayed settler cancellation ignored'
+    );
+    expect_same(
+        '1000|1000|1000|1000',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(FLOOR(wood), '|', FLOOR(clay), '|', FLOOR(iron), '|', FLOOR(crop))
+             FROM vdata WHERE kid=$settlerCancelSource"
+        ),
+        'replayed settler cancellation does not duplicate the refund'
+    );
+} finally {
+    foreach ($settlerCancelWorkers as &$worker) {
+        if (isset($worker['pipes']) && is_array($worker['pipes'])) {
+            foreach ($worker['pipes'] as $pipe) {
+                if (is_resource($pipe)) {
+                    fclose($pipe);
+                }
+            }
+        }
+        if (isset($worker['process']) && is_resource($worker['process'])) {
+            proc_terminate($worker['process']);
+            proc_close($worker['process']);
+        }
+    }
+    unset($worker);
+    foreach ($settlerCancelBarrierFiles as $path) {
+        if (is_string($path) && is_file($path)) {
+            unlink($path);
+        }
+    }
+    if ($settlerCancelLockHeld) {
+        $db->rollback();
+    }
+    if ($settlerCancelFixtureCommitted) {
+        $db->query("DELETE FROM movement WHERE id IN(" . implode(',', $settlerCancelMovementIds ?: [0]) . ")");
+        $db->query("DELETE FROM vdata WHERE kid=$settlerCancelSource");
+        $db->query("DELETE FROM users WHERE id=$settlerCancelOwner");
+    }
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE movement AUTO_INCREMENT=$movementAutoIncrement");
+}
+
 $capitalOwner = 2000000050;
 $capitalForeignOwner = 2000000051;
 $db->begin_transaction();

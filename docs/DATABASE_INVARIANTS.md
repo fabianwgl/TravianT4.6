@@ -46,6 +46,9 @@ delete paths are covered by regression tests.
   conditionally debit the source and insert the resulting movement in one
   transaction. A failed insert restores every source row, and concurrent
   dispatches cannot overdraw the same troop balance.
+- Cancelling an outgoing movement locks and reverses that movement exactly once.
+  A settler cancellation refunds its four resource costs in the same
+  transaction; late, stale, concurrent, or replayed requests cannot refund it.
 - `vdata.upkeep` is derived from home troops, relevant incoming/returning
   movements, reinforcements, trapped troops, Horse Drinking Trough effects,
   artifacts, and World Wonder rules. Any troop-location change must settle

@@ -99,6 +99,9 @@
 - Troop sends, farm-list raids, settler dispatch, and reinforcement withdrawals
   now atomically debit their source state and queue movements, preventing
   failed inserts or concurrent requests from losing or overdrawing units.
+- Settler cancellation now locks and reverses an outgoing movement atomically,
+  so stale, late, concurrent, and replayed requests cannot duplicate its
+  resource refund.
 - Winner and no-winner pages now preserve literal CSS percentages in translated
   markup instead of treating them as `vsprintf` format tokens.
 - Nullable database and resource values are normalized before PHP 8.3 string
