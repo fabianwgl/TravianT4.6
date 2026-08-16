@@ -10,6 +10,7 @@ use Game\Buildings\BuildingAction;
 use Game\ResourcesHelper;
 use Model\AccountDeleter;
 use Model\ArtefactsModel;
+use Model\BreweryModel;
 use Model\VillageModel;
 use resources\View\PHPBatchView;
 
@@ -388,15 +389,20 @@ class EditVillageCtrl
         if (is_null($params['demolishes'])) {
             $params['demolishes'] .= '<tr><td colspan="5" class="noData">No demolishes.</td></tr>';
         }
-        if ($villageData['festival'] > time() && isset($_REQUEST['finishFestival'])) {
-            $db->query("UPDATE vdata SET festival=0 WHERE kid=$kid");
-            $villageData['festival'] = 0;
+        $breweryModel = new BreweryModel();
+        $festivalStatus = $breweryModel->getFestivalStatus((int)$villageData['owner']);
+        if ($festivalStatus['active'] && isset($_REQUEST['finishFestival'])) {
+            $db->query(
+                "UPDATE users SET brewery_festival_started_at=0, brewery_festival_ends_at=0
+                 WHERE id=" . (int)$villageData['owner']
+            );
+            $festivalStatus = $breweryModel->getFestivalStatus((int)$villageData['owner']);
         }
-        if ($villageData['festival'] > time()) {
+        if ($festivalStatus['active']) {
             $params['celebrations'] .= '<tr>';
-            $params['celebrations'] .= '<td><a href="?action=editVillage&kid=' . $kid . '&finishFestival=' . $row['id'] . '"  onclick="return confirmAction();"><img src="img/x.gif" class="del" title="delete"></a></td>';
+            $params['celebrations'] .= '<td><a href="?action=editVillage&kid=' . $kid . '&finishFestival=1"  onclick="return confirmAction();"><img src="img/x.gif" class="del" title="delete"></a></td>';
             $params['celebrations'] .= '<td>Festival</td>';
-            $params['celebrations'] .= '<td>' . TimezoneHelper::autoDateString($villageData['festival'],
+            $params['celebrations'] .= '<td>' . TimezoneHelper::autoDateString($festivalStatus['endsAt'],
                     TRUE) . '</td>';
             $params['celebrations'] .= '</tr>';
         }

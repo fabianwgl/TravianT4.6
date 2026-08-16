@@ -71,6 +71,9 @@ golden_same(80000.0, Formulas::storeCAP(20), 'level-twenty storage capacity');
 golden_same(1000.0, Formulas::crannyCAP(10, 1), 'Roman level-ten cranny capacity');
 golden_same(1500.0, Formulas::crannyCAP(10, 3), 'Gaul level-ten cranny capacity');
 golden_same([100, 100, 100, 100], Formulas::getOasisProduction(1), 'single-resource oasis production');
+golden_same(20, Formulas::buildingMaxLvl(35, true), 'Brewery maximum level');
+golden_same(51840, Formulas::getFestivalDuration(), 'x10 Brewery festival duration');
+golden_same([3870, 1680, 5940, 1340], Formulas::getFestivalResources(), 'Brewery festival resource price');
 
 golden_same(86400, Formulas::getProtectionBasicTime($start), 'initial beginner protection');
 golden_same(97200, Formulas::getProtectionBasicTime($start + 86400), 'late-registration protection');

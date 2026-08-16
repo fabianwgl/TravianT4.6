@@ -31,8 +31,8 @@ docker compose exec -T database mariadb -N \
     -u"${GAME_DB_USER:-openvillage}" \
     -p"${GAME_DB_PASSWORD:-local-game-password}" \
     "${GAME_DB_NAME:-openvillage_game}" \
-    -e "SELECT COUNT(*) FROM openvillage_schema_migrations WHERE version IN ('001_ajax_token_length.sql', '002_adventure_uid_unsigned.sql', '003_scheduled_task_failures.sql');" \
-    | rg -q '^3$'
+    -e "SELECT COUNT(*) FROM openvillage_schema_migrations WHERE version IN ('001_ajax_token_length.sql', '002_adventure_uid_unsigned.sql', '003_scheduled_task_failures.sql', '004_brewery_festivals.sql');" \
+    | rg -q '^4$'
 
 docker compose exec -T database mariadb -N \
     -u"${GAME_DB_USER:-openvillage}" \

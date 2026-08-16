@@ -138,6 +138,10 @@ class BattleModel
     private $isFarm = false;
     private $atkBonusRate = 1;
     private $defBonusRate = 1;
+    private $breweryEffects = [
+        'festivalActive' => false,
+        'breweryLevel' => 0,
+    ];
 
     protected $profile = [];
     protected $profilingEnabled = true;
@@ -216,6 +220,10 @@ class BattleModel
         $this->startProfile("assocAttacker");
         $this->assocAttacker();
         $this->endProfile("assocAttacker");
+        $this->breweryEffects = (new BreweryModel())->getBattleEffects(
+            (int)$this->attacker['uid'],
+            (int)$this->row['end_time_seconds']
+        );
 
         //Checking if there is a village or not
         if (!$this->model->getVillageState($this->row['to_kid'])) {
@@ -316,8 +324,7 @@ class BattleModel
         $this->endProfile('checkingTraps');
         $this->startProfile('FinalizingAtkDefBonus');
         $stone = 1 + $this->defender['stone'] / 10;
-        $brewery = (new VillageModel())->getCapBrewery($this->attacker['uid']);
-        $offense = $this->calc_offense($brewery);
+        $offense = $this->calc_offense($this->breweryEffects['breweryLevel']);
         if (isset($this->defender['uid']) && $this->defender['uid'] == 1) {
             if ($this->attacker['wave']['units']['num'][11] && isset($offense['n'])) {
                 $offense['b'] *= 1 + $offense['n'] / 100; // natarian horns
@@ -434,8 +441,8 @@ class BattleModel
                 $selected[] = 0;
             }
             $random_artifact = $this->model->randomTargetArtifact($this->defender['uid'], $this->row['to_kid']);
-            $village = new VillageModel();
-            $cap = $village->getCapBrewery($this->attacker['uid']);
+            $cap = $this->breweryEffects['festivalActive']
+                && $this->breweryEffects['breweryLevel'] > 0;
             for ($i = 0; $i < sizeof($targets); ++$i) {
                 if ($random_artifact) {
                     $ignore = $random_artifact < 3 ? [27, 40] : [40];
@@ -1912,11 +1919,7 @@ class BattleModel
                 $af = $this->administrator_effect[$this->row['race']];
                 $moral_bonus = $no_morale ? 1 : $this->model->common_morale($pop_ratio);
                 $ld = (!$this->model->is_great_celebration_running($this->row['kid']) ? 0 : 5) - (!$this->model->is_great_celebration_running($this->row['to_kid']) ? 0 : 5);
-                $B = false;
-                if ($this->row['race'] == 2) {
-                    $p = new VillageModel();
-                    $B = $p->getCapBrewery($this->attacker['uid']) > 0;
-                }
+                $B = $this->breweryEffects['festivalActive'];
                 $c = $moral_bonus / ($B ? 2 : 1);
                 $loy = [
                     round(($af[0] + $ld) * $c),

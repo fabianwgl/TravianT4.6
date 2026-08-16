@@ -481,19 +481,9 @@ class Village
         return $this->village['celebration'];
     }
 
-    public function getFestival()
-    {
-        return $this->village['festival'];
-    }
-
     public function setCelebration($value)
     {
         $this->village['celebration'] = $value;
-    }
-
-    public function setFestival($value)
-    {
-        $this->village['festival'] = $value;
     }
 
     public function getCelebrationType()

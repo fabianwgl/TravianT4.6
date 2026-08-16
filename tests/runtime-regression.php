@@ -11,6 +11,7 @@ use Core\Helper\Notification;
 use Core\Jobs\TransactionalTask;
 use Core\Jobs\WorkerRegistry;
 use Core\Security\Password;
+use Controller\RallyPoint\RallyPointHTML;
 use Controller\RallyPoint\Simulator;
 use Game\Buildings\BuildingHelper;
 use Game\Formulas;
@@ -22,6 +23,7 @@ use Model\AccountDeleter;
 use Model\AllianceModel;
 use Model\BattleModel;
 use Model\BattleSetter;
+use Model\BreweryModel;
 use Model\CelebrationModel;
 use Model\MasterBuilder;
 use Model\MarketPlaceProcessor;
@@ -96,6 +98,38 @@ expect_same(2800.0, Formulas::fieldProduction(10), 'level-ten resource productio
 expect_same(80000.0, Formulas::storeCAP(20), 'level-twenty storage capacity');
 expect_same(125, (int)Formulas::getCelebrationMaxCP(false), 'x10 small celebration CP limit');
 expect_same(500, (int)Formulas::getCelebrationMaxCP(true), 'x10 large celebration CP limit');
+expect_same(20, Formulas::buildingMaxLvl(35, true), 'Brewery maximum level');
+expect_same(51840, Formulas::getFestivalDuration(), 'x10 Brewery festival duration');
+
+$catapultTableRow = [
+    'owner' => ['villageName' => 'Brewery regression village'],
+    'units' => [19 => 20],
+];
+$catapultTableSettings = [
+    'noCoordinates' => true,
+    'noVillageLink' => true,
+    'showTroopsNum' => true,
+    'showTroopsType' => true,
+    'cata' => [[
+        'type' => 'cata',
+        'count' => 20,
+        'level' => 20,
+        'isRaid' => false,
+        'randomOnly' => true,
+    ]],
+];
+$catapultTable = (new RallyPointHTML())->getMovementTable($catapultTableRow, $catapultTableSettings);
+expect_same(
+    false,
+    str_contains($catapultTable, '<option value="10">'),
+    'Brewery festival hides explicit catapult targets'
+);
+$catapultTableSettings['cata'][0]['randomOnly'] = false;
+$catapultTable = (new RallyPointHTML())->getMovementTable($catapultTableRow, $catapultTableSettings);
+expect_true(
+    str_contains($catapultTable, '<option value="10">'),
+    'ordinary catapult targeting keeps explicit targets'
+);
 
 foreach ([[-25, -25], [-25, 25], [0, 0], [25, -25], [25, 25]] as [$x, $y]) {
     $coordinates = Formulas::kid2xy(Formulas::xy2kid($x, $y));
@@ -2009,6 +2043,815 @@ try {
             $db->query(
                 "UPDATE available_villages SET occupied=" . (int)$occupied . " WHERE kid=" . (int)$kid
             );
+        }
+    }
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE demolition AUTO_INCREMENT=$demolitionAutoIncrement");
+    $db->query("ALTER TABLE send AUTO_INCREMENT=$sendAutoIncrement");
+}
+
+$breweryOwner = 2000000056;
+$breweryForeignOwner = 2000000057;
+$breweryRomanOwner = 2000000058;
+$breweryKids = [];
+$db->begin_transaction();
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM users WHERE id IN ($breweryOwner, $breweryForeignOwner, $breweryRomanOwner)"
+        ),
+        'Brewery fixture user IDs available'
+    );
+    $breweryFields = $db->query(
+        "SELECT w.id, w.fieldtype
+         FROM wdata w LEFT JOIN vdata v ON v.kid=w.id
+         WHERE w.id>0 AND w.occupied=0 AND w.oasistype=0 AND v.kid IS NULL
+           AND NOT EXISTS (SELECT 1 FROM fdata stale_fdata WHERE stale_fdata.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM movement movement_ref WHERE movement_ref.kid=w.id OR movement_ref.to_kid=w.id)
+         ORDER BY w.id DESC LIMIT 4"
+    );
+    expect_same(4, $breweryFields->num_rows, 'Brewery fixture fields available');
+    $breweryCapitalField = $breweryFields->fetch_assoc();
+    $breweryOtherField = $breweryFields->fetch_assoc();
+    $breweryForeignField = $breweryFields->fetch_assoc();
+    $breweryRomanField = $breweryFields->fetch_assoc();
+    $breweryCapitalKid = (int)$breweryCapitalField['id'];
+    $breweryOtherKid = (int)$breweryOtherField['id'];
+    $breweryForeignKid = (int)$breweryForeignField['id'];
+    $breweryRomanKid = (int)$breweryRomanField['id'];
+    $breweryKids = [$breweryCapitalKid, $breweryOtherKid, $breweryForeignKid, $breweryRomanKid];
+    $breweryKidList = implode(',', $breweryKids);
+    $breweryNow = time();
+    $breweryLastUpdate = miliseconds();
+    $db->query("INSERT INTO users
+        (id, uuid, name, password, email, race, kid, total_pop, total_villages, desc1, desc2, note)
+        VALUES
+        ($breweryOwner, 'ov-regression-brewery-owner', 'OVBreweryOwner', 'x', '', 2, $breweryCapitalKid, 200, 2, '', '', ''),
+        ($breweryForeignOwner, 'ov-regression-brewery-foreign', 'OVBreweryForeign', 'x', '', 2, $breweryForeignKid, 100, 1, '', '', ''),
+        ($breweryRomanOwner, 'ov-regression-brewery-roman', 'OVBreweryRoman', 'x', '', 1, $breweryRomanKid, 100, 1, '', '', '')");
+    $db->query("INSERT INTO vdata
+        (kid, owner, fieldtype, name, capital, isWW, pop, cp, loyalty,
+         wood, clay, iron, woodp, clayp, ironp, maxstore, crop, cropp, maxcrop, upkeep,
+         lastmupdate, created, festival, expandedfrom)
+        VALUES
+        ($breweryCapitalKid, $breweryOwner, " . (int)$breweryCapitalField['fieldtype'] . ", 'OV Brewery Capital', 1, 0, 100, 0, 100,
+         100000, 100000, 100000, 0, 0, 0, 1000000, 100000, 0, 1000000, 0,
+         $breweryLastUpdate, $breweryNow, 1234, 0),
+        ($breweryOtherKid, $breweryOwner, " . (int)$breweryOtherField['fieldtype'] . ", 'OV Brewery Other', 0, 0, 100, 0, 100,
+         100000, 100000, 100000, 0, 0, 0, 1000000, 100000, 0, 1000000, 0,
+         $breweryLastUpdate, $breweryNow, " . ($breweryNow + 90000) . ", 0),
+        ($breweryForeignKid, $breweryForeignOwner, " . (int)$breweryForeignField['fieldtype'] . ", 'OV Brewery Foreign', 1, 0, 100, 0, 100,
+         100000, 100000, 100000, 0, 0, 0, 1000000, 100000, 0, 1000000, 0,
+         $breweryLastUpdate, $breweryNow, 0, 0),
+        ($breweryRomanKid, $breweryRomanOwner, " . (int)$breweryRomanField['fieldtype'] . ", 'OV Brewery Roman', 1, 0, 100, 0, 100,
+         100000, 100000, 100000, 0, 0, 0, 1000000, 100000, 0, 1000000, 0,
+         $breweryLastUpdate, $breweryNow, 0, 0)");
+    $db->query("INSERT INTO fdata (kid, f19, f19t, f20, f20t) VALUES
+        ($breweryCapitalKid, 20, 35, 0, 0),
+        ($breweryOtherKid, 1, 26, 0, 0),
+        ($breweryForeignKid, 20, 35, 0, 0),
+        ($breweryRomanKid, 20, 35, 0, 0)");
+    $db->query("INSERT INTO units (kid, race) VALUES
+        ($breweryCapitalKid, 2), ($breweryOtherKid, 2),
+        ($breweryForeignKid, 2), ($breweryRomanKid, 1)");
+    $db->query("UPDATE wdata SET occupied=1 WHERE id IN ($breweryKidList) AND occupied=0");
+    expect_same(4, $db->affectedRows(), 'Brewery fixture fields occupied');
+
+    $breweryModel = new BreweryModel();
+    expect_same(
+        ['startedAt' => 0, 'endsAt' => 0, 'active' => false],
+        $breweryModel->getFestivalStatus(0),
+        'Brewery status rejects missing owner'
+    );
+    expect_same(
+        ['festivalActive' => false, 'breweryLevel' => 0],
+        $breweryModel->getBattleEffects($breweryOwner, $breweryNow),
+        'inactive Brewery festival grants no battle effects'
+    );
+
+    $breweryState = function () use (
+        $db,
+        $breweryOwner,
+        $breweryForeignOwner,
+        $breweryRomanOwner,
+        $breweryKidList
+    ): array {
+        return [
+            'users' => (string)$db->fetchScalar(
+                "SELECT GROUP_CONCAT(CONCAT(id, ':', brewery_festival_started_at, ':', brewery_festival_ends_at)
+                 ORDER BY id SEPARATOR '|')
+                 FROM users WHERE id IN ($breweryOwner, $breweryForeignOwner, $breweryRomanOwner)"
+            ),
+            'villages' => (string)$db->fetchScalar(
+                "SELECT GROUP_CONCAT(CONCAT(kid, ':', owner, ':', capital, ':', isWW, ':', wood, ':', clay, ':', iron,
+                    ':', crop, ':', festival, ':', lastmupdate) ORDER BY kid SEPARATOR '|')
+                 FROM vdata WHERE kid IN ($breweryKidList)"
+            ),
+            'fields' => (string)$db->fetchScalar(
+                "SELECT GROUP_CONCAT(CONCAT(kid, ':', f19, ':', f19t, ':', f20, ':', f20t)
+                 ORDER BY kid SEPARATOR '|') FROM fdata WHERE kid IN ($breweryKidList)"
+            ),
+        ];
+    };
+    $resetBrewery = function () use (
+        $db,
+        $breweryOwner,
+        $breweryForeignOwner,
+        $breweryRomanOwner,
+        $breweryCapitalKid,
+        $breweryOtherKid,
+        $breweryForeignKid,
+        $breweryRomanKid,
+        $breweryNow
+    ): void {
+        $db->query(
+            "UPDATE users SET brewery_festival_started_at=0, brewery_festival_ends_at=0
+             WHERE id IN ($breweryOwner, $breweryForeignOwner, $breweryRomanOwner)"
+        );
+        $db->query(
+            "UPDATE vdata SET capital=CASE kid WHEN $breweryCapitalKid THEN 1 WHEN $breweryForeignKid THEN 1
+                    WHEN $breweryRomanKid THEN 1 ELSE 0 END,
+                 isWW=0, wood=100000, clay=100000, iron=100000, crop=100000, cropp=pop, upkeep=0,
+                 festival=CASE kid WHEN $breweryCapitalKid THEN 1234 WHEN $breweryOtherKid THEN " . ($breweryNow + 90000) . " ELSE 0 END,
+                 lastmupdate=" . miliseconds() . "
+             WHERE kid IN ($breweryCapitalKid, $breweryOtherKid, $breweryForeignKid, $breweryRomanKid)"
+        );
+        $db->query("UPDATE fdata SET f19=20, f19t=35, f20=0, f20t=0
+            WHERE kid IN ($breweryCapitalKid, $breweryForeignKid, $breweryRomanKid)");
+        $db->query("UPDATE fdata SET f19=1, f19t=26, f20=0, f20t=0 WHERE kid=$breweryOtherKid");
+    };
+
+    $breweryMigrationSql = file_get_contents('/app/main_script/include/schema/migrations/004_brewery_festivals.sql');
+    expect_true($breweryMigrationSql !== false, 'Brewery migration SQL is readable');
+    $breweryMigrationUpdateOffset = strpos($breweryMigrationSql, 'UPDATE users u');
+    expect_true($breweryMigrationUpdateOffset !== false, 'Brewery migration data step is present');
+    $breweryMigrationUpdate = substr($breweryMigrationSql, $breweryMigrationUpdateOffset);
+    $legacyCapitalFestivalEnd = $breweryNow + 7200;
+    $capturedResidueFestivalEnd = $breweryNow + 90000;
+    $romanLegacyFestivalEnd = $breweryNow + 10800;
+    $db->query(
+        "UPDATE vdata SET festival=CASE kid
+             WHEN $breweryCapitalKid THEN $legacyCapitalFestivalEnd
+             WHEN $breweryOtherKid THEN $capturedResidueFestivalEnd
+             WHEN $breweryRomanKid THEN $romanLegacyFestivalEnd
+             ELSE 0 END,
+             owner=CASE kid WHEN $breweryOtherKid THEN $breweryForeignOwner ELSE owner END
+         WHERE kid IN ($breweryCapitalKid, $breweryOtherKid, $breweryForeignKid, $breweryRomanKid)"
+    );
+    expect_true($db->query($breweryMigrationUpdate), 'Brewery legacy migration data step succeeds');
+    expect_same(
+        ($legacyCapitalFestivalEnd - 259200) . '|' . $legacyCapitalFestivalEnd,
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(brewery_festival_started_at, '|', brewery_festival_ends_at)
+             FROM users WHERE id=$breweryOwner"
+        ),
+        'Brewery migration promotes an eligible current-capital festival'
+    );
+    expect_same(
+        '0|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(brewery_festival_started_at, '|', brewery_festival_ends_at)
+             FROM users WHERE id=$breweryForeignOwner"
+        ),
+        'Brewery migration ignores captured non-capital festival residue'
+    );
+    expect_same(
+        '0|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(brewery_festival_started_at, '|', brewery_festival_ends_at)
+             FROM users WHERE id=$breweryRomanOwner"
+        ),
+        'Brewery migration ignores non-Teuton legacy festivals'
+    );
+    $db->query(
+        "UPDATE users SET brewery_festival_started_at=0, brewery_festival_ends_at=0
+         WHERE id IN ($breweryOwner, $breweryForeignOwner, $breweryRomanOwner)"
+    );
+    $db->query(
+        "UPDATE vdata SET owner=CASE kid WHEN $breweryOtherKid THEN $breweryOwner ELSE owner END,
+             festival=CASE kid WHEN $breweryCapitalKid THEN 1234
+                 WHEN $breweryOtherKid THEN " . ($breweryNow + 90000) . " ELSE 0 END
+         WHERE kid IN ($breweryCapitalKid, $breweryOtherKid, $breweryForeignKid, $breweryRomanKid)"
+    );
+
+    $baselineBreweryState = $breweryState();
+    expect_same(false, $breweryModel->startFestival(0, $breweryCapitalKid), 'Brewery start rejects missing owner');
+    expect_same(false, $breweryModel->startFestival($breweryOwner, 0), 'Brewery start rejects missing village');
+    expect_same(false, $breweryModel->startFestival($breweryOwner, $breweryForeignKid), 'Brewery start rejects foreign village');
+    expect_same(false, $breweryModel->startFestival($breweryOwner, $breweryOtherKid), 'Brewery start rejects non-capital village');
+    expect_same(false, $breweryModel->startFestival($breweryRomanOwner, $breweryRomanKid), 'Brewery start rejects non-Teuton owner');
+    expect_same($baselineBreweryState, $breweryState(), 'basic Brewery rejections preserve state');
+
+    $db->query("UPDATE fdata SET f19=0, f19t=0 WHERE kid=$breweryCapitalKid");
+    $noBreweryState = $breweryState();
+    expect_same(false, $breweryModel->startFestival($breweryOwner, $breweryCapitalKid), 'Brewery start requires a built Brewery');
+    expect_same($noBreweryState, $breweryState(), 'missing Brewery rejection preserves state');
+    $db->query("UPDATE fdata SET f19=0, f19t=35 WHERE kid=$breweryCapitalKid");
+    $levelZeroBreweryState = $breweryState();
+    expect_same(false, $breweryModel->startFestival($breweryOwner, $breweryCapitalKid), 'Brewery start rejects level-zero Brewery');
+    expect_same($levelZeroBreweryState, $breweryState(), 'level-zero Brewery rejection preserves state');
+    $db->query("UPDATE fdata SET f19=20, f19t=35 WHERE kid=$breweryCapitalKid");
+
+    $db->query("UPDATE vdata SET isWW=1 WHERE kid=$breweryCapitalKid");
+    $wonderBreweryState = $breweryState();
+    expect_same(false, $breweryModel->startFestival($breweryOwner, $breweryCapitalKid), 'Brewery start rejects World Wonder capital');
+    expect_same($wonderBreweryState, $breweryState(), 'World Wonder Brewery rejection preserves state');
+    $db->query("UPDATE vdata SET isWW=0, capital=0 WHERE kid=$breweryCapitalKid");
+    $noCapitalBreweryState = $breweryState();
+    expect_same(false, $breweryModel->startFestival($breweryOwner, $breweryCapitalKid), 'Brewery start requires exactly one capital');
+    expect_same($noCapitalBreweryState, $breweryState(), 'missing capital rejection preserves state');
+    $db->query("UPDATE vdata SET capital=1 WHERE kid IN ($breweryCapitalKid, $breweryOtherKid)");
+    $multipleCapitalBreweryState = $breweryState();
+    expect_same(false, $breweryModel->startFestival($breweryOwner, $breweryCapitalKid), 'Brewery start rejects multiple capitals');
+    expect_same($multipleCapitalBreweryState, $breweryState(), 'multiple-capital rejection preserves state');
+    $db->query("UPDATE vdata SET capital=0 WHERE kid=$breweryOtherKid");
+
+    $db->query(
+        "UPDATE users SET brewery_festival_started_at=" . ($breweryNow - 1) . ",
+             brewery_festival_ends_at=" . ($breweryNow + 60) . " WHERE id=$breweryOwner"
+    );
+    $activeBreweryState = $breweryState();
+    expect_same(false, $breweryModel->startFestival($breweryOwner, $breweryCapitalKid), 'Brewery start rejects active account festival');
+    expect_same($activeBreweryState, $breweryState(), 'active Brewery rejection preserves state');
+
+    $festivalCost = array_map('intval', Formulas::getFestivalResources());
+    foreach (['wood', 'clay', 'iron', 'crop'] as $resourceIndex => $resource) {
+        $resetBrewery();
+        $db->query("UPDATE vdata SET $resource=" . ($festivalCost[$resourceIndex] - 1) . " WHERE kid=$breweryCapitalKid");
+        $insufficientBreweryState = $breweryState();
+        expect_same(
+            false,
+            $breweryModel->startFestival($breweryOwner, $breweryCapitalKid),
+            "Brewery start rejects insufficient $resource"
+        );
+        expect_same($insufficientBreweryState, $breweryState(), "insufficient Brewery $resource preserves state");
+    }
+
+    $resetBrewery();
+    $festivalStartBefore = time();
+    expect_true($breweryModel->startFestival($breweryOwner, $breweryCapitalKid), 'level-twenty Brewery festival starts');
+    $festivalStartAfter = time();
+    $festivalUser = $db->query(
+        "SELECT brewery_festival_started_at, brewery_festival_ends_at FROM users WHERE id=$breweryOwner"
+    )->fetch_assoc();
+    $festivalStartedAt = (int)$festivalUser['brewery_festival_started_at'];
+    $festivalEndsAt = (int)$festivalUser['brewery_festival_ends_at'];
+    expect_true(
+        $festivalStartedAt >= $festivalStartBefore && $festivalStartedAt <= $festivalStartAfter,
+        'Brewery festival stores canonical start time'
+    );
+    expect_same($festivalStartedAt + 51840, $festivalEndsAt, 'Brewery festival stores x10 end time');
+    foreach (['wood', 'clay', 'iron', 'crop'] as $resourceIndex => $resource) {
+        expect_close(
+            100000 - $festivalCost[$resourceIndex],
+            (float)$db->fetchScalar("SELECT $resource FROM vdata WHERE kid=$breweryCapitalKid"),
+            0.0001,
+            "Brewery festival deducts exact $resource"
+        );
+    }
+    expect_same(1234, (int)$db->fetchScalar("SELECT festival FROM vdata WHERE kid=$breweryCapitalKid"), 'Brewery start leaves legacy village timestamp non-authoritative');
+    expect_same(
+        ['startedAt' => $festivalStartedAt, 'endsAt' => $festivalEndsAt, 'active' => true],
+        $breweryModel->getFestivalStatus($breweryOwner, $festivalStartedAt),
+        'Brewery account status is active at start boundary'
+    );
+    expect_same(
+        ['festivalActive' => false, 'breweryLevel' => 0],
+        $breweryModel->getBattleEffects($breweryOwner, $festivalStartedAt - 1),
+        'Brewery effects do not apply before event start'
+    );
+    expect_same(
+        ['festivalActive' => true, 'breweryLevel' => 20],
+        $breweryModel->getBattleEffects($breweryOwner, $festivalStartedAt),
+        'active level-twenty Brewery grants exact battle snapshot'
+    );
+    expect_same(
+        ['festivalActive' => false, 'breweryLevel' => 0],
+        $breweryModel->getBattleEffects($breweryOwner, $festivalEndsAt),
+        'Brewery effects expire at end boundary'
+    );
+    $successfulBreweryState = $breweryState();
+    expect_same(false, $breweryModel->startFestival($breweryOwner, $breweryCapitalKid), 'Brewery festival replay is rejected');
+    expect_same($successfulBreweryState, $breweryState(), 'Brewery festival replay preserves committed state');
+
+    $db->query("UPDATE fdata SET f19=0, f19t=0 WHERE kid=$breweryCapitalKid");
+    expect_same(
+        ['festivalActive' => true, 'breweryLevel' => 0],
+        $breweryModel->getBattleEffects($breweryOwner, $festivalStartedAt + 1),
+        'destroyed Brewery preserves chief penalty but removes level effects'
+    );
+    $db->query("UPDATE vdata SET capital=0 WHERE kid=$breweryCapitalKid");
+    $db->query("UPDATE vdata SET capital=1 WHERE kid=$breweryOtherKid");
+    $db->query("UPDATE fdata SET f20=7, f20t=35 WHERE kid=$breweryOtherKid");
+    expect_same(
+        ['festivalActive' => true, 'breweryLevel' => 7],
+        $breweryModel->getBattleEffects($breweryOwner, $festivalStartedAt + 1),
+        'rebuilt Brewery in moved capital restores level effects immediately'
+    );
+
+    $resetBrewery();
+    $nestedBreweryBaseline = $breweryState();
+    expect_true($db->begin_transaction(), 'Brewery caller savepoint opened');
+    try {
+        expect_true($breweryModel->startFestival($breweryOwner, $breweryCapitalKid), 'nested Brewery festival succeeds before caller failure');
+        throw new RuntimeException('simulated Brewery caller failure');
+    } catch (RuntimeException $e) {
+        expect_true($db->rollback(), 'Brewery caller savepoint rolled back');
+        expect_same('simulated Brewery caller failure', $e->getMessage(), 'Brewery caller failure propagated');
+    }
+    expect_same($nestedBreweryBaseline, $breweryState(), 'caller rollback restores complete Brewery state');
+    $db->query("UPDATE fdata SET f19=1, f19t=35 WHERE kid=$breweryCapitalKid");
+    expect_true($breweryModel->startFestival($breweryOwner, $breweryCapitalKid), 'level-one Brewery retry succeeds after caller rollback');
+    $levelOneStatus = $breweryModel->getFestivalStatus($breweryOwner);
+    expect_same(
+        ['festivalActive' => true, 'breweryLevel' => 1],
+        $breweryModel->getBattleEffects($breweryOwner, $levelOneStatus['startedAt']),
+        'level-one Brewery grants one-percent battle snapshot'
+    );
+
+    $db->query(
+        "UPDATE users SET brewery_festival_started_at=" . ($breweryNow - 10) . ",
+             brewery_festival_ends_at=" . ($breweryNow + 1000) . " WHERE id=$breweryOwner"
+    );
+    $db->query("UPDATE users SET brewery_festival_started_at=0, brewery_festival_ends_at=0 WHERE id=$breweryForeignOwner");
+    $db->query("UPDATE vdata SET festival=" . ($breweryNow + 90000) . " WHERE kid=$breweryOtherKid");
+    expect_true(
+        (new VillageModel())->captureVillage(
+            $breweryOwner,
+            $breweryOtherKid,
+            100,
+            $breweryForeignOwner,
+            100,
+            2,
+            $breweryCapitalKid
+        ),
+        'capturing a legacy Brewery-origin village succeeds'
+    );
+    expect_same($breweryForeignOwner, (int)$db->fetchScalar("SELECT owner FROM vdata WHERE kid=$breweryOtherKid"), 'captured Brewery-origin village changes owner');
+    expect_same(0, (int)$db->fetchScalar("SELECT festival FROM vdata WHERE kid=$breweryOtherKid"), 'capture clears legacy village festival timestamp');
+    expect_same(
+        "$breweryNow",
+        (string)$db->fetchScalar(
+            "SELECT brewery_festival_ends_at-1000 FROM users WHERE id=$breweryOwner"
+        ),
+        'capture preserves old owner account festival'
+    );
+    expect_same(
+        '0|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(brewery_festival_started_at, '|', brewery_festival_ends_at)
+             FROM users WHERE id=$breweryForeignOwner"
+        ),
+        'capture does not transfer festival to new owner'
+    );
+} finally {
+    $db->rollback();
+    $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");
+    $db->query("ALTER TABLE surrounding AUTO_INCREMENT=$surroundingAutoIncrement");
+}
+
+$concurrentBreweryOwner = 2000000059;
+$concurrentBreweryKids = [];
+$concurrentBreweryCommitted = false;
+$concurrentBreweryAvailableOccupancy = [];
+$concurrentBreweryWorkers = [];
+$concurrentBreweryBarrierFiles = [];
+$concurrentBreweryDemolitionTaskIds = [];
+$concurrentBreweryUnrelatedSendId = 0;
+$db->begin_transaction();
+try {
+    expect_same(
+        0,
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id=$concurrentBreweryOwner"),
+        'concurrent Brewery fixture user ID available'
+    );
+    $concurrentBreweryFields = $db->query(
+        "SELECT w.id, w.fieldtype
+         FROM wdata w LEFT JOIN vdata v ON v.kid=w.id
+         WHERE w.id>0 AND w.occupied=0 AND w.oasistype=0 AND v.kid IS NULL
+           AND NOT EXISTS (SELECT 1 FROM fdata stale_fdata WHERE stale_fdata.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM research stale_research WHERE stale_research.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM tdata stale_tdata WHERE stale_tdata.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM smithy stale_smithy WHERE stale_smithy.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM training stale_training WHERE stale_training.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM odelete stale_odelete WHERE stale_odelete.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM traderoutes stale_route WHERE stale_route.kid=w.id OR stale_route.to_kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM building_upgrade stale_build WHERE stale_build.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM demolition stale_demolition WHERE stale_demolition.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM send stale_send WHERE stale_send.kid=w.id OR stale_send.to_kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM marks m WHERE m.kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM vdata child WHERE child.expandedfrom=w.id)
+           AND NOT EXISTS (SELECT 1 FROM movement movement_ref WHERE movement_ref.kid=w.id OR movement_ref.to_kid=w.id)
+           AND NOT EXISTS (SELECT 1 FROM odata oasis_ref WHERE oasis_ref.did=w.id)
+         ORDER BY w.id DESC LIMIT 2"
+    );
+    expect_same(2, $concurrentBreweryFields->num_rows, 'concurrent Brewery fixture fields available');
+    $concurrentBreweryCapitalField = $concurrentBreweryFields->fetch_assoc();
+    $concurrentBreweryOtherField = $concurrentBreweryFields->fetch_assoc();
+    $concurrentBreweryCapitalKid = (int)$concurrentBreweryCapitalField['id'];
+    $concurrentBreweryOtherKid = (int)$concurrentBreweryOtherField['id'];
+    $concurrentBreweryKids = [$concurrentBreweryCapitalKid, $concurrentBreweryOtherKid];
+    $concurrentBreweryKidList = implode(',', $concurrentBreweryKids);
+    $availableBreweryRows = $db->query(
+        "SELECT kid, occupied FROM available_villages WHERE kid IN ($concurrentBreweryKidList)"
+    );
+    while ($availableBreweryRow = $availableBreweryRows->fetch_assoc()) {
+        $concurrentBreweryAvailableOccupancy[(int)$availableBreweryRow['kid']] = (int)$availableBreweryRow['occupied'];
+    }
+    [$concurrentBreweryPop, $concurrentBreweryCp] = Formulas::buildingCpPop(35, 0, 20);
+    [$concurrentPalacePop, $concurrentPalaceCp] = Formulas::buildingCpPop(26, 0, 1);
+    $concurrentBreweryPop = (int)$concurrentBreweryPop;
+    $concurrentBreweryCp = (int)$concurrentBreweryCp;
+    $concurrentPalacePop = (int)$concurrentPalacePop;
+    $concurrentPalaceCp = (int)$concurrentPalaceCp;
+    expect_same(83, $concurrentBreweryPop, 'level-twenty Brewery population fixture');
+    expect_same(153, $concurrentBreweryCp, 'level-twenty Brewery CP fixture');
+    $concurrentBreweryNow = time();
+    $concurrentBreweryLastUpdate = miliseconds();
+    $db->query("INSERT INTO users
+        (id, uuid, name, password, email, race, kid, total_pop, total_villages, cp_prod, desc1, desc2, note)
+        VALUES ($concurrentBreweryOwner, 'ov-regression-concurrent-brewery', 'OVConBrewery', 'x', '', 2,
+                $concurrentBreweryCapitalKid, " . ($concurrentBreweryPop + $concurrentPalacePop) . ", 2,
+                " . ($concurrentBreweryCp + $concurrentPalaceCp) . ", '', '', '')");
+    $db->query("INSERT INTO vdata
+        (kid, owner, fieldtype, name, capital, isWW, pop, cp, loyalty,
+         wood, clay, iron, woodp, clayp, ironp, maxstore, crop, cropp, maxcrop, upkeep,
+         lastmupdate, created, festival, expandedfrom)
+        VALUES
+        ($concurrentBreweryCapitalKid, $concurrentBreweryOwner, " . (int)$concurrentBreweryCapitalField['fieldtype'] . ", 'OV Concurrent Brewery Capital', 1, 0,
+         $concurrentBreweryPop, $concurrentBreweryCp, 100, 100000, 100000, 100000, 0, 0, 0, 1000000,
+         100000, $concurrentBreweryPop, 1000000, 0, $concurrentBreweryLastUpdate, $concurrentBreweryNow, 0, 0),
+        ($concurrentBreweryOtherKid, $concurrentBreweryOwner, " . (int)$concurrentBreweryOtherField['fieldtype'] . ", 'OV Concurrent Brewery Other', 0, 0,
+         $concurrentPalacePop, $concurrentPalaceCp, 100, 100000, 100000, 100000, 0, 0, 0, 1000000,
+         100000, $concurrentPalacePop, 1000000, 0, $concurrentBreweryLastUpdate, $concurrentBreweryNow, 0, 0)");
+    $db->query("INSERT INTO fdata (kid, f19, f19t, f20, f20t) VALUES
+        ($concurrentBreweryCapitalKid, 20, 35, 0, 0),
+        ($concurrentBreweryOtherKid, 1, 26, 0, 0)");
+    $db->query("INSERT INTO units (kid, race) VALUES
+        ($concurrentBreweryCapitalKid, 2), ($concurrentBreweryOtherKid, 2)");
+    $db->query("INSERT INTO send (kid, to_kid, wood, clay, iron, crop, x, mode, end_time)
+        VALUES ($concurrentBreweryCapitalKid, $concurrentBreweryCapitalKid, 5, 6, 7, 8, 1, 0, " . ($concurrentBreweryNow + 3600) . ")");
+    $concurrentBreweryUnrelatedSendId = (int)$db->lastInsertId();
+    $db->query("UPDATE wdata SET occupied=1 WHERE id IN ($concurrentBreweryKidList) AND occupied=0");
+    expect_same(2, $db->affectedRows(), 'concurrent Brewery fixture fields occupied');
+    expect_true($db->commit(), 'concurrent Brewery fixture committed');
+    $concurrentBreweryCommitted = true;
+
+    $runBreweryRace = function (array $commandPrefixes, string $label) use (
+        &$concurrentBreweryWorkers,
+        &$concurrentBreweryBarrierFiles
+    ): array {
+        $descriptorSpec = [
+            0 => ['file', '/dev/null', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+        $barrierPath = tempnam(sys_get_temp_dir(), 'ov-brewery-start-');
+        expect_true($barrierPath !== false, "$label start barrier created");
+        $concurrentBreweryBarrierFiles[] = $barrierPath;
+        $readyPaths = [];
+        foreach ($commandPrefixes as $i => $prefix) {
+            $readyPath = tempnam(sys_get_temp_dir(), 'ov-brewery-ready-');
+            expect_true($readyPath !== false, "$label worker $i ready signal created");
+            $readyPaths[] = $readyPath;
+            $concurrentBreweryBarrierFiles[] = $readyPath;
+            $pipes = [];
+            $process = proc_open(array_merge($prefix, [$barrierPath, $readyPath]), $descriptorSpec, $pipes);
+            expect_true(is_resource($process), "$label worker $i started");
+            $concurrentBreweryWorkers[] = ['process' => $process, 'pipes' => $pipes];
+        }
+
+        $readyDeadline = microtime(true) + 10;
+        do {
+            $ready = true;
+            foreach ($readyPaths as $readyPath) {
+                if (@file_get_contents($readyPath) !== 'ready') {
+                    $ready = false;
+                    break;
+                }
+            }
+            if (!$ready) {
+                usleep(1000);
+            }
+        } while (!$ready && microtime(true) < $readyDeadline);
+        expect_true($ready, "$label workers ready");
+        expect_true(file_put_contents($barrierPath, 'go', LOCK_EX) !== false, "$label workers released");
+
+        $outcomes = [];
+        $workerStart = count($concurrentBreweryWorkers) - count($commandPrefixes);
+        foreach ($commandPrefixes as $i => $_prefix) {
+            $workerIndex = $workerStart + $i;
+            $worker = &$concurrentBreweryWorkers[$workerIndex];
+            $stdout = stream_get_contents($worker['pipes'][1]);
+            $stderr = stream_get_contents($worker['pipes'][2]);
+            fclose($worker['pipes'][1]);
+            fclose($worker['pipes'][2]);
+            $exitCode = proc_close($worker['process']);
+            $worker['process'] = null;
+            $worker['pipes'] = [];
+            expect_same(0, $exitCode, "$label worker $i exit status: $stderr");
+            expect_same('', $stderr, "$label worker $i stderr");
+            $outcomes[] = $stdout;
+            unset($worker);
+        }
+
+        return $outcomes;
+    };
+    $restoreConcurrentBrewery = function () use (
+        $db,
+        $concurrentBreweryOwner,
+        $concurrentBreweryCapitalKid,
+        $concurrentBreweryOtherKid,
+        $concurrentBreweryPop,
+        $concurrentBreweryCp,
+        $concurrentPalacePop,
+        $concurrentPalaceCp
+    ): void {
+        $db->query("DELETE FROM building_upgrade WHERE kid IN ($concurrentBreweryCapitalKid, $concurrentBreweryOtherKid)");
+        $db->query("DELETE FROM demolition WHERE kid IN ($concurrentBreweryCapitalKid, $concurrentBreweryOtherKid)");
+        $db->query(
+            "UPDATE users SET kid=$concurrentBreweryCapitalKid,
+                 total_pop=" . ($concurrentBreweryPop + $concurrentPalacePop) . ",
+                 cp_prod=" . ($concurrentBreweryCp + $concurrentPalaceCp) . ",
+                 brewery_festival_started_at=0, brewery_festival_ends_at=0
+             WHERE id=$concurrentBreweryOwner"
+        );
+        $db->query(
+            "UPDATE vdata SET capital=IF(kid=$concurrentBreweryCapitalKid, 1, 0), isWW=0,
+                 pop=IF(kid=$concurrentBreweryCapitalKid, $concurrentBreweryPop, $concurrentPalacePop),
+                 cp=IF(kid=$concurrentBreweryCapitalKid, $concurrentBreweryCp, $concurrentPalaceCp),
+                 wood=100000, clay=100000, iron=100000, crop=100000,
+                 woodp=0, clayp=0, ironp=0,
+                 cropp=IF(kid=$concurrentBreweryCapitalKid, $concurrentBreweryPop, $concurrentPalacePop),
+                 upkeep=0, maxstore=1000000, maxcrop=1000000, festival=0,
+                 lastmupdate=" . miliseconds() . "
+             WHERE kid IN ($concurrentBreweryCapitalKid, $concurrentBreweryOtherKid)"
+        );
+        $db->query("UPDATE fdata SET f19=20, f19t=35, f20=0, f20t=0 WHERE kid=$concurrentBreweryCapitalKid");
+        $db->query("UPDATE fdata SET f19=1, f19t=26, f20=0, f20t=0 WHERE kid=$concurrentBreweryOtherKid");
+    };
+
+    $concurrentFestivalCost = array_map('intval', Formulas::getFestivalResources());
+    $restoreConcurrentBrewery();
+    $db->query(
+        "UPDATE vdata SET wood=100000, woodp=3600000, maxstore=1000000000,
+             lastmupdate=" . (miliseconds() - 5000) . " WHERE kid=$concurrentBreweryCapitalKid"
+    );
+    expect_true($db->begin_transaction(), 'Brewery stale-snapshot outer transaction opened');
+    $brewerySnapshotResourceState = $db->query(
+        "SELECT wood, lastmupdate FROM vdata WHERE kid=$concurrentBreweryCapitalKid"
+    )->fetch_assoc();
+    $breweryResourceOutcomes = $runBreweryRace([
+        ['php', '/app/tests/resource-settlement-worker.php', (string)$concurrentBreweryCapitalKid],
+    ], 'Brewery stale-snapshot settlement');
+    $breweryWorkerResourceState = json_decode($breweryResourceOutcomes[0], true, 512, JSON_THROW_ON_ERROR);
+    expect_true(
+        (float)$breweryWorkerResourceState['wood'] > (float)$brewerySnapshotResourceState['wood'],
+        'fresh Brewery resource settlement advances beyond outer snapshot'
+    );
+    expect_true(
+        (new BreweryModel())->startFestival($concurrentBreweryOwner, $concurrentBreweryCapitalKid),
+        'Brewery festival starts after fresh resource update despite older outer snapshot'
+    );
+    $breweryFinalResourceState = $db->query(
+        "SELECT wood, lastmupdate FROM vdata WHERE kid=$concurrentBreweryCapitalKid"
+    )->fetch_assoc();
+    $breweryPostWorkerProduction = round(
+        ((int)$breweryFinalResourceState['lastmupdate'] - (int)$breweryWorkerResourceState['lastmupdate'])
+        * 3600000 / 3600000,
+        4
+    );
+    expect_close(
+        (float)$breweryWorkerResourceState['wood'] + $breweryPostWorkerProduction - $concurrentFestivalCost[0],
+        (float)$breweryFinalResourceState['wood'],
+        0.0001,
+        'Brewery start settles only production after fresh-process update'
+    );
+    expect_true($db->rollback(), 'Brewery stale-snapshot outer transaction rolled back');
+    $restoreConcurrentBrewery();
+
+    $duplicateBreweryOutcomes = $runBreweryRace([
+        ['php', '/app/tests/brewery-festival-start-worker.php', (string)$concurrentBreweryOwner, (string)$concurrentBreweryCapitalKid],
+        ['php', '/app/tests/brewery-festival-start-worker.php', (string)$concurrentBreweryOwner, (string)$concurrentBreweryCapitalKid],
+    ], 'duplicate Brewery start race');
+    sort($duplicateBreweryOutcomes);
+    expect_same(['false', 'true'], $duplicateBreweryOutcomes, 'duplicate Brewery race starts once');
+    expect_same(
+        1,
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM users WHERE id=$concurrentBreweryOwner
+               AND brewery_festival_started_at>0 AND brewery_festival_ends_at=brewery_festival_started_at+51840"
+        ),
+        'duplicate Brewery race stores one interval'
+    );
+    foreach (['wood', 'clay', 'iron', 'crop'] as $resourceIndex => $resource) {
+        expect_close(
+            100000 - $concurrentFestivalCost[$resourceIndex],
+            (float)$db->fetchScalar("SELECT $resource FROM vdata WHERE kid=$concurrentBreweryCapitalKid"),
+            0.0001,
+            "duplicate Brewery race charges $resource once"
+        );
+    }
+
+    $restoreConcurrentBrewery();
+    $db->query("INSERT INTO demolition (kid, building_field, end_time, complete)
+        VALUES ($concurrentBreweryCapitalKid, 19, " . (time() + 3600) . ", 1)");
+    $breweryRaceDemolitionTask = (int)$db->lastInsertId();
+    $concurrentBreweryDemolitionTaskIds[] = $breweryRaceDemolitionTask;
+    $breweryDemolitionOutcomes = $runBreweryRace([
+        ['php', '/app/tests/brewery-festival-start-worker.php', (string)$concurrentBreweryOwner, (string)$concurrentBreweryCapitalKid],
+        ['php', '/app/tests/demolition-task-worker.php', (string)$breweryRaceDemolitionTask],
+    ], 'Brewery-demolition race');
+    expect_true(in_array($breweryDemolitionOutcomes[0], ['false', 'true'], true), 'Brewery-demolition race returns valid start outcome');
+    expect_same('true', $breweryDemolitionOutcomes[1], 'Brewery-demolition race completes demolition');
+    expect_same('0|0', (string)$db->fetchScalar("SELECT CONCAT(f19, '|', f19t) FROM fdata WHERE kid=$concurrentBreweryCapitalKid"), 'Brewery-demolition race removes Brewery');
+    if ($breweryDemolitionOutcomes[0] === 'true') {
+        $raceStatus = (new BreweryModel())->getFestivalStatus($concurrentBreweryOwner);
+        expect_true($raceStatus['active'], 'start-first Brewery-demolition race preserves account event');
+        expect_same(
+            ['festivalActive' => true, 'breweryLevel' => 0],
+            (new BreweryModel())->getBattleEffects($concurrentBreweryOwner, $raceStatus['startedAt']),
+            'start-first Brewery-demolition race preserves chief-only effect'
+        );
+    } else {
+        expect_same(
+            '0|0',
+            (string)$db->fetchScalar(
+                "SELECT CONCAT(brewery_festival_started_at, '|', brewery_festival_ends_at)
+                 FROM users WHERE id=$concurrentBreweryOwner"
+            ),
+            'demolition-first Brewery race stores no event'
+        );
+    }
+
+    $restoreConcurrentBrewery();
+    $db->query("INSERT INTO demolition (kid, building_field, end_time, complete)
+        VALUES ($concurrentBreweryCapitalKid, 19, " . (time() + 3601) . ", 1)");
+    $breweryStartFirstTask = (int)$db->lastInsertId();
+    $concurrentBreweryDemolitionTaskIds[] = $breweryStartFirstTask;
+    expect_true((new BreweryModel())->startFestival($concurrentBreweryOwner, $concurrentBreweryCapitalKid), 'controlled start-first Brewery festival succeeds');
+    expect_true(Automation::getInstance()->processDemolitionTask($breweryStartFirstTask), 'controlled start-first Brewery demolition succeeds');
+    $controlledStartStatus = (new BreweryModel())->getFestivalStatus($concurrentBreweryOwner);
+    expect_true($controlledStartStatus['active'], 'controlled start-first demolition preserves account festival');
+    expect_same(
+        ['festivalActive' => true, 'breweryLevel' => 0],
+        (new BreweryModel())->getBattleEffects($concurrentBreweryOwner, $controlledStartStatus['startedAt']),
+        'controlled start-first demolition leaves chief penalty only'
+    );
+
+    $restoreConcurrentBrewery();
+    $db->query("INSERT INTO demolition (kid, building_field, end_time, complete)
+        VALUES ($concurrentBreweryCapitalKid, 19, " . (time() + 3602) . ", 1)");
+    $breweryDemolitionFirstTask = (int)$db->lastInsertId();
+    $concurrentBreweryDemolitionTaskIds[] = $breweryDemolitionFirstTask;
+    expect_true(Automation::getInstance()->processDemolitionTask($breweryDemolitionFirstTask), 'controlled demolition-first Brewery demolition succeeds');
+    expect_same(false, (new BreweryModel())->startFestival($concurrentBreweryOwner, $concurrentBreweryCapitalKid), 'controlled demolition-first Brewery start rejects');
+    $demolitionFirstState = $db->query(
+        "SELECT u.brewery_festival_started_at, u.brewery_festival_ends_at,
+                v.wood, v.clay, v.iron, v.crop
+         FROM users u JOIN vdata v ON v.owner=u.id
+         WHERE u.id=$concurrentBreweryOwner AND v.kid=$concurrentBreweryCapitalKid"
+    )->fetch_assoc();
+    expect_same(
+        '0|0',
+        $demolitionFirstState['brewery_festival_started_at'] . '|' . $demolitionFirstState['brewery_festival_ends_at'],
+        'controlled demolition-first Brewery ordering stores no event'
+    );
+    foreach (['wood', 'clay', 'iron', 'crop'] as $resource) {
+        expect_close(
+            100000,
+            (float)$demolitionFirstState[$resource],
+            0.01,
+            "controlled demolition-first Brewery ordering does not debit $resource"
+        );
+    }
+
+    $restoreConcurrentBrewery();
+    $breweryCapitalRaceOutcomes = $runBreweryRace([
+        ['php', '/app/tests/brewery-festival-start-worker.php', (string)$concurrentBreweryOwner, (string)$concurrentBreweryCapitalKid],
+        ['php', '/app/tests/capital-change-worker.php', (string)$concurrentBreweryOwner, (string)$concurrentBreweryOtherKid],
+    ], 'Brewery-capital race');
+    expect_true(in_array($breweryCapitalRaceOutcomes[0], ['false', 'true'], true), 'Brewery-capital race returns valid start outcome');
+    expect_same('true', $breweryCapitalRaceOutcomes[1], 'Brewery-capital race changes capital');
+    expect_same(
+        "$concurrentBreweryOtherKid|1|0|0",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(v.kid, '|', v.capital, '|', old_fields.f19, '|', old_fields.f19t)
+             FROM vdata v JOIN fdata old_fields ON old_fields.kid=$concurrentBreweryCapitalKid
+             WHERE v.owner=$concurrentBreweryOwner AND v.capital=1"
+        ),
+        'Brewery-capital race moves capital and removes old Brewery'
+    );
+    if ($breweryCapitalRaceOutcomes[0] === 'true') {
+        $capitalRaceStatus = (new BreweryModel())->getFestivalStatus($concurrentBreweryOwner);
+        expect_true($capitalRaceStatus['active'], 'start-first Brewery-capital race preserves account event');
+        expect_same(
+            ['festivalActive' => true, 'breweryLevel' => 0],
+            (new BreweryModel())->getBattleEffects($concurrentBreweryOwner, $capitalRaceStatus['startedAt']),
+            'start-first Brewery-capital race disables level effects until rebuild'
+        );
+    } else {
+        expect_same(
+            '0|0',
+            (string)$db->fetchScalar(
+                "SELECT CONCAT(brewery_festival_started_at, '|', brewery_festival_ends_at)
+                 FROM users WHERE id=$concurrentBreweryOwner"
+            ),
+            'capital-first Brewery race stores no event'
+        );
+    }
+
+    $restoreConcurrentBrewery();
+    expect_true((new BreweryModel())->startFestival($concurrentBreweryOwner, $concurrentBreweryCapitalKid), 'controlled start-first capital-change festival succeeds');
+    expect_true((new VillageModel())->changeCapital($concurrentBreweryOwner, $concurrentBreweryOtherKid), 'controlled start-first capital change succeeds');
+    $startFirstCapitalStatus = (new BreweryModel())->getFestivalStatus($concurrentBreweryOwner);
+    expect_true($startFirstCapitalStatus['active'], 'controlled start-first capital change preserves festival');
+    expect_same(
+        ['festivalActive' => true, 'breweryLevel' => 0],
+        (new BreweryModel())->getBattleEffects($concurrentBreweryOwner, $startFirstCapitalStatus['startedAt']),
+        'controlled start-first capital change disables Brewery level effects'
+    );
+    $db->query("UPDATE fdata SET f20=20, f20t=35 WHERE kid=$concurrentBreweryOtherKid");
+    expect_same(
+        ['festivalActive' => true, 'breweryLevel' => 20],
+        (new BreweryModel())->getBattleEffects($concurrentBreweryOwner, $startFirstCapitalStatus['startedAt']),
+        'Brewery rebuild after capital change restores level effects'
+    );
+
+    $restoreConcurrentBrewery();
+    expect_true((new VillageModel())->changeCapital($concurrentBreweryOwner, $concurrentBreweryOtherKid), 'controlled capital-first change succeeds');
+    expect_same(
+        false,
+        (new BreweryModel())->startFestival($concurrentBreweryOwner, $concurrentBreweryCapitalKid),
+        'controlled capital-first stale Brewery start rejects'
+    );
+    expect_same(
+        '0|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(brewery_festival_started_at, '|', brewery_festival_ends_at)
+             FROM users WHERE id=$concurrentBreweryOwner"
+        ),
+        'controlled capital-first ordering stores no event'
+    );
+    expect_same(
+        "$concurrentBreweryCapitalKid|$concurrentBreweryCapitalKid|5|6|7|8",
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(kid, '|', to_kid, '|', wood, '|', clay, '|', iron, '|', crop)
+             FROM send WHERE id=$concurrentBreweryUnrelatedSendId"
+        ),
+        'concurrent Brewery fixture preserves unrelated candidate data'
+    );
+} finally {
+    foreach ($concurrentBreweryWorkers as &$worker) {
+        if (!isset($worker['process']) || !is_resource($worker['process'])) {
+            continue;
+        }
+        $status = proc_get_status($worker['process']);
+        if (!empty($status['running'])) {
+            proc_terminate($worker['process']);
+        }
+        foreach ($worker['pipes'] as $pipe) {
+            if (is_resource($pipe)) {
+                fclose($pipe);
+            }
+        }
+        proc_close($worker['process']);
+        $worker['process'] = null;
+        $worker['pipes'] = [];
+    }
+    unset($worker);
+    foreach ($concurrentBreweryBarrierFiles as $barrierFile) {
+        if (is_string($barrierFile) && file_exists($barrierFile)) {
+            unlink($barrierFile);
+        }
+    }
+
+    if (!$concurrentBreweryCommitted) {
+        $db->rollback();
+    }
+    if ($concurrentBreweryKids !== []) {
+        $concurrentBreweryKidList = implode(',', array_map('intval', $concurrentBreweryKids));
+        if ($concurrentBreweryDemolitionTaskIds !== []) {
+            $concurrentBreweryTaskList = implode(',', array_map('intval', $concurrentBreweryDemolitionTaskIds));
+            $db->query(
+                "DELETE FROM scheduled_task_failures
+                 WHERE task_table='demolition' AND task_id IN ($concurrentBreweryTaskList)"
+            );
+        }
+        $db->query("DELETE FROM building_upgrade WHERE kid IN ($concurrentBreweryKidList)");
+        $db->query("DELETE FROM demolition WHERE kid IN ($concurrentBreweryKidList)");
+        if ($concurrentBreweryUnrelatedSendId > 0) {
+            $db->query("DELETE FROM send WHERE id=$concurrentBreweryUnrelatedSendId");
+        }
+        $db->query("DELETE FROM units WHERE kid IN ($concurrentBreweryKidList)");
+        $db->query("DELETE FROM fdata WHERE kid IN ($concurrentBreweryKidList)");
+        $db->query("DELETE FROM vdata WHERE kid IN ($concurrentBreweryKidList)");
+        $db->query("DELETE FROM users WHERE id=$concurrentBreweryOwner");
+        $db->query("UPDATE wdata SET occupied=0 WHERE id IN ($concurrentBreweryKidList)");
+        foreach ($concurrentBreweryAvailableOccupancy as $kid => $occupied) {
+            $db->query("UPDATE available_villages SET occupied=" . (int)$occupied . " WHERE kid=" . (int)$kid);
         }
     }
     $db->query("ALTER TABLE users AUTO_INCREMENT=$userAutoIncrement");

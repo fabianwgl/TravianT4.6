@@ -202,32 +202,6 @@ class VillageModel
         }
     }
 
-    public function getCapBrewery($uid)
-    {
-        $db = DB::getInstance();
-        if ($uid == 1) return 0;
-        $capVillage = $db->query("SELECT kid, festival FROM vdata WHERE owner=$uid AND capital=1");
-        if (!$capVillage->num_rows) {
-            return 0;
-        }
-        $capVillage = $capVillage->fetch_assoc();
-        if (!($capVillage['festival'] > time())) {
-            return 0;
-        }
-        $capWref = $capVillage['kid'];
-        $buildings = $db->query("SELECT `f18t`, `f19`, `f19t`, `f20`, `f20t`, `f21`, `f21t`, `f22`, `f22t`, `f23`, `f23t`, `f24`, `f24t`, `f25`, `f25t`, `f26`, `f26t`, `f27`, `f27t`, `f28`, `f28t`, `f29`, `f29t`, `f30`, `f30t`, `f31`, `f31t`, `f32`, `f32t`, `f33`, `f33t`, `f34`, `f34t`, `f35`, `f35t`, `f36`, `f36t`, `f37`, `f37t`, `f38`, `f38t` FROM fdata WHERE kid={$capWref}");
-        if (!$buildings->num_rows) {
-            return 0;
-        }
-        $buildings = $buildings->fetch_assoc();
-        for ($i = 19; $i <= 38; ++$i) {
-            if ($buildings['f' . $i . 't'] == 35) {
-                return $buildings['f' . $i];
-            }
-        }
-        return 0;
-    }
-
     public function changeCapital($uid, $new_capital_kid)
     {
         $db = DB::getInstance();
@@ -569,7 +543,7 @@ class VillageModel
         if ($village['extraMaxcrop']) $maxcrop -= $village['extraMaxcrop'] * Formulas::storeCAP(20);
         $db->query("UPDATE users SET total_pop=total_pop-{$village['pop']}, cp_prod=cp_prod-{$village['cp']}, total_villages=total_villages-1 WHERE id=$uid");
         $db->query("UPDATE users SET total_pop=total_pop+{$village['pop']}, cp_prod=cp_prod+{$village['cp']}, total_villages=total_villages+1 WHERE id=$newUid");
-        $db->query("UPDATE vdata SET isFarm=0, extraMaxstore=0, extraMaxcrop=0, maxstore=$maxstore, maxcrop=$maxcrop, owner=$newUid, expandedfrom=$expandedFrom WHERE kid=$kid AND owner=$uid");
+        $db->query("UPDATE vdata SET isFarm=0, festival=0, extraMaxstore=0, extraMaxcrop=0, maxstore=$maxstore, maxcrop=$maxcrop, owner=$newUid, expandedfrom=$expandedFrom WHERE kid=$kid AND owner=$uid");
         if ((int)$db->fetchScalar("SELECT owner FROM vdata WHERE kid=$kid") !== (int)$newUid) {
             throw new \RuntimeException('Village ownership changed before capture could be finalized.');
         }

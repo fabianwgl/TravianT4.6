@@ -1077,7 +1077,7 @@ Crannies have 20% less capacity against teuton raids with hero + 10-20% from any
                                 'k' => 1.1599999999999999200639422269887290894985198974609375,
                                 'b' => 3750,
                             ),
-                        'maxLvl' => 10,
+                        'maxLvl' => 20,
                         'extra' => 6,
                         'type' => 3,
                         'breq' =>
@@ -3953,14 +3953,11 @@ Crannies have 20% less capacity against teuton raids with hero + 10-20% from any
     public static function getFestivalDuration()
     {
         $duration = 72 * 3600; //it's 3 days.
-        if (getGameSpeed() > 20) {
-            if (getGameSpeed() <= 100) {
-                $duration /= getGameSpeed();
-            } else {
-                $duration /= getGameSpeed() / 2;
-            }
+        $speed = max(1, (float)getGameSpeed());
+        if ($speed > 2) {
+            $duration /= $speed / 2;
         }
-        return max(ceil($duration), 300);
+        return (int)max(ceil($duration), 300);
     }
 
     public static function getFestivalResources()

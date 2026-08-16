@@ -165,6 +165,9 @@ class RallyPointHTML
                         }
                         $military = [13, 14, 16, 19, 20, 21, 22, 35, 37];
                     }
+                    if (!empty($target['randomOnly'])) {
+                        $resources = $pishNiaz = $military = [];
+                    }
 
                     $HTML .= '<tr>';
                     $HTML .= '<th>' . T("RallyPoint", "target") . '</th>';

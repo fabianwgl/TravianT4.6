@@ -1539,6 +1539,8 @@ CREATE TABLE IF NOT EXISTS `users`
   `oldRank`                                          INT(11)               NOT NULL DEFAULT '-1',
   `cp`                                               INT(11) UNSIGNED      NOT NULL DEFAULT '1',
   `cp_prod`                                          INT(11)               NOT NULL DEFAULT '0',
+  `brewery_festival_started_at`                      INT(10) UNSIGNED      NOT NULL DEFAULT '0',
+  `brewery_festival_ends_at`                         INT(10) UNSIGNED      NOT NULL DEFAULT '0',
   `ok`                                               TINYINT(1) UNSIGNED   NOT NULL DEFAULT '0',
   `lastupdate`                                       INT(10) UNSIGNED      NOT NULL DEFAULT '0',
   `lastPkgCodeTry`                                   INT(10) UNSIGNED      NOT NULL DEFAULT '0',

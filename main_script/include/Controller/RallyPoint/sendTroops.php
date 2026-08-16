@@ -21,12 +21,12 @@ use function getCustom;
 use function miliseconds;
 use Model\ArtefactsModel;
 use Model\BerichteModel;
+use Model\BreweryModel;
 use Model\InfoBoxModel;
 use Model\MovementsModel;
 use Model\Quest;
 use Model\RallyPoint\RallyPointModel;
 use Model\Units;
-use Model\VillageModel;
 use const MYSQLI_STORE_RESULT;
 use resources\View\PHPBatchView;
 use function var_dump;
@@ -473,14 +473,12 @@ class sendTroops extends RallyPointHTML
                 }
                 break;
         }
-        $villageModel = new VillageModel();
         if ($this->result['settings']['units'][8] > 0 && ($this->result['settings']['attack_type'] == 3 || $this->result['settings']['attack_type'] == 4)) {
             $settings['cata'][] = [
                 "type"       => "cata",
                 'count'      => $this->result['settings']['units'][8],
                 "level"      => $village->getField(39)['level'],
                 "isRaid"     => $this->result['settings']['attack_type'] == 4,
-                "hasBrewery" => $villageModel->getCapBrewery($session->getPlayerId()),
             ];
         }
         if ($this->result['settings']['attack_type'] == 1) {
@@ -572,10 +570,19 @@ class sendTroops extends RallyPointHTML
             $calculator->setArtefactEffect(ArtefactsModel::getArtifactEffectByType($session->getPlayerId(), $session->getKid(), ArtefactsModel::ARTIFACT_INCREASE_SPEED));
         }
         $neededTime = $calculator->calc();
+        $arrivalTime = (int)ceil((miliseconds(true) + 1000 * $neededTime) / 1000);
+        if (isset($settings['cata'][0])) {
+            $breweryEffects = (new BreweryModel())->getBattleEffects(
+                (int)$session->getPlayerId(),
+                $arrivalTime
+            );
+            $settings['cata'][0]['randomOnly'] = $breweryEffects['festivalActive']
+                && $breweryEffects['breweryLevel'] > 0;
+        }
         $settings['info'][] = [
             "type"        => "Arrival",
             "countUp"     => TRUE,
-            "ArrivalTime" => round(((miliseconds(true) + 1000 * $neededTime)) / 1000),
+            "ArrivalTime" => $arrivalTime,
         ];
         $this->result['settings']['troop_details'] = $this->getMovementTable($row, $settings, true);
         return $this->procPrepareSendContent();
@@ -904,6 +911,20 @@ class sendTroops extends RallyPointHTML
         }
         $calculator->setArtefactEffect(ArtefactsModel::getArtifactEffectByType($session->getPlayerId(), $session->getKid(), ArtefactsModel::ARTIFACT_INCREASE_SPEED));
         $neededTime = $calculator->calc();
+        $now = miliseconds(true);
+        while (true) {
+            $attacksPerSecond = $db->fetchScalar("SELECT COUNT(id) FROM movement WHERE kid={$village->getKid()} AND start_time=$now");
+            if ($attacksPerSecond < 4) {
+                break;
+            }
+            $now += 1000;
+        }
+        $breweryEffects = (new BreweryModel())->getBattleEffects(
+            (int)$session->getPlayerId(),
+            (int)ceil(($now + 1000 * $neededTime) / 1000)
+        );
+        $randomCatapultTargets = $breweryEffects['festivalActive']
+            && $breweryEffects['breweryLevel'] > 0;
         $insert = [
             "ctar1"        => 99,
             "ctar2"        => 99,
@@ -911,53 +932,50 @@ class sendTroops extends RallyPointHTML
             "attack_type"  => $attack_type,
             "redeployHero" => $redeployHero,
         ];
-        $villageModel = new VillageModel();
         if (isset($_POST['ctar1']) || isset($_POST['ctar2'])) {
             $targets = [99];
-            if ($session->getRace() <> 2 || $villageModel->getCapBrewery($session->getPlayerId()) <= 0) {
-                if ($village->getField(39)['level'] < 3) {
-                    $targets = [99, 10, 11];
-                } else if ($village->getField(39)['level'] <= 9) {
-                    $targets = [99, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-                } else if ($village->getField(39)['level'] >= 10) {
-                    $targets = [
-                        99,
-                        1,
-                        2,
-                        3,
-                        4,
-                        5,
-                        6,
-                        7,
-                        8,
-                        9,
-                        10,
-                        11,
-                        15,
-                        17,
-                        18,
-                        24,
-                        25,
-                        26,
-                        44,
-                        27,
-                        28,
-                        38,
-                        39,
-                        40,
-                        41,
-                        13,
-                        14,
-                        16,
-                        19,
-                        20,
-                        21,
-                        22,
-                        35,
-                        37,
-                        45
-                    ];
-                }
+            if (!$randomCatapultTargets && $village->getField(39)['level'] < 3) {
+                $targets = [99, 10, 11];
+            } else if (!$randomCatapultTargets && $village->getField(39)['level'] <= 9) {
+                $targets = [99, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+            } else if (!$randomCatapultTargets && $village->getField(39)['level'] >= 10) {
+                $targets = [
+                    99,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6,
+                    7,
+                    8,
+                    9,
+                    10,
+                    11,
+                    15,
+                    17,
+                    18,
+                    24,
+                    25,
+                    26,
+                    44,
+                    27,
+                    28,
+                    38,
+                    39,
+                    40,
+                    41,
+                    13,
+                    14,
+                    16,
+                    19,
+                    20,
+                    21,
+                    22,
+                    35,
+                    37,
+                    45
+                ];
             }
             $insert['ctar1'] = isset($_POST['ctar1']) && in_array($_POST['ctar1'], $targets) ? $_POST['ctar1'] : 99;
             if ($village->getField(39)['level'] == 20) {
@@ -975,14 +993,6 @@ class sendTroops extends RallyPointHTML
         $stmtSuccess = Units::modifyUnits($session->getKid(), $units);
         if (!$stmtSuccess) {
             return false;
-        }
-        $now = miliseconds(true);
-        while(true){
-            $attacksPerSecond = $db->fetchScalar("SELECT COUNT(id) FROM movement WHERE kid={$village->getKid()} AND start_time=$now");
-            if($attacksPerSecond < 4){
-                break;
-            }
-            $now += 1000;
         }
         $success = $move->addMovement($village->getKid(),
             $kid,
