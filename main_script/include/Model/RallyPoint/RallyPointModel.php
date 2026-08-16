@@ -73,33 +73,94 @@ class RallyPointModel
         return $db->query("SELECT COUNT(id) FROM movement WHERE kid={$session->getKid()} $other")->fetch_assoc()['COUNT(id)'];
     }
 
-    public function cancelTask($taskId)
+    public function cancelTask($taskId): bool
     {
-        $miliseconds = miliseconds();
+        return self::cancelTaskForVillage((int)$taskId, (int)Village::getInstance()->getKid());
+    }
+
+    public static function cancelTaskForVillage(int $taskId, int $villageKid): bool
+    {
+        if ($taskId <= 0 || $villageKid <= 0) {
+            return false;
+        }
+
         $db = DB::getInstance();
-        $village = Village::getInstance();
-        $taskId = (int)$taskId;
-        $task = $db->query("SELECT kid, to_kid, attack_type, mode, start_time, end_time FROM movement WHERE kid={$village->getKid()} AND id={$taskId}");
-        if (!$task->num_rows) {
-            return;
+        if (!$db->begin_transaction()) {
+            return false;
         }
-        $task = $task->fetch_assoc();
 
-        if (getCustom("realCancelAttack")) {
-            $abort = ($miliseconds - $task['start_time']) <= 90 * 1000;
-        } else {
-            $abort = ($miliseconds - $task['start_time']) <= (round(($task['end_time'] - $task['start_time'])) / 3);
-        }
-        if ($abort || $task['attack_type'] == MovementsModel::ATTACKTYPE_EVASION) {
-            $db->query("UPDATE movement SET kid={$task['to_kid']}, to_kid={$task['kid']}, mode=1, end_time=(" . (2 * $miliseconds) . "-start_time), start_time=" . $miliseconds . " WHERE id={$taskId}");
-            if ($task['attack_type'] == MovementsModel::ATTACKTYPE_RAID || $task['attack_type'] == MovementsModel::ATTACKTYPE_NORMAL) {
-                Caching::getInstance()->delete("attacks" . $task['to_kid']);
+        try {
+            $result = $db->query(
+                "SELECT kid, to_kid, attack_type, start_time, end_time
+                 FROM movement
+                 WHERE id=$taskId AND kid=$villageKid AND mode=0
+                 FOR UPDATE"
+            );
+            if (!$result) {
+                $db->rollback();
+
+                return false;
             }
-        }
+            if (!$result->num_rows) {
+                $db->rollback();
 
-        if ($task['attack_type'] == MovementsModel::ATTACKTYPE_SETTLERS && $task['mode'] == 0) {
-            // Add resources
-            $db->query("UPDATE vdata SET wood=wood+750, clay=clay+750, iron=iron+750, crop=crop+750 WHERE kid={$task['kid']}");
+                return false;
+            }
+            $task = $result->fetch_assoc();
+            $now = miliseconds();
+            if (getCustom("realCancelAttack")) {
+                $abort = ($now - (int)$task['start_time']) <= 90 * 1000;
+            } else {
+                $abort = ($now - (int)$task['start_time']) <=
+                    (round(((int)$task['end_time'] - (int)$task['start_time'])) / 3);
+            }
+            $attackType = (int)$task['attack_type'];
+            if (!$abort && $attackType !== MovementsModel::ATTACKTYPE_EVASION) {
+                $db->rollback();
+
+                return false;
+            }
+
+            $sourceKid = (int)$task['kid'];
+            $targetKid = (int)$task['to_kid'];
+            $updated = $db->query(
+                "UPDATE movement
+                 SET kid=$targetKid, to_kid=$sourceKid, mode=1,
+                     end_time=(" . (2 * $now) . "-start_time), start_time=$now
+                 WHERE id=$taskId AND kid=$sourceKid AND mode=0"
+            );
+            if (!$updated || $db->affectedRows() !== 1) {
+                $db->rollback();
+
+                return false;
+            }
+
+            if ($attackType === MovementsModel::ATTACKTYPE_SETTLERS) {
+                $refunded = $db->query(
+                    "UPDATE vdata
+                     SET wood=wood+750, clay=clay+750, iron=iron+750, crop=crop+750
+                     WHERE kid=$sourceKid"
+                );
+                if (!$refunded || $db->affectedRows() !== 1) {
+                    $db->rollback();
+
+                    return false;
+                }
+            }
+
+            if (!$db->commit()) {
+                throw new \RuntimeException("Unable to commit movement $taskId cancellation.");
+            }
+
+            if ($attackType === MovementsModel::ATTACKTYPE_RAID || $attackType === MovementsModel::ATTACKTYPE_NORMAL) {
+                Caching::getInstance()->delete("attacks" . $targetKid);
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            $db->rollback();
+
+            throw $e;
         }
     }
 
