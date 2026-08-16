@@ -114,6 +114,10 @@ Marketplace resource mutation, offer mutation, and every merchant row belonging
 to one user action share the same database transaction. A failed direct send
 restores its debit; a failed offer acceptance restores the buyer's resources,
 the offer row, and either dispatch if the paired dispatch cannot also commit.
+Scheduled merchant delivery and return tasks lock both endpoint villages. A
+missing endpoint or failed replacement-leg insert leaves the live task and all
+resource balances unchanged for bounded retry; terminal failures retain the
+complete `send` payload in `scheduled_task_failures`.
 The in-memory village resource state must be restored whenever that transaction
 rolls back.
 Marketplace mutation helpers require ownership of the outermost transaction;

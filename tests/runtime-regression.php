@@ -848,35 +848,76 @@ $merchantOwner = 2000000009;
 $merchantOrigin = 2000000023;
 $merchantVillage = 2000000024;
 $merchantTask = 2000000001;
+$merchantFailedReturnTask = 2000000100;
+$merchantFailedGoTask = 2000000101;
+$merchantMissingSourceTask = 2000000102;
+$merchantMissingDestinationTask = 2000000103;
+$merchantMissingReturnSourceTask = 2000000104;
+$merchantMissingOwnerTask = 2000000105;
+$merchantMissingReturnOwnerTask = 2000000106;
+$merchantMissingSource = 2000000095;
+$merchantMissingDestination = 2000000096;
+$merchantMissingReturnSource = 2000000097;
+$merchantOrphanVillage = 2000000098;
+$merchantMissingOwner = 2000000099;
+$merchantTaskIds = implode(',', [
+    $merchantTask,
+    $merchantFailedReturnTask,
+    $merchantFailedGoTask,
+    $merchantMissingSourceTask,
+    $merchantMissingDestinationTask,
+    $merchantMissingReturnSourceTask,
+    $merchantMissingOwnerTask,
+    $merchantMissingReturnOwnerTask,
+]);
 $db->begin_transaction();
 try {
     expect_same(
         0,
-        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id=$merchantOwner"),
-        'merchant fixture user ID available'
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM users WHERE id IN ($merchantOwner, $merchantMissingOwner)"),
+        'merchant fixture user IDs available'
     );
     expect_same(
         0,
-        (int)$db->fetchScalar("SELECT COUNT(*) FROM vdata WHERE kid=$merchantVillage"),
-        'merchant fixture village ID available'
+        (int)$db->fetchScalar(
+            "SELECT COUNT(*) FROM vdata WHERE kid IN ($merchantOrigin, $merchantVillage, $merchantOrphanVillage)"
+        ),
+        'merchant fixture village IDs available'
     );
     expect_same(
         0,
-        (int)$db->fetchScalar("SELECT COUNT(*) FROM send WHERE id=$merchantTask"),
-        'merchant fixture task ID available'
+        (int)$db->fetchScalar("SELECT COUNT(*) FROM send WHERE id IN ($merchantTaskIds)"),
+        'merchant fixture task IDs available'
     );
-    $db->query("INSERT INTO users (id, uuid, name, password, email, race, kid, desc1, desc2, note)
-        VALUES ($merchantOwner, 'ov-regression-merchant', 'OVMerchant', 'x', '', 1, $merchantVillage, '', '', '')");
+    $db->query("INSERT INTO users
+        (id, uuid, name, password, email, race, kid, desc1, desc2, note, reportFilters)
+        VALUES
+        ($merchantOwner, 'ov-regression-merchant', 'OVMerchant', 'x', '', 1, $merchantVillage, '', '', '',
+         '1,1,1,7,31,31,127')");
     $lastUpdate = miliseconds();
     $db->query("INSERT INTO vdata
         (kid, owner, fieldtype, name, capital, pop, cp, wood, clay, iron, woodp, clayp, ironp, maxstore,
          crop, cropp, maxcrop, upkeep, lastmupdate, created, expandedfrom)
         VALUES
         ($merchantVillage, $merchantOwner, 3, 'OV Merchant Village', 1, 0, 0,
+         100, 100, 100, 0, 0, 0, 1000000, 100, 0, 1000000, 0, $lastUpdate, " . time() . ", 0),
+        ($merchantOrigin, $merchantOwner, 3, 'OV Merchant Origin', 0, 0, 0,
+         100, 100, 100, 0, 0, 0, 104, 100, 0, 103, 0, $lastUpdate, " . time() . ", 0),
+        ($merchantOrphanVillage, $merchantMissingOwner, 3, 'OV Merchant Orphan', 0, 0, 0,
          100, 100, 100, 0, 0, 0, 1000000, 100, 0, 1000000, 0, $lastUpdate, " . time() . ", 0)");
-    $db->query("INSERT INTO fdata (kid) VALUES ($merchantVillage)");
+    $db->query(
+        "INSERT INTO fdata (kid) VALUES ($merchantVillage), ($merchantOrigin), ($merchantOrphanVillage)"
+    );
     $db->query("INSERT INTO send (id, kid, to_kid, wood, clay, iron, crop, x, mode, end_time)
-        VALUES ($merchantTask, $merchantOrigin, $merchantVillage, 10, 20, 30, 40, 1, 1, 0)");
+        VALUES
+        ($merchantTask, $merchantOrigin, $merchantVillage, 10, 20, 30, 40, 1, 1, 4102444800),
+        ($merchantFailedReturnTask, $merchantOrigin, $merchantVillage, 1, 2, 3, 4, 1, 1, 4102444800),
+        ($merchantFailedGoTask, $merchantVillage, $merchantOrigin, 5, 6, 7, 8, 1, 0, 4102444800),
+        ($merchantMissingSourceTask, $merchantMissingSource, $merchantVillage, 1, 1, 1, 1, 1, 0, 4102444800),
+        ($merchantMissingDestinationTask, $merchantVillage, $merchantMissingDestination, 1, 1, 1, 1, 1, 0, 4102444800),
+        ($merchantMissingReturnSourceTask, $merchantOrigin, $merchantMissingReturnSource, 1, 1, 1, 1, 1, 1, 4102444800),
+        ($merchantMissingOwnerTask, $merchantOrphanVillage, $merchantVillage, 1, 1, 1, 1, 1, 0, 4102444800),
+        ($merchantMissingReturnOwnerTask, $merchantOrigin, $merchantOrphanVillage, 1, 1, 1, 1, 1, 1, 4102444800)");
 
     $market = new MarketPlaceProcessor();
     expect_true($market->processRow(['id' => $merchantTask]), 'merchant task processed');
@@ -885,7 +926,9 @@ try {
         (string)$db->fetchScalar(
             "SELECT CONCAT(
                 (SELECT COUNT(*) FROM send WHERE id=$merchantTask), '|', wood, '|', clay, '|', iron, '|', crop, '|',
-                (SELECT COUNT(*) FROM send WHERE kid=$merchantVillage AND to_kid=$merchantOrigin AND mode=0)
+                (SELECT COUNT(*) FROM send
+                 WHERE kid=$merchantVillage AND to_kid=$merchantOrigin AND mode=0
+                   AND id NOT IN ($merchantTaskIds))
             ) FROM vdata WHERE kid=$merchantVillage"
         ),
         'merchant queue, resources, and outbound route commit together'
@@ -895,10 +938,225 @@ try {
         '90.0000|80.0000|70.0000|60.0000|1',
         (string)$db->fetchScalar(
             "SELECT CONCAT(wood, '|', clay, '|', iron, '|', crop, '|',
-                (SELECT COUNT(*) FROM send WHERE kid=$merchantVillage AND to_kid=$merchantOrigin AND mode=0))
+                (SELECT COUNT(*) FROM send
+                 WHERE kid=$merchantVillage AND to_kid=$merchantOrigin AND mode=0
+                   AND id NOT IN ($merchantTaskIds)))
              FROM vdata WHERE kid=$merchantVillage"
         ),
         'merchant effect not duplicated'
+    );
+
+    $failingMarket = new class extends MarketPlaceProcessor {
+        protected function insert($kid, $to_kid, $r1, $r2, $r3, $r4, $x2, $mode, $end_time): bool
+        {
+            return false;
+        }
+    };
+    try {
+        $failingMarket->processRow(['id' => $merchantFailedReturnTask]);
+        throw new RuntimeException('Failed merchant return insert was not rejected.');
+    } catch (RuntimeException $e) {
+        expect_same(
+            "Merchant return task $merchantFailedReturnTask could not queue its next outbound leg.",
+            $e->getMessage(),
+            'failed merchant return insert propagated'
+        );
+    }
+    expect_same(
+        '1|90.0000|80.0000|70.0000|60.0000|1|1',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM send WHERE id=$merchantFailedReturnTask), '|',
+                wood, '|', clay, '|', iron, '|', crop, '|',
+                (SELECT COUNT(*) FROM send
+                 WHERE kid=$merchantVillage AND to_kid=$merchantOrigin AND mode=0
+                   AND id NOT IN ($merchantTaskIds)), '|',
+                (SELECT attempts FROM scheduled_task_failures
+                 WHERE task_table='send' AND task_id=$merchantFailedReturnTask)
+             ) FROM vdata WHERE kid=$merchantVillage"
+        ),
+        'failed merchant return insert rolls back resources and preserves retry state'
+    );
+    expect_true($market->processRow(['id' => $merchantFailedReturnTask]), 'merchant return insert retried');
+    expect_same(
+        '0|89.0000|78.0000|67.0000|56.0000|2|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM send WHERE id=$merchantFailedReturnTask), '|',
+                wood, '|', clay, '|', iron, '|', crop, '|',
+                (SELECT COUNT(*) FROM send
+                 WHERE kid=$merchantVillage AND to_kid=$merchantOrigin AND mode=0
+                   AND id NOT IN ($merchantTaskIds)), '|',
+                (SELECT COUNT(*) FROM scheduled_task_failures
+                 WHERE task_table='send' AND task_id=$merchantFailedReturnTask)
+             ) FROM vdata WHERE kid=$merchantVillage"
+        ),
+        'merchant return retry commits one resource debit and one outbound leg'
+    );
+
+    try {
+        $failingMarket->processRow(['id' => $merchantFailedGoTask]);
+        throw new RuntimeException('Failed merchant delivery insert was not rejected.');
+    } catch (RuntimeException $e) {
+        expect_same(
+            "Merchant task $merchantFailedGoTask could not queue its return leg.",
+            $e->getMessage(),
+            'failed merchant delivery insert propagated'
+        );
+    }
+    expect_same(
+        '1|100.0000|100.0000|100.0000|100.0000|0|1',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM send WHERE id=$merchantFailedGoTask), '|',
+                wood, '|', clay, '|', iron, '|', crop, '|',
+                (SELECT COUNT(*) FROM send WHERE kid=$merchantOrigin AND to_kid=$merchantVillage AND mode=1
+                 AND id NOT IN ($merchantTask, $merchantFailedReturnTask)), '|',
+                (SELECT attempts FROM scheduled_task_failures
+                 WHERE task_table='send' AND task_id=$merchantFailedGoTask)
+             ) FROM vdata WHERE kid=$merchantOrigin"
+        ),
+        'failed merchant delivery insert rolls back credit and preserves retry state'
+    );
+    expect_true($market->processRow(['id' => $merchantFailedGoTask]), 'merchant delivery insert retried');
+    expect_same(
+        '0|104.0000|104.0000|104.0000|103.0000|1|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM send WHERE id=$merchantFailedGoTask), '|',
+                wood, '|', clay, '|', iron, '|', crop, '|',
+                (SELECT COUNT(*) FROM send WHERE kid=$merchantOrigin AND to_kid=$merchantVillage AND mode=1
+                 AND id NOT IN ($merchantTask, $merchantFailedReturnTask)), '|',
+                (SELECT COUNT(*) FROM scheduled_task_failures
+                 WHERE task_table='send' AND task_id=$merchantFailedGoTask)
+             ) FROM vdata WHERE kid=$merchantOrigin"
+        ),
+        'merchant delivery retry caps resources and commits one return leg'
+    );
+
+    try {
+        $market->processRow(['id' => $merchantMissingSourceTask]);
+        throw new RuntimeException('Missing merchant source was not rejected.');
+    } catch (RuntimeException $e) {
+        expect_same(
+            "Merchant task $merchantMissingSourceTask source village $merchantMissingSource does not exist.",
+            $e->getMessage(),
+            'missing merchant source rejected'
+        );
+    }
+    expect_same(
+        '1|1',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM send WHERE id=$merchantMissingSourceTask), '|', attempts
+             ) FROM scheduled_task_failures
+               WHERE task_table='send' AND task_id=$merchantMissingSourceTask"
+        ),
+        'missing merchant source remains recoverable'
+    );
+
+    for ($attempt = 1; $attempt <= 5; ++$attempt) {
+        try {
+            $market->processRow(['id' => $merchantMissingDestinationTask]);
+            throw new RuntimeException('Missing merchant destination was not rejected.');
+        } catch (RuntimeException $e) {
+            expect_same(
+                "Merchant task $merchantMissingDestinationTask destination village $merchantMissingDestination does not exist.",
+                $e->getMessage(),
+                "missing merchant destination attempt $attempt"
+            );
+        }
+    }
+    $missingMerchantFailureResult = $db->query(
+        "SELECT attempts, payload, last_error FROM scheduled_task_failures
+         WHERE task_table='send' AND task_id=$merchantMissingDestinationTask"
+    );
+    $missingMerchantFailure = $missingMerchantFailureResult->fetch_assoc();
+    expect_same(5, (int)$missingMerchantFailure['attempts'], 'missing merchant destination reaches retry limit');
+    expect_same(
+        "Merchant task $merchantMissingDestinationTask destination village $merchantMissingDestination does not exist.",
+        $missingMerchantFailure['last_error'],
+        'missing merchant destination records a stable reason'
+    );
+    $missingMerchantPayload = json_decode($missingMerchantFailure['payload'], true, 512, JSON_THROW_ON_ERROR);
+    expect_same($merchantMissingDestinationTask, (int)$missingMerchantPayload['id'], 'missing merchant payload retains task ID');
+    expect_same($merchantMissingDestination, (int)$missingMerchantPayload['to_kid'], 'missing merchant payload retains destination');
+    expect_same(
+        '0|0',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM send WHERE id=$merchantMissingDestinationTask), '|',
+                (SELECT COUNT(*) FROM vdata WHERE kid=$merchantMissingDestination)
+             )"
+        ),
+        'terminal merchant failure removes only its live queue row'
+    );
+    expect_same(false, $market->processRow(['id' => $merchantMissingDestinationTask]), 'terminal merchant failure replay ignored');
+
+    try {
+        $market->processRow(['id' => $merchantMissingReturnSourceTask]);
+        throw new RuntimeException('Missing merchant return source was not rejected.');
+    } catch (RuntimeException $e) {
+        expect_same(
+            "Merchant return task $merchantMissingReturnSourceTask source village $merchantMissingReturnSource does not exist.",
+            $e->getMessage(),
+            'missing merchant return source rejected'
+        );
+    }
+    expect_same(
+        '1|1',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM send WHERE id=$merchantMissingReturnSourceTask), '|', attempts
+             ) FROM scheduled_task_failures
+               WHERE task_table='send' AND task_id=$merchantMissingReturnSourceTask"
+        ),
+        'missing merchant return source remains recoverable'
+    );
+
+    try {
+        $market->processRow(['id' => $merchantMissingOwnerTask]);
+        throw new RuntimeException('Missing merchant source owner was not rejected.');
+    } catch (RuntimeException $e) {
+        expect_same(
+            "Merchant task $merchantMissingOwnerTask source owner $merchantMissingOwner does not exist.",
+            $e->getMessage(),
+            'missing merchant source owner rejected'
+        );
+    }
+    expect_same(
+        '1|1',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM send WHERE id=$merchantMissingOwnerTask), '|', attempts
+             ) FROM scheduled_task_failures
+               WHERE task_table='send' AND task_id=$merchantMissingOwnerTask"
+        ),
+        'missing merchant source owner remains recoverable'
+    );
+
+    try {
+        $market->processRow(['id' => $merchantMissingReturnOwnerTask]);
+        throw new RuntimeException('Missing merchant return owner was not rejected.');
+    } catch (RuntimeException $e) {
+        expect_same(
+            "Merchant return task $merchantMissingReturnOwnerTask source owner $merchantMissingOwner does not exist.",
+            $e->getMessage(),
+            'missing merchant return owner rejected'
+        );
+    }
+    expect_same(
+        '1|1|100.0000|100.0000|100.0000|100.0000',
+        (string)$db->fetchScalar(
+            "SELECT CONCAT(
+                (SELECT COUNT(*) FROM send WHERE id=$merchantMissingReturnOwnerTask), '|', attempts, '|',
+                wood, '|', clay, '|', iron, '|', crop
+             ) FROM vdata
+               JOIN scheduled_task_failures
+                 ON task_table='send' AND task_id=$merchantMissingReturnOwnerTask
+             WHERE kid=$merchantOrphanVillage"
+        ),
+        'missing merchant return owner rolls back settlement and remains recoverable'
     );
 } finally {
     $db->rollback();

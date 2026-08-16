@@ -24,22 +24,33 @@ class MarketPlaceProcessor
 
     private function processGo($row)
     {
+        $taskId = (int)$row['id'];
+        $sourceKid = (int)$row['kid'];
+        $destinationKid = (int)$row['to_kid'];
+        $villages = $this->lockVillages([$sourceKid, $destinationKid], $taskId);
+        if (!isset($villages[$sourceKid])) {
+            throw new \RuntimeException("Merchant task $taskId source village $sourceKid does not exist.");
+        }
+        if (!isset($villages[$destinationKid])) {
+            throw new \RuntimeException("Merchant task $taskId destination village $destinationKid does not exist.");
+        }
+
         $m = new AutomationModel();
-        $sender = $m->getVillage($row['kid'], 'owner');
+        $sender = $m->getUser($villages[$sourceKid]['owner'], 'id, reportFilters, name, race');
         if ($sender === false) {
-            return;
+            $owner = (int)$villages[$sourceKid]['owner'];
+            throw new \RuntimeException("Merchant task $taskId source owner $owner does not exist.");
         }
-        $sender = $m->getUser($sender['owner'], 'id, reportFilters, name, race');
-        $receiver = $m->getVillage($row['to_kid'], 'owner');
+        $receiver = $m->getUser($villages[$destinationKid]['owner'], 'id, reportFilters, name, race');
         if ($receiver === false) {
-            return;
+            $owner = (int)$villages[$destinationKid]['owner'];
+            throw new \RuntimeException("Merchant task $taskId destination owner $owner does not exist.");
         }
-        $receiver = $m->getUser($receiver['owner'], 'id, reportFilters, name, race');
         $resources = [
-            1 => $row['wood'],
-            $row['clay'],
-            $row['iron'],
-            $row['crop'],
+            1 => (int)$row['wood'],
+            (int)$row['clay'],
+            (int)$row['iron'],
+            (int)$row['crop'],
         ];
         $report = [
             'sender' => [
@@ -77,22 +88,48 @@ class MarketPlaceProcessor
             }
         }
         $db = DB::getInstance();
-        $db->query("UPDATE vdata SET wood=wood+{$resources[1]}, clay=clay+{$resources[2]}, iron=iron+{$resources[3]}, crop=crop+{$resources[4]} WHERE kid={$row['to_kid']}");
-        ResourcesHelper::updateVillageResources($row['to_kid']);
-        $this->returnMerchants($row, $report['timeTaken']);
+        ResourcesHelper::settleVillageResourcesForUpdate($destinationKid);
+        $credited = $db->query(
+            "UPDATE vdata
+             SET wood=LEAST(maxstore, wood+{$resources[1]}),
+                 clay=LEAST(maxstore, clay+{$resources[2]}),
+                 iron=LEAST(maxstore, iron+{$resources[3]}),
+                 crop=LEAST(maxcrop, crop+{$resources[4]})
+             WHERE kid=$destinationKid"
+        );
+        if (!$credited) {
+            throw new \RuntimeException("Merchant task $taskId could not credit destination village $destinationKid.");
+        }
+        if (!$this->returnMerchants($row, $report['timeTaken'])) {
+            throw new \RuntimeException("Merchant task $taskId could not queue its return leg.");
+        }
         $master = new MasterBuilder();
-        $master->updateCommence($row['to_kid'], false);
+        $master->updateCommence($destinationKid, false);
     }
 
-    private function returnMerchants($row, $timeTaken)
+    private function returnMerchants($row, $timeTaken): bool
     {
-        $this->insert($row['to_kid'], $row['kid'], $row['wood'], $row['clay'], $row['iron'], $row['crop'], $row['x'] - 1, 1, $row['end_time'] + $timeTaken);
+        return $this->insert(
+            $row['to_kid'],
+            $row['kid'],
+            $row['wood'],
+            $row['clay'],
+            $row['iron'],
+            $row['crop'],
+            $row['x'] - 1,
+            1,
+            $row['end_time'] + $timeTaken
+        );
     }
 
-    private function insert($kid, $to_kid, $r1, $r2, $r3, $r4, $x2, $mode, $end_time)
+    protected function insert($kid, $to_kid, $r1, $r2, $r3, $r4, $x2, $mode, $end_time): bool
     {
         $db = DB::getInstance();
-        $db->query("INSERT INTO send (`kid`, `to_kid`, `wood`, `clay`, `iron`, `crop`, `x`, `mode`, `end_time`) VALUES ($kid, $to_kid, $r1, $r2, $r3, $r4,$x2, $mode, $end_time)");
+
+        return (bool)$db->query(
+            "INSERT INTO send (`kid`, `to_kid`, `wood`, `clay`, `iron`, `crop`, `x`, `mode`, `end_time`)
+             VALUES ($kid, $to_kid, $r1, $r2, $r3, $r4, $x2, $mode, $end_time)"
+        );
     }
 
     private function processReturn($row)
@@ -100,11 +137,22 @@ class MarketPlaceProcessor
         if (!$row['x']) {
             return;
         }
+        $taskId = (int)$row['id'];
+        $sourceKid = (int)$row['to_kid'];
+        $destinationKid = (int)$row['kid'];
+        $villages = $this->lockVillages([$sourceKid, $destinationKid], $taskId);
+        if (!isset($villages[$sourceKid])) {
+            throw new \RuntimeException("Merchant return task $taskId source village $sourceKid does not exist.");
+        }
+        if (!isset($villages[$destinationKid])) {
+            throw new \RuntimeException("Merchant return task $taskId destination village $destinationKid does not exist.");
+        }
+
         $m = new AutomationModel();
-        ResourcesHelper::updateVillageResources($row['to_kid']);
-        $res = $m->getVillage($row['to_kid'], 'owner, wood, clay, iron, crop');
+        ResourcesHelper::settleVillageResourcesForUpdate($sourceKid);
+        $res = $m->getVillage($sourceKid, 'owner, wood, clay, iron, crop');
         if ($res === false) {
-            return;
+            throw new \RuntimeException("Merchant return task $taskId source village $sourceKid disappeared.");
         }
         $resources = array_map(function ($x) {
             return floor(max(0, $x));
@@ -114,11 +162,56 @@ class MarketPlaceProcessor
             min($res['iron'], $row['iron']),
             max(min($res['crop'], $row['crop']), 0),
         ]);
-        $speed = Formulas::merchantSpeed($m->getUser($res['owner'], 'race')['race']);
+        $owner = $m->getUser($res['owner'], 'race');
+        if ($owner === false) {
+            $ownerId = (int)$res['owner'];
+            throw new \RuntimeException("Merchant return task $taskId source owner $ownerId does not exist.");
+        }
+        $speed = Formulas::merchantSpeed($owner['race']);
         $end_time = $row['end_time'] + round(Formulas::getDistance($row['kid'], $row['to_kid']) / $speed * 3600);
-        DB::getInstance()->query("UPDATE vdata SET wood=wood-{$resources[1]}, clay=clay-{$resources[2]}, iron=iron-{$resources[3]}, crop=crop-{$resources[4]} WHERE kid={$row['to_kid']}");
-        $this->insert($row['to_kid'], $row['kid'], $resources[1], $resources[2], $resources[3], $resources[4], $row['x'], 0, $end_time);
+        $db = DB::getInstance();
+        $debited = $db->query(
+            "UPDATE vdata
+             SET wood=wood-{$resources[1]}, clay=clay-{$resources[2]},
+                 iron=iron-{$resources[3]}, crop=crop-{$resources[4]}
+             WHERE kid=$sourceKid"
+        );
+        if (!$debited || (array_sum($resources) > 0 && $db->affectedRows() !== 1)) {
+            throw new \RuntimeException("Merchant return task $taskId could not debit source village $sourceKid.");
+        }
+        if (!$this->insert(
+            $sourceKid,
+            $destinationKid,
+            $resources[1],
+            $resources[2],
+            $resources[3],
+            $resources[4],
+            $row['x'],
+            0,
+            $end_time
+        )) {
+            throw new \RuntimeException("Merchant return task $taskId could not queue its next outbound leg.");
+        }
         $master = new MasterBuilder();
-        $master->updateCommence($row['to_kid'], false, false);
+        $master->updateCommence($sourceKid, false, false);
+    }
+
+    private function lockVillages(array $kids, int $taskId): array
+    {
+        $kids = array_values(array_unique(array_map('intval', $kids)));
+        sort($kids, SORT_NUMERIC);
+        $result = DB::getInstance()->query(
+            'SELECT kid, owner FROM vdata WHERE kid IN (' . implode(',', $kids) . ') ORDER BY kid FOR UPDATE'
+        );
+        if (!$result) {
+            throw new \RuntimeException("Merchant task $taskId could not lock its villages.");
+        }
+
+        $villages = [];
+        while ($village = $result->fetch_assoc()) {
+            $villages[(int)$village['kid']] = $village;
+        }
+
+        return $villages;
     }
 }

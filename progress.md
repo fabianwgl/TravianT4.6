@@ -130,6 +130,9 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
 - Made manual marketplace sends and offer create, accept, and cancel actions
   transactional across resource state, offer rows, and all merchant dispatches,
   including injected single- and paired-dispatch failure regressions.
+- Hardened scheduled merchant delivery and return processing against missing
+  villages and failed replacement-route inserts, with rollback, retry, terminal
+  quarantine, and duplicate-replay regression coverage.
 
 ## Current work
 

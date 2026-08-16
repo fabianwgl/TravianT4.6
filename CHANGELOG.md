@@ -79,6 +79,9 @@
   troops/upkeep or bonus effects, and duplicate-delivery suppression.
 - Merchant sends now commit queue consumption, resource movement, and the next
   route in one transaction and ignore duplicate delivery.
+- Merchant delivery and return workers now lock both endpoint villages and
+  retain retry/quarantine payloads when an endpoint or replacement route is
+  missing, rolling back every resource effect after a failed route insert.
 - Movement completion now commits battles, arrivals, or returns with event
   consumption under one row lock; return-arrival replay is regression-tested.
 - Forked automation workers now have unique identities, unexpected child exits
