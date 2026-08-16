@@ -29,21 +29,41 @@ class SettlersProcessor
         $row['end_time_seconds'] = ceil($row['end_time'] / 1000);
 
         $db = DB::getInstance();
-        $wdata = $db->query("SELECT occupied, fieldtype FROM wdata WHERE id={$row['to_kid']}")->fetch_assoc();
-        $owner = $db->fetchScalar("SELECT owner FROM vdata WHERE kid={$row['kid']}");
+        $sourceKid = (int)$row['kid'];
+        $targetKid = (int)$row['to_kid'];
+        $owner = $db->fetchScalar("SELECT owner FROM vdata WHERE kid=$sourceKid");
         if ($owner === false) {
             return;
         }
-        if ($wdata['occupied']) {
-            $this->returnSettlers($row, $owner);
+        $owner = (int)$owner;
+        $userResult = $db->query("SELECT race FROM users WHERE id=$owner FOR UPDATE");
+        if (!$userResult || !$userResult->num_rows) {
             return;
         }
-        $race = $db->fetchScalar("SELECT race FROM users WHERE id=$owner");
-        if ($race === false) {
-            return;
+        $race = (int)$userResult->fetch_assoc()['race'];
+
+        $destinationResult = $db->query(
+            "SELECT w.fieldtype, w.occupied AS world_occupied,
+                    a.kid AS available_kid, a.occupied AS available_occupied,
+                    v.kid AS village_kid
+             FROM wdata w
+             LEFT JOIN available_villages a ON a.kid=w.id
+             LEFT JOIN vdata v ON v.kid=w.id
+             WHERE w.id=$targetKid
+             FOR UPDATE"
+        );
+        if (!$destinationResult) {
+            throw new \RuntimeException("Unable to lock settlement destination $targetKid.");
         }
-        $exists = $db->fetchScalar("SELECT COUNT(kid) FROM vdata WHERE kid={$row['to_kid']}") >= 1;
-        if ($exists) {
+        $destination = $destinationResult->fetch_assoc();
+        if (
+            !$destination
+            || (int)$destination['fieldtype'] <= 0
+            || (int)$destination['world_occupied'] !== 0
+            || !isset($destination['available_kid'])
+            || (int)$destination['available_occupied'] !== 0
+            || isset($destination['village_kid'])
+        ) {
             $this->returnSettlers($row, $owner);
             return;
         }
@@ -59,7 +79,9 @@ class SettlersProcessor
             return;
         }
         $register = new RegisterModel();
-        $register->createNewVillage($owner, $race, $row['to_kid'], $row['kid']);
+        if (!$register->createNewVillage($owner, $race, $targetKid, $sourceKid)) {
+            throw new \RuntimeException("Unable to create the settled village at $targetKid.");
+        }
 
         (new SummaryModel())->setFirstVillageUser($name);
 
