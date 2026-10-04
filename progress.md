@@ -141,5 +141,10 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
 
 ## TODO
 
-- Promote the finished sanitized release branch to public `main` only after
-  explicit approval of the guarded history replacement.
+- Continue from fetched fork `main`, which already contains the modernization
+  merge and subsequent gameplay fixes. The older modernization branch is not
+  the current integration baseline.
+- Verify full account deletion: the legacy worker removes the deletion marker
+  before cleanup completes and leaves some personal-data records behind.
+  Define retention and add rollback/retry and erasure coverage before closing
+  the privacy roadmap item.
