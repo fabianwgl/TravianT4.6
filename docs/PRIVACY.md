@@ -27,11 +27,31 @@ activity, not an in-game data processor.
 
 ## Player controls
 
-Authenticated players can schedule account deletion from the in-game account
-options. The legacy deletion workflow is asynchronous and should be verified by
-the operator before promising a completion deadline. A self-service account
-export is not implemented; until it is, an operator must handle export requests
-from the database using an authenticated, documented request process.
+Account owners can use **Account options > Download account data** and confirm
+their current password to download a JSON file for the current world. Sitters
+and administrators impersonating another player cannot use this control.
+Downloads require the account form token, are not cached, and are returned
+directly without saving a server-side export file. The endpoint permits five
+export attempts per 15 minutes and one download per minute;
+the attempt limit also counts incorrect passwords and applies across sessions.
+
+The file includes an explicit scope description. It is a current-world account
+export, not a database backup or a portable world save. Passwords, tokens, and
+session credentials are never included. Requests for operator logs, backups,
+or records in separate global services still require authenticated operator
+handling. Do not identify a global account solely by matching its email address.
+Keep the downloaded file private: it contains personal data and private game
+messages.
+
+Delivered reports can name other participants and contain intelligence already
+available to the account owner. Deleted reports, hidden opponent upgrade values,
+and other players' maximum auction bids are excluded. Unreadable legacy reports
+are identified as unavailable without preventing the rest of the download.
+
+Players can also schedule account deletion from Account options. The legacy
+deletion workflow is asynchronous. Full personal-data erasure and its completion
+deadline remain unverified; scheduling gameplay deletion does not prove that
+logs, global records, or backups have been erased.
 
 Deleting containers is not deletion. To erase an entire local installation,
 delete its MariaDB, Redis, and runtime volumes and every separate backup.

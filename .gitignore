@@ -13,3 +13,4 @@ main_script/copyable/include/error_log.log
 main_script/copyable/include/automation.log
 test-results/
 backups/
+openvillage-account*.json

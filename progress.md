@@ -133,6 +133,16 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
 - Hardened scheduled merchant delivery and return processing against missing
   villages and failed replacement-route inserts, with rollback, retry, terminal
   quarantine, and duplicate-replay regression coverage.
+- Added owner-confirmed current-world JSON account downloads with explicit
+  scope, password verification, account-wide rate limits, no-store responses,
+  and sitter/impersonation rejection.
+- Preserved account isolation across villages, messages, forum records,
+  reports, auctions, and personal records. Exported reports omit hidden opponent
+  upgrades and handle unreadable legacy content without failing the download.
+- Added database and HTTP export regressions, then passed the full verifier
+  against both an existing test world and a disposable empty-volume install.
+- Verified the account download, wrong-password feedback, and repeat-download
+  limit in a real browser with zero JavaScript or unexpected console errors.
 
 ## Current work
 
@@ -148,3 +158,8 @@ Original prompt: Improve the Travian 4.6 fork using project-improvements/README.
   before cleanup completes and leaves some personal-data records behind.
   Define retention and add rollback/retry and erasure coverage before closing
   the privacy roadmap item.
+- Make deletion scheduling/cancellation transactional and owner-confirmed;
+  preserve the queue marker until account cleanup commits. Reuse village-delete
+  savepoints and crash/concurrency fixtures, and preserve voucher behavior with
+  a durable cross-database delivery path rather than issuing duplicate vouchers
+  after retries. Keep unrelated players' shared history intact.

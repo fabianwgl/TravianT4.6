@@ -134,6 +134,7 @@ $pages = [
     'minimap.php' => 'MinimapCtrl',
     'messages.php' => 'NachrichtenCtrl',
     'options.php' => 'OptionCtrl',
+    'account-export.php' => 'AccountExportCtrl',
     'password.php' => 'PasswordCtrl',
     'position_details.php' => 'PositionDetailsCtrl',
     'production.php' => 'ProductionCtrl',

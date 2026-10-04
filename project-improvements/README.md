@@ -2,7 +2,7 @@
 
 > Status: verified local/private-play alpha
 > Audit baseline: commit `0f517012`, reviewed 2026-07-30
-> Implementation verification: 2026-07-31
+> Implementation verification: 2026-10-04
 
 ## Goal
 
@@ -59,8 +59,8 @@ complete.
 - [ ] Obtain qualified legal review before distributing branded assets.
 
 The root [`LICENSE`](../LICENSE) does not automatically relicense bundled
-third-party material. For example, the bundled
-[`phpMyAdmin`](../sections/pma/composer.json#L14) has its own license.
+third-party material. phpMyAdmin has been removed; the remaining component and
+asset provenance work is tracked in [`THIRD_PARTY.md`](../THIRD_PARTY.md).
 
 ### 2. Freeze the target ruleset
 
@@ -88,9 +88,8 @@ third-party material. For example, the bundled
 - [x] Verify clean imports for both global and game databases.
 - [x] Add health and readiness checks.
 
-The current [`README`](../README.md#L4) targets unsupported PHP 7.3–7.4, while
-provisioning performs host-level changes in
-[`ServerManager.php`](../TaskWorker/include/Core/ServerManager.php#L46).
+The maintained [`README`](../README.md) now documents the PHP 8.3 container
+runtime. The legacy host-level server manager has been removed.
 
 ### 4. Restore the security boundary
 
@@ -163,6 +162,10 @@ durable global outbox remains at-least-once by design.
 - [x] Create a personal-data inventory and processor list.
 - [ ] Define retention for profiles, messages, IP logs, admin logs, and payments.
 - [ ] Implement account export and deletion.
+
+      Current-world self-service JSON export is implemented with owner password
+      confirmation and account-isolation tests. Complete deletion, retention,
+      and operator handling of records outside this export remain pending.
 - [x] Remove unconditional newsletter enrollment.
 - [x] Minimize Telegram, email, and payment data flows.
 - [ ] Publish privacy and age policies before a public beta.
@@ -214,9 +217,10 @@ The review explicitly avoided these overclaims:
 - Event-processing risks justify crash tests first, not an automatic wholesale
   rewrite.
 
-## Audit limitations
+## Original audit limitations
 
-- Static source review only; no production deployment was attempted.
-- No full game round was executed.
-- No current dependency advisory or penetration test was performed.
-- Database compatibility beyond the original MariaDB-era dumps remains unverified.
+The initial 2026-07-30 audit was a static source review. Subsequent CI and
+runtime tests now cover MariaDB 11.4 imports and an accelerated complete round;
+see [`docs/RELEASE.md`](../docs/RELEASE.md) for the verified scope. No production
+deployment, independent security review, or qualified legal review is claimed.
+Security scanning remains deferred at the user's request.

@@ -44,6 +44,7 @@ docker compose exec -T database mariadb -N \
 base_url=${APP_URL:-http://127.0.0.1:8080}
 curl -fsS "$base_url/health.php" | rg -q '"status":"ready"'
 ./scripts/test-runtime.sh
+docker compose exec -T app php /app/tests/account-export-regression.php
 ./scripts/test-formulas.sh
 ./scripts/test-complete-round.sh
 if [ "${RUN_GAME_SMOKE:-0}" = '1' ]; then

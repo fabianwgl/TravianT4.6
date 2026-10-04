@@ -13,6 +13,8 @@ Docker profile. It is not approved for payments or an unattended public server.
 - health and readiness checks;
 - registration, activation, tribe/sector selection, and village creation;
 - fresh login and core authenticated pages;
+- owner-confirmed current-world JSON account export with account isolation,
+  credential exclusion, and authenticated HTTP regression coverage;
 - deterministic ruleset timers, map boundaries, password migration, and World
   Wonder second-plan semantics;
 - a golden combat fixture and supported-profile resource, unit, and storage
@@ -28,7 +30,8 @@ Docker profile. It is not approved for payments or an unattended public server.
 ## Gates before 1.0
 
 - replacement or qualified review of legacy visual, audio, and translated assets;
-- self-service account export and verified account deletion;
+- verified account deletion, exact retention periods, and operator handling of
+  records outside the current-world export;
 - public-host deployment controls, observability, load tests, and runbooks;
 - independent legal and security review.
 

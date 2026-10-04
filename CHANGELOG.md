@@ -4,6 +4,8 @@
 
 ### Added
 
+- Owner-confirmed JSON account downloads from Account options, with explicit
+  current-world scope, credential exclusion, account isolation, and rate limits.
 - Docker Compose runtime for PHP 8.3, MariaDB 11.4, Redis 7.4, Apache, bootstrap,
   and the game worker.
 - Local launcher, registration, privacy/terms pages, and readiness endpoint.

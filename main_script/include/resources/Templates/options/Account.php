@@ -9,6 +9,20 @@ $m = new \Model\OptionModel();
 $config = Config::getInstance();
 $total_pop = Session::getInstance()->get("total_pop");
 ?>
+<?php if (!Session::getInstance()->isSitter() && !Session::getInstance()->isAdminInAnotherAccount()
+    && Session::getInstance()->getPlayerId() > 2): ?>
+<form id="accountExport" action="account-export.php" method="post" lang="en">
+    <?=Session::getCheckerInput();?>
+    <h4 class="round">Download account data</h4>
+    <p>Download your profile, messages, notes, and game data for this world as a JSON file.
+        Keep this personal file private. <a href="/privacy.html">Export scope and privacy</a></p>
+    <p><label for="export_password">Current account password</label>
+        <input id="export_password" name="export_password" type="password" class="text"
+               autocomplete="current-password" maxlength="1024" required></p>
+    <?=getButton(['type' => 'submit', 'class' => 'green', 'value' => 'Download account data'],
+        ['data' => []], 'Download account data');?>
+</form>
+<?php endif; ?>
 <form id="accountSettings" action="options.php" method="post">
     <input type="hidden" name="e" value="2"/>
     <input type="hidden" name="s" value="2"/>

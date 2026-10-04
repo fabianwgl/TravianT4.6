@@ -35,8 +35,9 @@ With the stack running:
 
 The verification suite checks configuration, migrations, PHP syntax, pinned
 PHP static analysis, public-repository hygiene, service readiness,
-deterministic runtime behavior, and worker health without changing the current
-world. CI additionally parses every maintained JavaScript file and exercises an
+deterministic runtime behavior, account-export isolation, and worker health
+without changing the current world. CI additionally parses every maintained
+JavaScript file and exercises an
 end-to-end player flow in a throwaway world.
 
 Release verification from empty isolated volumes is available through:
@@ -46,7 +47,7 @@ Release verification from empty isolated volumes is available through:
 ```
 
 That disposable check includes registration, activation, village creation,
-login, and authenticated gameplay routes.
+login, authenticated gameplay routes, and password-confirmed account downloads.
 
 ## Documentation
 
