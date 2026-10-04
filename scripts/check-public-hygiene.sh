@@ -9,6 +9,7 @@ if ! command -v rg >/dev/null 2>&1; then
 fi
 
 if rg -n --hidden \
+    --glob '!.git' \
     --glob '!.git/**' \
     --glob '!scripts/check-public-hygiene.sh' \
     '(/Users/|BEGIN (OPENSSH|RSA|EC) PRIVATE KEY|sftp\.json|statcounter|molon-lave|chamirhossein|travianarab@yahoo)' .; then
@@ -17,6 +18,7 @@ if rg -n --hidden \
 fi
 
 if rg -n --hidden \
+    --glob '!.git' \
     --glob '!.git/**' \
     --glob '!scripts/check-public-hygiene.sh' \
     '[[:alnum:]._%+-]+@(gmail|yahoo|hotmail|outlook|icloud)\.[[:alpha:]]{2,}' .; then
